@@ -444,8 +444,12 @@
     row-gap: 4px;
   }
   .cmd {
+    min-width: 0;
     color: var(--w-ink);
-    white-space: nowrap;
+    /* The hosted-site command (with --allow-origin https://…) is longer than the pane: wrap it
+       rather than hiding the end behind a horizontal scroll. */
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
   .wait {
     font-size: 12px;
