@@ -13,6 +13,7 @@ import {
   parseNoiseLevelGet6118,
   parseSerial,
   parseVersion6118,
+  parseVersionLegacy,
   parseVersionLegacy6118,
   Requests,
 } from '../commands'
@@ -96,5 +97,47 @@ describe('live LARK A2 capture', () => {
     expect(decodeFrame(pkt(CAPTURE.speakerGet))!.payload[0]).toBe(0)
     expect(parseButtonColors(decodeFrame(pkt(CAPTURE.buttonColorsGet))!.payload)).toEqual({ tx1: 0, tx2: 0 })
     expect(parseDeviceInfo(decodeFrame(pkt(CAPTURE.deviceInfo))!.payload)).toMatchObject({ variant: 0, cameraRx: false })
+  })
+})
+
+/**
+ * Lark M2 mobile receiver (PID 0x0007, family 6301), RX firmware 2.0.0.33, TX firmware 2.1.0.33,
+ * captured through the local bridge on 2026-11-06 (PROTOCOL.md §11.8). Serials are fake.
+ */
+const M2 = {
+  heartbeat: 'bb dd 10 80 00 09 01 01 62 64 00 00 00 05 00',
+  versionRx: 'bb dd 03 80 00 04 02 00 00 21',
+  versionTx1: 'bb dd 03 81 00 04 02 01 00 21',
+  serialTx2: `bb dd 15 82 00 0b ${ascii('TESTM2TX201')}`,
+  deviceInfo: 'bb dd 16 80 00 09 00 00 00 06 01 01 62 64 00',
+  noiseGet: 'bb dd 11 80 00 01 00',
+  volumeGet: 'bb dd 04 80 00 01 05',
+  speakerGet: 'bb dd 13 80 00 01 00',
+  voiceLockGet: 'bb dd 35 80 00 01 00',
+}
+
+describe('live Lark M2 capture', () => {
+  it('parses the 9-byte 6301 heartbeat', () => {
+    const hb = parseHeartbeat('6301', decodeFrame(pkt(M2.heartbeat))!.payload)
+    expect(hb.family).toBe('6301')
+    expect(hb.tx[0]).toMatchObject({ online: true, battery: 98 })
+    expect(hb.tx[1]).toMatchObject({ online: true, battery: 100 })
+    expect(hb).toMatchObject({ noiseLevel: 0, volume: 5, voiceLocked: false, payloadLength: 9 })
+  })
+
+  it('parses legacy versions, serial and device info', () => {
+    expect(parseVersionLegacy(decodeFrame(pkt(M2.versionRx))!.payload)).toBe('2.0.0.33')
+    expect(parseVersionLegacy(decodeFrame(pkt(M2.versionTx1))!.payload)).toBe('2.1.0.33')
+    const tx2 = decodeFrame(pkt(M2.serialTx2))!
+    expect(tx2.target).toBe(Target.TX2)
+    expect(parseSerial(tx2.payload)).toBe('TESTM2TX201')
+    expect(parseDeviceInfo(decodeFrame(pkt(M2.deviceInfo))!.payload)).toMatchObject({ variant: 0, cameraRx: false })
+  })
+
+  it('decodes the GET-only replies', () => {
+    expect(decodeFrame(pkt(M2.noiseGet))!.payload[0]).toBe(0)
+    expect(decodeFrame(pkt(M2.volumeGet))!.payload[0]).toBe(5)
+    expect(decodeFrame(pkt(M2.speakerGet))!.payload[0]).toBe(0)
+    expect(decodeFrame(pkt(M2.voiceLockGet))!.payload[0]).toBe(0)
   })
 })

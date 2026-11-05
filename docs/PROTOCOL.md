@@ -782,8 +782,24 @@ Not verified yet:
 
 - set-ack bytes;
 - TX-addressed heartbeats;
-- the Lark M2, LARK M2S and LARK A2S;
+- the LARK M2S and LARK A2S;
 - Chrome on Linux, ChromeOS and Windows.
+
+### 11.8 Verified on hardware (Lark M2 mobile RX, PID 7, macOS, 2026-11-06)
+
+Receiver firmware 2.0.0.33, transmitters 2.1.0.33 (`0x03`). Serial numbers were read (11 ASCII bytes each) and
+are not recorded here. Regression vectors with fake serials: `src/lib/protocol/__tests__/live-capture.test.ts`.
+
+| What | Path | Observed | Consequence |
+|---|---|---|---|
+| HID descriptor | ioreg | Same as the A2 (reports 0x06, 0x07, 0x55, 0x41) **plus** a vendor collection, usage page 0x7478, with a 63-byte input report **0x05** (output 0x05 is Constant). | Replies still use the undeclared ID 0xBB (next row); report 0x05 carries none of them. |
+| Replies on macOS HID | node-hid probe | `AA DD 10 40` → the driver counts 2 input reports, user space gets none (IOHIDFamily drops ID 0xBB). | The Lark M2 is **write-only on macOS**, like the A2. Full status needs the bridge. |
+| Heartbeat `0x10` | bridge | `BB DD 10 80 00 09` + `01 01 62 64 00 00 00 05 00`: TX1/TX2 online, batteries 98 % / 100 %, uv 0/0, NC level 0, volume 5, lock 0. 9-byte body, no mute or charging flags. | §6.2 layout confirmed for 6301 (9-byte body). |
+| Version `0x03` | bridge | RX `02 00 00 21` → 2.0.0.33; TX1/TX2 `02 01 00 21` → 2.1.0.33. | Legacy version format confirmed. RX 2.0.0.33 > 2.0.0.31, so the NC on/off switch is available on this unit (§8 firmware gate). |
+| Other reads | bridge | `0x11` → `00`; `0x04` → `05`; `0x13` → `00` (speaker on); `0x35` → `00` (lock off); `0x16` → `00 00 00 06 01 01 62 64 00` (same layout as the A2). | Consistent with the heartbeat. |
+| A2-only commands | bridge | `0x41`, `0x38`, `0x3C`, `0x3E` get **no reply**. | The M2 ignores 6118/6302-only reads; the library never sends them to a 6301. |
+| TX button press | bridge, heartbeat | Pressing a transmitter's button **toggles noise cancellation**, as on the A2. | NC on the M2 follows the same toggle model. |
+| 6501 profiles on the M2 | bridge, `forceProfile` (read-only) | Lark C1 (PID 1), C1 2nd gen (11), M1 2nd gen (12) and Lark Mini (13) profiles all connect and decode the M2's replies with their own rules (C1 volume wire map, PID 11 label swap). No errors or timeouts. | The 6501 group's read path ran on real hardware of the same generation; its writes and the PID-specific semantics remain untested. |
 
 ---
 

@@ -313,9 +313,21 @@ const SUPPORT_A2S: SupportInfo = {
   level: 'supported', hardware: 'sibling-tested', confidence: 'high', research: 'docs/PROTOCOL.md',
   note: 'camera receiver of the A2; same protocol, tested on the LARK A2',
 }
+/** PROTOCOL.md §11.8 (user test, 2026-11-06). */
 const SUPPORT_M2: SupportInfo = {
+  level: 'supported', hardware: 'tested', confidence: 'high', research: 'docs/PROTOCOL.md',
+  testedOn: [
+    'Lark M2 mobile RX fw 2.0.0.33, TX fw 2.1.0.33 · macOS Chrome WebHID: write-only (replies dropped by the OS) · 2026-11-06',
+    'Lark M2 mobile RX fw 2.0.0.33, TX fw 2.1.0.33 · macOS local bridge (root libusb): full read/write · 2026-11-06',
+  ],
+}
+const SUPPORT_M2_CAMERA: SupportInfo = {
+  level: 'supported', hardware: 'sibling-tested', confidence: 'high', research: 'docs/PROTOCOL.md',
+  note: 'camera receiver of the Lark M2; same protocol, tested on the Lark M2 mobile receiver',
+}
+const SUPPORT_M2S: SupportInfo = {
   level: 'supported', hardware: 'untested', confidence: 'high', research: 'docs/PROTOCOL.md',
-  note: 'wire format high; unit on hand, test pending (FAMILIES.md §5.6)',
+  note: 'same legacy protocol as the tested Lark M2; M2S-only commands (LED, custom buttons) not run on hardware',
 }
 const SUPPORT_EAGLES: SupportInfo = {
   level: 'supported', hardware: 'untested', confidence: 'medium', research: 'docs/PROTOCOL.md',
@@ -327,7 +339,7 @@ const SUPPORT_EAGLES: SupportInfo = {
  */
 const SUPPORT_6501: SupportInfo = {
   level: 'experimental', hardware: 'untested', confidence: 'medium', research: FAMILY_RESEARCH['6501'],
-  note: 'high (wire: same classes as the Lark M2), medium (UI semantics)',
+  note: 'high (wire: same classes as the Lark M2; read path run on a real Lark M2 via forced profiles, 2026-11-06), medium (UI semantics), writes not run',
 }
 /** PID 1: the volume wire map and the short heartbeat are the least certain parts (legacy-6501.md §9 #2, #3). */
 const SUPPORT_6501_C1: SupportInfo = {
@@ -352,7 +364,7 @@ export const LEGACY_PRODUCTS: readonly ProductInfo[] = [
   p({ productId: 7, name: 'Lark M2', chinaName: 'Lark MIX', code: '6301', family: '6301', familyCode: '6301', variant: 'mobile', txCount: 2, channels: 2,
     eaModel: 'lark m2', heartbeatIntervalMs: 3000, capabilities: CAPS_6301_MOBILE, ...legacy(SUPPORT_M2) }),
   p({ productId: 8, name: 'Lark M2', chinaName: 'Lark MIX', code: '6301', family: '6301', familyCode: '6301', variant: 'camera', txCount: 2, channels: 2,
-    eaModel: 'lark m2', heartbeatIntervalMs: 3000, capabilities: CAPS_6301_CAMERA, ...legacy(SUPPORT_M2) }),
+    eaModel: 'lark m2', heartbeatIntervalMs: 3000, capabilities: CAPS_6301_CAMERA, ...legacy(SUPPORT_M2_CAMERA) }),
   p({ vendorId: EAGLESHERO_VENDOR_ID, productId: 32, name: 'Lark M2 (EAGLESHERO)', code: '6301', family: '6301', familyCode: '6301', variant: 'mobile',
     txCount: 2, channels: 2, heartbeatIntervalMs: 3000, capabilities: CAPS_6301_MOBILE, ...legacy(SUPPORT_EAGLES),
     notes: 'OEM build (PRODUCT_EAGLES_6301_*); VID 0x4417 inferred from USBHIDService' }),
@@ -360,9 +372,9 @@ export const LEGACY_PRODUCTS: readonly ProductInfo[] = [
     txCount: 2, channels: 2, heartbeatIntervalMs: 3000, capabilities: CAPS_6301_CAMERA, ...legacy(SUPPORT_EAGLES),
     notes: 'OEM build (PRODUCT_EAGLES_6301_*); VID 0x4417 inferred from USBHIDService' }),
   p({ productId: 1029, name: 'LARK M2S', chinaName: 'LARK M2', code: '6302', family: '6302', familyCode: '6302', variant: 'mobile', txCount: 2, channels: 2,
-    eaModel: 'lark m2s', heartbeatIntervalMs: 1000, capabilities: CAPS_6302_MOBILE, ...legacy(SUPPORT_M2) }),
+    eaModel: 'lark m2s', heartbeatIntervalMs: 1000, capabilities: CAPS_6302_MOBILE, ...legacy(SUPPORT_M2S) }),
   p({ productId: 1030, name: 'LARK M2S', chinaName: 'LARK M2', code: '6302', family: '6302', familyCode: '6302', variant: 'camera', txCount: 2, channels: 2,
-    eaModel: 'lark m2s', heartbeatIntervalMs: 1000, capabilities: CAPS_6302_CAMERA, ...legacy(SUPPORT_M2) }),
+    eaModel: 'lark m2s', heartbeatIntervalMs: 1000, capabilities: CAPS_6302_CAMERA, ...legacy(SUPPORT_M2S) }),
   // 6501 group (legacy-6501.md §1): same legacy framing and Android screen as the Lark M2 (A larkc1/utils/
   // OpenPageHelper.obtainUsbPageIntent → larkc1/HLDeviceActivity; USBHIDService.isOldDevice), iOS HL6501Engine.
   // One receiver per PID (no mobile/camera split), 3 s heartbeat (HLDeviceActivity.AnonymousClass8.run; I sendHeartInfo).
