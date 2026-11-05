@@ -777,10 +777,12 @@ The user tested Hollyland Web UI on the LARK A2 in two ways:
 | Docking a TX | bridge, heartbeat | A TX put into the charging case goes **offline**: its online byte (body[0]/[1]) becomes 0. | The UI shows a docked mic as not connected. Whether the charging bits are ever set is open (§13). |
 | NC off → on | bridge, heartbeat | Turning NC on **restores the last level used**. Weak, then off, then on gives Weak again; the same with Medium. The first enable in the session showed Medium (2). | The RX keeps the level while NC is off, when body[6] reads 0. After a toggle, take the level from the heartbeat and never assume one. Medium may be the factory default or a level stored earlier (§13). |
 | Unsolicited packets | bridge | None. Every IN packet answered a request. Button presses and docking showed up only in the next heartbeat. | Agrees with §5.3 and §11.6. |
+| NC level while NC is off (2026-11-06) | bridge | With NC off, `0x06 [1]` and `0x06 [3]` are acked OK but the heartbeat stays at NC off, level 0. Setting `0x06 [2]` and then toggling `0x19 [02]` turned NC on at **Medium**: the receiver stores a level sent while off and uses it on the next enable. | `0x06` never switches NC on, so a blind "off" (level, then toggle) is **not** deterministic; write-only clients must not offer NC on/off. A level sent while off still takes effect on the next enable. |
+| Set acknowledgements (2026-11-06) | bridge | `0x19` → body `01`. `0x06` → body `01 <level>` (status + echoed level). | Confirms `parseSetAck` (body[0] == 1 = OK) for both; the 6118 `0x06` reply carries the echoed level like the M2's (§8). |
 
 Not verified yet:
 
-- set-ack bytes;
+- set-ack bytes for commands other than 0x06 and 0x19;
 - TX-addressed heartbeats;
 - the LARK M2S and LARK A2S;
 - Chrome on Linux, ChromeOS and Windows.
