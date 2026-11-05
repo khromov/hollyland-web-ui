@@ -1440,9 +1440,11 @@ export class HollylandDevice {
     const features = () => this._state.features ?? caps
     await run(Requests.deviceInfo(), (f) =>
       this.patchSettings(this.deviceInfoSettings(fam, parseDeviceInfo(f.payload, fam, f.length & 0xff, this.product.productId))))
-    if (fam === '6501') {
-      // A larkc1/HLDeviceActivity.getDeviceVersion sends 0x11 and 0x04 at start-up for every PID; on the
-      // Lark C1 they are the only source of NC level and volume (the heartbeat carries neither, see above).
+    if (fam !== '6118') {
+      // A larkc1/HLDeviceActivity.getDeviceVersion (6301/6501) and HLDevice6302Activity (6302) send 0x11 and
+      // 0x04 at start-up. On the Lark C1 they are the only source of NC level and volume (the heartbeat carries
+      // neither), and on the mobile Lark M2 (PID 7) heartbeat volume is ignored (applyHeartbeat), so without
+      // 0x04 the volume stayed unknown after every (re)connect (seen on hardware, PROTOCOL.md §11.8).
       await run(Requests.noiseLevelGet(), (f) => {
         const r = parseNoiseLevelGetM2(f.payload)
         this.patchSettings({ noiseLevel: r.level, noiseEnabled: r.enabled })

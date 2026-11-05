@@ -510,6 +510,19 @@ describe('HollylandDevice: reply decoding per family', () => {
     await device.disconnect()
   })
 
+  it('mobile Lark M2 (PID 7) reads volume and NC with 0x04 / 0x11 on (re)connect', async () => {
+    // Hardware report (PROTOCOL.md §11.8): after reconnecting, NC came back but the volume stayed unknown,
+    // because PID 7 ignores heartbeat volume and 0x04 was only sent for the 6501 group.
+    const { device, receiver, transport } = setup({ family: '6301' }, { fetchIdentity: false }, 7)
+    receiver.volume = 4
+    await device.connect()
+    await settle(60)
+    expect(sentCmds(transport)).toContain(Cmd.VOLUME_GET)
+    expect(sentCmds(transport)).toContain(Cmd.NOISE_LEVEL_GET)
+    expect(device.state.settings.volume).toBe(4)
+    await device.disconnect()
+  })
+
   it('6118 getNoiseLevel reads the heartbeat, not the ambiguous 0x11', async () => {
     const { device, transport, receiver } = setup({}, { fetchIdentity: false, fetchSettings: false })
     await device.connect()
