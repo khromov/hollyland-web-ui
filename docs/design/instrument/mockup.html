@@ -1,0 +1,920 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mic Console Instrument</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=Martian+Mono:wdth,wght@75..112.5,100..800&display=swap" rel="stylesheet">
+<style>
+/* ───────────── Tokens ───────────── */
+:root{
+  --f-sans:"Archivo",ui-sans-serif,system-ui,sans-serif;
+  --f-mono:"Martian Mono",ui-monospace,"SF Mono",monospace;
+  --mic1:#9D6BFF; --mic2:#FFCC1A; --hot:#F0544A;
+  --r-key:6px; --r-win:4px;
+}
+[data-theme="light"]{
+  --chassis:#E8E7E2; --chassis-2:#DCDBD5; --key:#F6F5F1; --key-edge:#7E7C73;
+  --key-hi:rgba(255,255,255,.85); --key-shadow:rgba(40,36,24,.16);
+  --rule:#BDBBB3; --rule-soft:#D3D1CA;
+  --ink:#16161A; --ink-2:#4A4A50; --ink-3:#5E5E64;
+  --sel:#16161A; --sel-ink:#F2F1EC;
+  --window:#111113; --window-edge:#050506; --window-lip:rgba(255,255,255,.9);
+  --w-ink:#E9E8E3; --w-ink-2:#8A8A90; --w-unlit:#1D1D20;
+  --mic1-ink:#6B3FD0; --mic2-ink:#7A5A00;
+  --live:#168043; --rec:#C42B21; --bezel:#16161A; --focus:#16161A;
+}
+[data-theme="dark"]{
+  --chassis:#141416; --chassis-2:#0D0D0F; --key:#1F1F22; --key-edge:#72727A;
+  --key-hi:rgba(255,255,255,.06); --key-shadow:rgba(0,0,0,.55);
+  --rule:#2E2E33; --rule-soft:#232327;
+  --ink:#ECEBE6; --ink-2:#A3A3A8; --ink-3:#8A8A90;
+  --sel:#ECEBE6; --sel-ink:#141416;
+  --window:#0A0A0B; --window-edge:#2E2E33; --window-lip:transparent;
+  --w-ink:#E9E8E3; --w-ink-2:#8A8A90; --w-unlit:#19191C;
+  --mic1-ink:#B99AFF; --mic2-ink:#FFCC1A;
+  --live:#4CC27A; --rec:#F0544A; --bezel:#000; --focus:#ECEBE6;
+}
+
+/* ───────────── Base ───────────── */
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#A9A79F}
+body{font-family:var(--f-sans);-webkit-font-smoothing:antialiased;color:#16161A;padding:48px;display:grid;gap:64px;justify-content:start}
+body.solo{padding:0;gap:0;background:var(--chassis)}
+.cap{font:600 13px/1.4 var(--f-sans);margin-bottom:12px;color:#16161A}
+body.solo .cap{display:none}
+button{font:inherit;color:inherit}
+.frame{background:var(--chassis);color:var(--ink);font-size:14px;line-height:1.45;position:relative}
+.mono{font-family:var(--f-mono);font-stretch:87.5%;font-variant-numeric:tabular-nums slashed-zero}
+.dim{color:var(--ink-3)}
+svg{display:block}
+
+/* ───────────── Primitives ───────────── */
+.lamp{--lamp:var(--live);width:14px;height:14px;border-radius:50%;background:var(--bezel);display:inline-grid;place-items:center;flex:none}
+.lamp::before{content:"";width:8px;height:8px;border-radius:50%;background:color-mix(in srgb,var(--lamp) 18%,#2b2b2f)}
+.lamp.on::before{background:radial-gradient(circle at 35% 30%,rgba(255,255,255,.75) 0 1px,transparent 2px),var(--lamp)}
+.lamp.lg{width:20px;height:20px}.lamp.lg::before{width:12px;height:12px}
+.lamp.sm{width:12px;height:12px}.lamp.sm::before{width:6px;height:6px}
+.lamp.hollow::before{background:transparent;box-shadow:inset 0 0 0 1.5px #77777d}
+.lamp.m1{--lamp:var(--mic1)}.lamp.m2{--lamp:var(--mic2)}.lamp.rec{--lamp:var(--hot)}
+
+.key{font-size:13px;font-weight:560;min-height:44px;padding:0 12px;border-radius:var(--r-key);border:1px solid var(--key-edge);background:var(--key);color:var(--ink);box-shadow:inset 0 1px 0 var(--key-hi),0 1px 0 var(--key-shadow);display:inline-flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;white-space:nowrap;position:relative}
+.key.on{background:var(--sel);color:var(--sel-ink);border-color:var(--sel);box-shadow:inset 0 1px 3px rgba(0,0,0,.45)}
+.key.sent{border:2px solid var(--ink);background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--ink) 16%,transparent) 0 1.5px,transparent 1.5px 6px),var(--key);box-shadow:none}
+.key.na{color:var(--ink-3);border-style:dashed;background:transparent;box-shadow:none}
+.key.primary{background:var(--sel);color:var(--sel-ink);border-color:var(--sel);font-size:15px;font-weight:620;min-height:52px;padding:0 22px}
+.key.quiet{background:transparent;box-shadow:none;border-color:transparent;color:var(--ink-2);padding:0 10px}
+.key.icon{width:44px;padding:0}
+.focus{outline:2px solid var(--focus);outline-offset:3px}
+.keys{display:grid;gap:6px}
+.k3{grid-template-columns:repeat(3,1fr)}
+
+/* slide switch: legend engraved inside the track, opposite the knob */
+.switch{display:inline-flex;align-items:center;min-height:44px;cursor:pointer;flex:none}
+.track{width:62px;height:30px;border-radius:6px;background:var(--chassis-2);border:1px solid var(--key-edge);position:relative;box-shadow:inset 0 1px 2px rgba(0,0,0,.18);display:block}
+.track .tx{position:absolute;top:50%;transform:translateY(-50%);right:8px;font:600 10px/1 var(--f-mono);font-stretch:87.5%;color:var(--ink-2);letter-spacing:.02em}
+.knob{position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:4px;background:var(--key);border:1px solid var(--key-edge);box-shadow:0 1px 1px rgba(0,0,0,.22)}
+.knob::before{content:"";position:absolute;inset:6px 7px;background:repeating-linear-gradient(90deg,var(--key-edge) 0 1px,transparent 1px 3px)}
+.switch.on .track{background:var(--sel);border-color:var(--sel)}
+.switch.on .tx{right:auto;left:9px;color:var(--sel-ink)}
+.switch.on .knob{left:35px;border-color:var(--sel)}
+.switch.unk .track{border-style:dashed;background:transparent;box-shadow:none}
+.switch.unk .knob{display:none}
+.switch.unk .tx{left:0;right:0;text-align:center;color:var(--ink-3)}
+
+.window{background:var(--window);border-radius:var(--r-win);box-shadow:inset 0 1px 3px rgba(0,0,0,.75),0 0 0 1px var(--window-edge),0 1px 0 1px var(--window-lip);color:var(--w-ink)}
+
+.meter{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:2px;height:30px}
+.seg{border-radius:1px;background:color-mix(in srgb,var(--c) 15%,var(--w-unlit))}
+.seg.hot{background:color-mix(in srgb,var(--hot) 20%,var(--w-unlit))}
+.seg.lit{background:var(--c)}
+.seg.d1{background:color-mix(in srgb,var(--c) 72%,var(--w-unlit))}
+.seg.d2{background:color-mix(in srgb,var(--c) 46%,var(--w-unlit))}
+.seg.pk{background:var(--c)}
+.scale{position:relative;height:16px;font-family:var(--f-mono);font-stretch:87.5%;font-size:10px;color:var(--w-ink-2)}
+.scale span{position:absolute;top:5px;transform:translateX(-50%);line-height:1}
+.scale span::before{content:"";position:absolute;left:50%;top:-5px;width:1px;height:3px;background:#55555b}
+.scale span:first-child{transform:none}.scale span:first-child::before{left:0}
+.scale span:last-child{transform:translateX(-100%)}.scale span:last-child::before{left:auto;right:0}
+/* level history: bottom-anchored, same dB scale as the bar meter */
+.hist{position:relative;min-height:40px}
+.hist .bars{position:absolute;inset:0;display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:1px;align-items:end}
+.hist i{display:block;background:color-mix(in srgb,var(--c) 40%,var(--w-unlit));border-radius:1px 1px 0 0}
+.hist i.now{background:var(--c)}
+.hist .gl{position:absolute;left:0;right:0;height:0;border-top:1px dashed rgba(255,255,255,.09)}
+.hist .gl.hot{border-top-color:rgba(240,84,74,.28)}
+.hist .gl em{position:absolute;left:0;top:-7px;font:500 9.5px/1 var(--f-mono);font-stretch:87.5%;color:var(--w-ink-2);font-style:normal;background:var(--window);padding:2px 5px 2px 0}
+.hist .tl{position:absolute;right:0;top:0;font:500 9.5px/1 var(--f-mono);font-stretch:87.5%;color:var(--w-ink-2);background:var(--window);padding:0 0 3px 5px}
+.readout{display:flex;flex-direction:column;justify-content:flex-end;align-items:flex-end;gap:4px;text-align:right}
+.rv{display:grid;justify-items:end;gap:5px}
+.rv .big{font-family:var(--f-mono);font-stretch:87.5%;font-variant-numeric:tabular-nums;font-size:40px;font-weight:450;color:var(--cw);letter-spacing:-.03em;line-height:1}
+.rv .big small{font-size:22px;letter-spacing:-.01em}
+.lbl{font-family:var(--f-mono);font-stretch:87.5%;font-size:10.5px;color:var(--w-ink-2);line-height:1.35}
+.lbl b{color:var(--w-ink);font-weight:500}
+.clip{display:inline-flex;align-items:center;gap:6px;font:500 10px/1 var(--f-mono);font-stretch:87.5%;color:var(--w-ink-2);letter-spacing:.04em}
+
+.cells{display:inline-grid;grid-auto-flow:column;gap:2px;padding:2px;border:1.5px solid var(--ink);border-radius:3px;position:relative;height:16px;flex:none}
+.cells::after{content:"";position:absolute;right:-5px;top:3.5px;width:2.5px;height:6px;background:var(--ink);border-radius:0 1px 1px 0}
+.cells i{display:block;width:4px;background:color-mix(in srgb,var(--ink) 13%,transparent);border-radius:.5px}
+.cells i.f{background:var(--ink)}
+.cells.unk{border-style:dashed}
+.cells.unk i{background:repeating-linear-gradient(135deg,var(--ink-3) 0 1px,transparent 1px 3px)}
+
+.ch-c1{--c:var(--mic1);--cw:#B99AFF}
+.ch-c2{--c:var(--mic2);--cw:#FFCC1A}
+
+.modeglyph{width:52px;height:26px;border-radius:3px;padding:4px 5px;display:grid;gap:3px;background:var(--window);box-shadow:inset 0 1px 2px rgba(0,0,0,.7)}
+.modeglyph .r{display:grid;grid-template-columns:7px 1fr;align-items:center;gap:3px;font:500 7px/1 var(--f-mono);color:#8A8A90}
+.modeglyph .b{display:flex;height:5px;gap:1px}
+.modeglyph .b i{display:block;height:100%;border-radius:1px}
+.p1{background:var(--mic1)}.p2{background:var(--mic2)}
+
+.rename{width:36px;height:36px;border-radius:6px;border:1px solid transparent;background:transparent;display:grid;place-items:center;color:var(--ink-2);cursor:pointer;position:relative}
+.rename::after{content:"";position:absolute;inset:-4px}
+
+/* ───────────── Desktop shell ───────────── */
+.desk{width:1440px;height:900px;overflow:hidden;display:grid;grid-template-rows:64px 1fr 36px}
+.top{display:flex;align-items:stretch;gap:36px;padding:0 32px;border-bottom:1px solid var(--rule)}
+.brand{display:flex;align-items:center;gap:10px}
+.glyph{width:26px;height:26px;border-radius:5px;background:var(--window);display:flex;align-items:flex-end;justify-content:center;gap:3px;padding:6px 0;box-shadow:inset 0 1px 2px rgba(0,0,0,.7),0 0 0 1px var(--window-edge);flex:none}
+.glyph i{width:4px;border-radius:1px;display:block}
+.glyph i:nth-child(1){height:12px;background:var(--mic1)}.glyph i:nth-child(2){height:8px;background:var(--mic2)}
+.wordmark{font-weight:720;font-stretch:118%;font-size:16px;letter-spacing:-.01em}
+.unofficial{font-size:12px;color:var(--ink-3);margin-left:2px;padding-top:1px}
+.tabs{display:flex;gap:2px}
+.tab{display:flex;align-items:center;padding:0 14px;font-size:14px;font-weight:520;color:var(--ink-2);text-decoration:none;position:relative}
+.tab.on{color:var(--ink);font-weight:660}
+.tab.on::after{content:"";position:absolute;left:14px;right:14px;bottom:-1px;height:3px;background:var(--ink)}
+.device{margin-left:auto;display:flex;align-items:center;gap:14px}
+.devname{display:flex;align-items:center;gap:10px}
+.devname b{font-family:var(--f-mono);font-stretch:87.5%;font-weight:600;font-size:13px;letter-spacing:.02em}
+.devname span{font-size:13px;color:var(--ink-2)}
+.vr{width:1px;align-self:stretch;margin:14px 0;background:var(--rule)}
+
+.dmain{padding:0 32px;display:grid;grid-template-rows:1fr auto;min-height:0}
+.row{display:grid;grid-template-columns:168px 1fr;border-bottom:1px solid var(--rule);min-height:0}
+.row:last-child{border-bottom:0}
+.rail{padding:24px 20px 24px 0;display:flex;flex-direction:column;gap:6px}
+.rail h2{font-size:15px;font-weight:680;font-stretch:108%;letter-spacing:-.005em;line-height:1.3}
+.rail p{font-size:13px;color:var(--ink-2);line-height:1.45}
+.rail .mono{font-size:10.5px;color:var(--ink-3);margin-top:6px;line-height:1.5}
+.body2{display:grid;grid-template-columns:1fr 1fr;min-height:0}
+.ch{padding:20px 28px 22px;display:flex;flex-direction:column;gap:14px;border-left:1px solid var(--rule);min-height:0}
+.ch-head{display:flex;align-items:center;gap:12px;min-height:44px}
+.name{font-size:26px;font-weight:660;font-stretch:108%;letter-spacing:-.015em;line-height:1}
+.chid{font-family:var(--f-mono);font-stretch:87.5%;font-size:11px;color:var(--ink-3);border:1px solid var(--rule);border-radius:3px;padding:2px 6px}
+.ch-head .right{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-2)}
+.meterbox{flex:1;display:grid;grid-template-columns:1fr 132px;gap:24px;padding:16px 18px 10px 16px;min-height:0}
+.meterbox .stack{display:grid;grid-template-rows:1fr auto auto;gap:8px;min-width:0;min-height:0}
+.meterbox .readout{justify-content:space-between;padding-bottom:20px}
+.stats{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:16px}
+.stat dt{font-size:12px;color:var(--ink-2);margin-bottom:5px}
+.stat dd{display:flex;align-items:center;gap:10px;font-size:14px;min-height:22px}
+.num{font-family:var(--f-mono);font-stretch:87.5%;font-size:14px;font-weight:500;font-variant-numeric:tabular-nums}
+.num small{font-family:var(--f-sans);font-size:12px;color:var(--ink-2);margin-left:2px;font-weight:500}
+.note{font-size:12px;color:var(--ink-3)}
+.chg{display:inline-flex;align-items:center;gap:4px;font-size:12.5px;color:var(--ink-2)}
+
+.body5{display:grid;grid-template-columns:1.05fr 1fr 1.08fr 1fr 1fr}
+.mod{padding:18px 20px 20px;display:flex;flex-direction:column;gap:10px;border-left:1px solid var(--rule);min-width:0}
+.mod-head{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:44px}
+.mod h3{font-size:15px;font-weight:660;line-height:1.25}
+.desc{font-size:13px;color:var(--ink-2);line-height:1.45}
+.foot{margin-top:auto;font-size:12px;color:var(--ink-3);line-height:1.45;padding-top:4px}
+.foot b{color:var(--ink-2);font-weight:600}
+.big-val{font-family:var(--f-mono);font-stretch:87.5%;font-size:24px;font-weight:500;letter-spacing:-.02em}
+.big-val small{font-size:14px;color:var(--ink-3)}
+.tallkey{flex-direction:column;gap:7px;min-height:74px;padding:9px 4px 8px}
+.tallkey .t{font-size:12.5px}
+.sub{margin-left:6px;padding-left:16px;border-left:1px solid var(--rule);display:grid;gap:6px}
+.sub .mod-head h3{font-size:14px}
+.ledpair{display:grid;gap:6px;font-size:12px;color:var(--ink-2)}
+.ledpair span{display:inline-flex;align-items:center;gap:8px}
+
+.fader{position:relative;height:66px;margin:2px 0 0}
+.fader .slot{position:absolute;left:16px;right:16px;top:24px;height:6px;border-radius:3px;background:var(--chassis-2);box-shadow:inset 0 1px 2px rgba(0,0,0,.35),0 0 0 1px color-mix(in srgb,var(--key-edge) 60%,transparent)}
+.fader .fill{position:absolute;left:16px;top:24px;height:6px;border-radius:3px;background:var(--ink)}
+.fader .det{position:absolute;top:0;width:32px;height:66px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center}
+.fader .det::before{content:"";width:1px;height:8px;background:var(--ink-3);margin-top:8px}
+.fader .det b{position:absolute;bottom:2px;font:500 11px/1 var(--f-mono);font-stretch:87.5%;color:var(--ink-3)}
+.fader .det.cur b{color:var(--ink);font-weight:700}
+.fader .fcap{position:absolute;top:9px;width:22px;height:36px;transform:translateX(-50%);border-radius:3px;background:var(--key);border:1.5px solid var(--ink);box-shadow:0 2px 0 var(--key-shadow),inset 0 1px 0 var(--key-hi)}
+.fader .fcap::after{content:"";position:absolute;left:3px;right:3px;top:50%;height:2px;margin-top:-1px;background:var(--ink)}
+
+.statusline{display:flex;align-items:center;gap:22px;padding:0 32px;border-top:1px solid var(--rule);font-family:var(--f-mono);font-stretch:87.5%;font-size:11px;color:var(--ink-2)}
+.statusline .sp{margin-left:auto;color:var(--ink-3)}
+.statusline .lamp{width:10px;height:10px}.statusline .lamp::before{width:5px;height:5px}
+.statusline span{display:inline-flex;align-items:center;gap:7px}
+
+/* ───────────── Audio page ───────────── */
+.bridge{padding:16px 20px 14px;display:grid;gap:10px}
+.brow{display:grid;grid-template-columns:92px 1fr 286px;gap:20px;align-items:center}
+.brow .who{font-family:var(--f-mono);font-stretch:87.5%;font-size:10.5px;color:var(--w-ink-2);display:grid;gap:3px}
+.brow .who b{font-family:var(--f-sans);font-stretch:108%;font-size:15px;font-weight:650;color:var(--cw)}
+.brow .meter{height:32px}
+.brow .rd{display:grid;grid-template-columns:1fr 1fr auto;gap:18px;align-items:end}
+.brow .rd div{display:grid;justify-items:end;gap:4px}
+.brow .rd .v{font-family:var(--f-mono);font-stretch:87.5%;font-size:22px;font-weight:450;color:var(--cw);letter-spacing:-.02em;line-height:1}
+.brow .rd .k{font-family:var(--f-mono);font-stretch:87.5%;font-size:10px;color:var(--w-ink-2)}
+.bank{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.preset{min-height:66px;justify-content:space-between;padding:10px 12px 10px 14px;text-align:left;align-items:stretch;gap:12px}
+.preset .l{display:flex;flex-direction:column;justify-content:space-between;gap:6px;min-width:0}
+.preset .no{font:500 10.5px/1 var(--f-mono);font-stretch:87.5%;color:var(--ink-3)}
+.preset.on .no{color:#A3A3A8}
+.preset .nm{font-size:14px;font-weight:620;white-space:normal;line-height:1.2}
+.preset svg{align-self:center;flex:none}
+.curve{fill:none;stroke:var(--ink);stroke-width:1.6;stroke-linejoin:round;stroke-linecap:round}
+.flat{stroke:var(--ink-3);stroke-width:1;stroke-dasharray:2 3;opacity:.7}
+.preset.on .curve{stroke:var(--sel-ink)}
+.preset.on .flat{stroke:#8A8A90}
+.recbtn{width:76px;height:76px;border-radius:50%;border:1px solid var(--key-edge);background:var(--key);box-shadow:inset 0 1px 0 var(--key-hi),0 2px 0 var(--key-shadow);display:grid;place-items:center;cursor:pointer}
+.recbtn i{width:24px;height:24px;border-radius:4px;background:var(--rec);display:block}
+.tc{font-family:var(--f-mono);font-stretch:87.5%;font-size:44px;font-weight:420;letter-spacing:-.03em;line-height:1;font-variant-numeric:tabular-nums}
+.tc small{font-size:24px;color:var(--ink-3)}
+.takes{width:100%;border-collapse:collapse;font-size:13px}
+.takes th{text-align:left;font-weight:560;font-size:12px;color:var(--ink-2);padding:0 12px 8px 0;border-bottom:1px solid var(--rule)}
+.takes td{padding:0 12px 0 0;height:50px;border-bottom:1px solid var(--rule-soft);white-space:nowrap}
+.takes td.m{font-family:var(--f-mono);font-stretch:87.5%;font-size:12.5px}
+.takes .act{display:flex;gap:6px;justify-content:flex-end}
+.takes .act .key{min-height:36px;font-size:12.5px}
+.timeline{padding:10px 14px 8px;display:grid;gap:4px}
+.lane{height:30px;position:relative;display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:1px;align-items:center}
+.lane i{display:block;border-radius:1px;background:var(--c)}
+.lane i.e{background:transparent;border-top:1px dashed rgba(255,255,255,.07);height:0!important}
+.ruler{position:relative;height:14px;font:500 9.5px/1 var(--f-mono);font-stretch:87.5%;color:var(--w-ink-2)}
+.ruler span{position:absolute;top:3px}
+.playhead{position:absolute;top:6px;bottom:6px;width:2px;background:var(--hot)}
+.playhead em{position:absolute;top:-1px;left:6px;font:600 10px/1 var(--f-mono);font-stretch:87.5%;color:#F0544A;font-style:normal;white-space:nowrap}
+
+/* ───────────── Connect ───────────── */
+.cgrid{display:grid;grid-template-columns:1.15fr 1fr .9fr}
+.cpane{padding:28px 32px 28px 28px;display:flex;flex-direction:column;gap:16px;border-left:1px solid var(--rule)}
+.cpane h2{font-size:30px;font-weight:680;font-stretch:108%;letter-spacing:-.02em;line-height:1.1}
+.cpane h3{font-size:18px;font-weight:660;font-stretch:106%;letter-spacing:-.01em}
+.steps{list-style:none;display:grid;gap:10px;counter-reset:s}
+.steps li{display:grid;grid-template-columns:28px 1fr;gap:10px;font-size:14.5px;align-items:baseline}
+.steps li::before{counter-increment:s;content:"0" counter(s);font:500 11px/1 var(--f-mono);font-stretch:87.5%;color:var(--ink-3)}
+.chooser{padding:12px 14px;display:grid;gap:8px}
+.chooser .q{font:500 10.5px/1.4 var(--f-mono);font-stretch:87.5%;color:var(--w-ink-2)}
+.chooser .it{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:3px;background:#232327;font-size:13px;color:var(--w-ink)}
+.chooser .it span{font:500 10.5px/1 var(--f-mono);color:var(--w-ink-2)}
+.code{font:500 13px/1 var(--f-mono);font-stretch:87.5%;padding:13px 14px;display:flex;justify-content:space-between;align-items:center}
+.code span{color:var(--w-ink-2);font-size:10.5px}
+.trouble{list-style:none}
+.trouble li{padding:10px 0;border-top:1px solid var(--rule-soft);font-size:13px;color:var(--ink-2)}
+.diagram text{font-family:var(--f-sans);fill:var(--ink)}
+.diagram .t-mono{font-family:var(--f-mono);font-stretch:87.5%;font-size:10.5px;fill:var(--ink-3)}
+.diagram .t-mono.ink2{fill:var(--ink-2)}
+.diagram .t-name{font-size:14px;font-weight:650}
+.diagram .node{fill:var(--key);stroke:var(--key-edge)}
+.diagram .w{stroke:var(--ink);stroke-width:1.5;fill:none}
+.diagram .w.dash{stroke:var(--ink-3);stroke-dasharray:5 5}
+
+/* ───────────── Phone ───────────── */
+.phone{width:390px;min-height:844px;display:flex;flex-direction:column}
+.p-top{height:56px;display:flex;align-items:center;gap:10px;padding:0 6px 0 16px;border-bottom:1px solid var(--rule);flex:none}
+.p-top .wordmark{font-size:15px}
+.p-dev{margin-left:auto;display:flex;align-items:center;gap:8px}
+.p-dev b{font-family:var(--f-mono);font-stretch:87.5%;font-weight:600;font-size:12px}
+.p-status{display:flex;align-items:center;justify-content:space-between;padding:8px 16px;font:500 10.5px/1.3 var(--f-mono);font-stretch:87.5%;color:var(--ink-2);border-bottom:1px solid var(--rule)}
+.p-ch{padding:14px 16px 16px;display:grid;gap:12px;border-bottom:1px solid var(--rule)}
+.p-ch .ch-head{gap:10px}
+.p-ch .ch-head .right{gap:8px;font-size:12.5px}
+.p-ch .name{font-size:22px}
+.p-ch .meterbox{grid-template-columns:1fr 84px;gap:14px;padding:12px 12px 8px 12px}
+.p-ch .stack{display:grid;gap:6px;min-width:0}
+.p-ch .hist{height:36px}
+.p-ch .rv .big{font-size:28px}
+.p-ch .rv .big small{font-size:16px}
+.p-ch .readout{padding-bottom:18px}
+.p-ch .meter{height:22px;gap:2px}
+.p-ch .stats{grid-template-columns:1.25fr 1fr .6fr;gap:10px}
+.p-ch .stat dd{font-size:13px}
+.p-sec{padding:20px 16px 8px;display:flex;justify-content:space-between;align-items:baseline}
+.p-sec h2{font-size:18px;font-weight:680;font-stretch:108%;letter-spacing:-.01em}
+.p-sec p{font-size:12.5px;color:var(--ink-2)}
+.p-row{padding:10px 16px 16px;border-top:1px solid var(--rule);display:grid;gap:8px}
+.p-row .mod-head h3{font-size:16px;font-weight:650}
+.p-row .key{font-size:14px;min-height:46px}
+.p-row .tallkey{min-height:76px}
+.p-row .fader{height:70px}
+.p-row .fader .det{width:44px;height:70px}
+.p-row .hint{font-size:12px;color:var(--ink-3)}
+.vol{display:grid;grid-template-columns:46px 1fr 46px;gap:8px;align-items:center}
+.vol .key{font-size:20px;font-weight:500;padding:0;min-height:46px}
+.p-tabs{position:sticky;bottom:0;margin-top:auto;display:grid;grid-template-columns:repeat(4,1fr);background:var(--chassis);border-top:1px solid var(--ink);padding-bottom:18px;z-index:5}
+body.full .p-tabs{position:static}
+.p-tab{height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;font-size:12.5px;font-weight:560;color:var(--ink-2)}
+.p-tab i{width:18px;height:4px;border-radius:1px;display:block}
+.p-tab.on{color:var(--ink);font-weight:700}
+.p-tab.on i{background:var(--ink)}
+.wo{margin:12px 16px 2px;padding:12px 14px;display:grid;gap:9px}
+.wo .h{display:flex;align-items:center;gap:10px;font:600 11.5px/1.2 var(--f-mono);font-stretch:87.5%;letter-spacing:.03em;color:var(--w-ink)}
+.wo p{font-size:12.5px;line-height:1.45;color:#C9C8C3}
+.wo .acts{display:flex;gap:4px;align-items:center}
+.wo .acts .key{min-height:40px;font-size:13px}
+.wo .acts .key.quiet{color:#C9C8C3;text-decoration:underline;text-underline-offset:3px}
+.wo .acts .key.light{background:#ECEBE6;color:#141416;border-color:#ECEBE6;box-shadow:none}
+.sentnote,.unknote{display:flex;align-items:center;gap:7px;font:500 11px/1.3 var(--f-mono);font-stretch:87.5%;color:var(--ink-2)}
+.sentnote i{width:12px;height:12px;border:1.5px solid var(--ink);border-radius:2px;background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--ink) 35%,transparent) 0 1px,transparent 1px 3px);display:block;flex:none}
+.unknote{color:var(--ink-3)}
+.unknote i{width:12px;height:12px;border:1.5px dashed var(--ink-3);border-radius:2px;display:block;flex:none}
+.dash{font-family:var(--f-mono);font-stretch:87.5%;color:var(--ink-3);letter-spacing:.05em}
+</style>
+</head>
+<body>
+
+<!-- ═════════════ (a) Desktop overview ═════════════ -->
+<div class="wrap" data-frame="desk-overview">
+<div class="cap">(a) Desktop · Overview · live</div>
+<section class="frame desk" aria-label="Overview">
+  <header class="top">
+    <div class="brand"><span class="glyph"><i></i><i></i></span><span class="wordmark">Mic Console</span><span class="unofficial">Unofficial</span></div>
+    <nav class="tabs" aria-label="Sections"><a class="tab on" aria-current="page">Overview</a><a class="tab">Audio</a><a class="tab">Settings</a><a class="tab">Device</a></nav>
+    <div class="device">
+      <div class="devname"><span class="lamp on"></span><b>LARK A2</b><span>Live · read &amp; write</span></div>
+      <span class="vr"></span>
+      <button class="key quiet">Disconnect</button>
+      <button class="key icon quiet" aria-label="Switch to dark theme"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg></button>
+    </div>
+  </header>
+
+  <main class="dmain">
+    <section class="row">
+      <div class="rail">
+        <h2>Transmitters</h2>
+        <p>2 of 2 online</p>
+        <p>Levels come from the receiver’s USB audio in this browser.</p>
+        <span class="mono">History 10 s<br>Peak hold 2 s</span>
+      </div>
+      <div class="body2">
+        <article class="ch ch-c1" aria-label="Mic 1">
+          <div class="ch-head">
+            <span class="lamp lg m1 on" title="LED colour: purple"></span>
+            <span class="name">Mic 1</span>
+            <button class="rename" aria-label="Rename Mic 1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/></svg></button>
+            <span class="chid">TX1</span>
+            <div class="right"><span class="lamp sm on"></span>Online</div>
+          </div>
+          <div class="window meterbox">
+            <div class="stack">
+              <div class="hist" data-trace="talk" data-seed="7" data-n="150" data-grid="1" data-now="-18.4"></div>
+              <div class="meter" data-level="-18.4" data-peak="-12.1" data-segs="40"></div>
+              <div class="scale" data-marks="-60,-48,-36,-24,-18,-12,-6,0"></div>
+            </div>
+            <div class="readout">
+              <span class="clip"><span class="lamp rec sm"></span>CLIP</span>
+              <div class="rv"><span class="lbl">RMS dBFS</span><span class="big">−18<small>.4</small></span><span class="lbl">peak <b>−12.1</b></span></div>
+            </div>
+          </div>
+          <dl class="stats">
+            <div class="stat"><dt>Battery</dt><dd><span class="cells" data-v="91"></span><span class="num">91<small>%</small></span></dd></div>
+            <div class="stat"><dt>Mute</dt><dd><span class="lamp"></span>Off <span class="note">set on the mic</span></dd></div>
+            <div class="stat"><dt>Output</dt><dd><span class="num">L</span><span class="note">Left channel</span></dd></div>
+          </dl>
+        </article>
+        <article class="ch ch-c2" aria-label="Mic 2">
+          <div class="ch-head">
+            <span class="lamp lg m2 on" title="LED colour: yellow"></span>
+            <span class="name">Mic 2</span>
+            <button class="rename" aria-label="Rename Mic 2"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/></svg></button>
+            <span class="chid">TX2</span>
+            <div class="right"><span class="lamp sm on"></span>Online</div>
+          </div>
+          <div class="window meterbox">
+            <div class="stack">
+              <div class="hist" data-trace="quiet" data-seed="21" data-n="150" data-grid="1" data-now="-27.6"></div>
+              <div class="meter" data-level="-27.6" data-peak="-21.3" data-segs="40"></div>
+              <div class="scale" data-marks="-60,-48,-36,-24,-18,-12,-6,0"></div>
+            </div>
+            <div class="readout">
+              <span class="clip"><span class="lamp rec sm"></span>CLIP</span>
+              <div class="rv"><span class="lbl">RMS dBFS</span><span class="big">−27<small>.6</small></span><span class="lbl">peak <b>−21.3</b></span></div>
+            </div>
+          </div>
+          <dl class="stats">
+            <div class="stat"><dt>Battery</dt><dd><span class="cells" data-v="92"></span><span class="num">92<small>%</small></span><span class="chg"><svg width="10" height="13" viewBox="0 0 11 14" fill="currentColor" aria-hidden="true"><path d="M6.5 0L0 8h4.5L3.5 14 11 5.5H6.2z"/></svg>Charging</span></dd></div>
+            <div class="stat"><dt>Mute</dt><dd><span class="lamp"></span>Off <span class="note">set on the mic</span></dd></div>
+            <div class="stat"><dt>Output</dt><dd><span class="num">R</span><span class="note">Right channel</span></dd></div>
+          </dl>
+        </article>
+      </div>
+    </section>
+
+    <section class="row">
+      <div class="rail">
+        <h2>Receiver</h2>
+        <p>These settings apply to both mics.</p>
+        <span class="mono">Confirmed by the<br>receiver within 1 s</span>
+      </div>
+      <div class="body5">
+        <div class="mod">
+          <div class="mod-head"><h3>Noise cancellation</h3><span class="switch on" role="switch" aria-checked="true"><span class="track"><span class="tx">ON</span><span class="knob"></span></span></span></div>
+          <p class="desc">Reduces steady background noise such as fans and traffic.</p>
+          <div class="keys k3" role="radiogroup" aria-label="Strength"><button class="key">Weak</button><button class="key on" aria-checked="true">Medium</button><button class="key">Strong</button></div>
+          <p class="foot">The button on either mic also switches this on or off.</p>
+        </div>
+        <div class="mod">
+          <div class="mod-head"><h3>Receiver volume</h3><span class="big-val">6<small>/6</small></span></div>
+          <p class="desc">Output level to the camera or computer.</p>
+          <div class="fader" data-steps="6" data-value="5" data-focus="1"></div>
+          <p class="foot">Lower it if the camera’s input clips.</p>
+        </div>
+        <div class="mod">
+          <div class="mod-head"><h3>Channel mode</h3></div>
+          <p class="desc">How the two mics reach the output.</p>
+          <div class="keys k3" role="radiogroup" aria-label="Channel mode">
+            <button class="key tallkey"><span class="modeglyph" data-mode="mono"></span><span class="t">Mono</span></button>
+            <button class="key tallkey on" aria-checked="true"><span class="modeglyph" data-mode="stereo"></span><span class="t">Stereo</span></button>
+            <button class="key tallkey"><span class="modeglyph" data-mode="safe"></span><span class="t">SafeTr</span></button>
+          </div>
+          <p class="foot"><b>Stereo</b> · Mic 1 left, Mic 2 right. SafeTr adds a safety copy 6 dB lower.</p>
+        </div>
+        <div class="mod">
+          <div class="mod-head"><h3>Bel canto</h3><span class="switch" role="switch" aria-checked="false"><span class="track"><span class="tx">OFF</span><span class="knob"></span></span></span></div>
+          <p class="desc">On-receiver voice tone preset.</p>
+          <div class="keys k3"><button class="key na" disabled>Bright</button><button class="key na" disabled>Low</button><button class="key na" disabled>Balance</button></div>
+          <p class="foot">Switch on to choose a tone.</p>
+        </div>
+        <div class="mod">
+          <div class="mod-head"><h3>Indicator light</h3><span class="switch on" role="switch" aria-checked="true"><span class="track"><span class="tx">ON</span><span class="knob"></span></span></span></div>
+          <p class="desc">Status LEDs on both mics.</p>
+          <div class="sub">
+            <div class="mod-head"><h3>Mic recognition</h3><span class="switch on" role="switch" aria-checked="true"><span class="track"><span class="tx">ON</span><span class="knob"></span></span></span></div>
+            <div class="ledpair"><span><span class="lamp m1 on"></span>Mic 1 glows purple</span><span><span class="lamp m2 on"></span>Mic 2 glows yellow</span></div>
+          </div>
+          <p class="foot">Recognition needs the light on.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="statusline">
+    <span><span class="lamp on"></span>WebHID · two-way</span>
+    <span>last reply 0.4 s ago</span>
+    <span>RX 3.0.2.008 · TX1 3.0.2.008 · TX2 3.0.2.008</span>
+    <span class="sp">Independent project · not affiliated with Hollyland</span>
+  </footer>
+</section>
+</div>
+
+<!-- ═════════════ (b) Phone overview ═════════════ -->
+<div class="wrap" data-frame="phone-overview">
+<div class="cap">(b) Phone · Overview · live</div>
+<section class="frame phone" aria-label="Overview">
+  <header class="p-top">
+    <span class="glyph"><i></i><i></i></span><span class="wordmark">Mic Console</span>
+    <div class="p-dev"><span class="lamp on"></span><b>LARK A2</b>
+      <button class="key icon quiet" aria-label="Menu"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 8h16M4 16h16"/></svg></button></div>
+  </header>
+  <div class="p-status"><span>Live · read &amp; write · reply 0.4 s</span><span>RX 3.0.2.008</span></div>
+
+  <article class="p-ch ch-c1">
+    <div class="ch-head">
+      <span class="lamp lg m1 on"></span><span class="name">Mic 1</span>
+      <button class="rename" aria-label="Rename Mic 1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/></svg></button>
+      <div class="right"><span class="chid">TX1</span><span class="lamp sm on"></span>Online</div>
+    </div>
+    <div class="window meterbox">
+      <div class="stack">
+        <div class="hist" data-trace="talk" data-seed="7" data-n="56" data-now="-18.4"></div>
+        <div class="meter" data-level="-18.4" data-peak="-12.1" data-segs="28"></div>
+        <div class="scale" data-marks="-60,-36,-18,-6,0"></div>
+      </div>
+      <div class="readout"><div class="rv"><span class="lbl">RMS dBFS</span><span class="big">−18<small>.4</small></span><span class="lbl">pk <b>−12.1</b></span></div></div>
+    </div>
+    <dl class="stats">
+      <div class="stat"><dt>Battery</dt><dd><span class="cells" data-v="91"></span><span class="num">91<small>%</small></span></dd></div>
+      <div class="stat"><dt>Mute</dt><dd><span class="lamp"></span>Off</dd></div>
+      <div class="stat"><dt>Output</dt><dd><span class="num">L</span></dd></div>
+    </dl>
+  </article>
+
+  <article class="p-ch ch-c2">
+    <div class="ch-head">
+      <span class="lamp lg m2 on"></span><span class="name">Mic 2</span>
+      <button class="rename" aria-label="Rename Mic 2"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/></svg></button>
+      <div class="right"><span class="chid">TX2</span><span class="lamp sm on"></span>Online</div>
+    </div>
+    <div class="window meterbox">
+      <div class="stack">
+        <div class="hist" data-trace="quiet" data-seed="21" data-n="56" data-now="-27.6"></div>
+        <div class="meter" data-level="-27.6" data-peak="-21.3" data-segs="28"></div>
+        <div class="scale" data-marks="-60,-36,-18,-6,0"></div>
+      </div>
+      <div class="readout"><div class="rv"><span class="lbl">RMS dBFS</span><span class="big">−27<small>.6</small></span><span class="lbl">pk <b>−21.3</b></span></div></div>
+    </div>
+    <dl class="stats">
+      <div class="stat"><dt>Battery</dt><dd><span class="cells" data-v="92"></span><span class="num">92<small>%</small></span><svg width="10" height="13" viewBox="0 0 11 14" fill="currentColor" aria-label="Charging"><path d="M6.5 0L0 8h4.5L3.5 14 11 5.5H6.2z"/></svg></dd></div>
+      <div class="stat"><dt>Mute</dt><dd><span class="lamp"></span>Off</dd></div>
+      <div class="stat"><dt>Output</dt><dd><span class="num">R</span></dd></div>
+    </dl>
+  </article>
+
+  <div class="p-sec"><h2>Receiver</h2><p>Applies to both mics</p></div>
+
+  <div class="p-row">
+    <div class="mod-head"><h3>Noise cancellation</h3><span class="switch on"><span class="track"><span class="tx">ON</span><span class="knob"></span></span></span></div>
+    <div class="keys k3"><button class="key">Weak</button><button class="key on">Medium</button><button class="key">Strong</button></div>
+    <p class="hint">The button on either mic also switches this.</p>
+  </div>
+  <div class="p-row">
+    <div class="mod-head"><h3>Receiver volume</h3><span class="big-val">6<small>/6</small></span></div>
+    <div class="vol"><button class="key" aria-label="Volume down">−</button><div class="fader" data-steps="6" data-value="5"></div><button class="key" aria-label="Volume up" disabled style="opacity:.45">+</button></div>
+  </div>
+  <div class="p-row">
+    <div class="mod-head"><h3>Channel mode</h3></div>
+    <div class="keys k3">
+      <button class="key tallkey"><span class="modeglyph" data-mode="mono"></span><span class="t">Mono</span></button>
+      <button class="key tallkey on"><span class="modeglyph" data-mode="stereo"></span><span class="t">Stereo</span></button>
+      <button class="key tallkey"><span class="modeglyph" data-mode="safe"></span><span class="t">SafeTr</span></button>
+    </div>
+    <p class="hint">Stereo · Mic 1 left, Mic 2 right.</p>
+  </div>
+  <div class="p-row">
+    <div class="mod-head"><h3>Bel canto</h3><span class="switch"><span class="track"><span class="tx">OFF</span><span class="knob"></span></span></span></div>
+    <div class="keys k3"><button class="key na" disabled>Bright</button><button class="key na" disabled>Low</button><button class="key na" disabled>Balance</button></div>
+  </div>
+  <div class="p-row">
+    <div class="mod-head"><h3>Indicator light</h3><span class="switch on"><span class="track"><span class="tx">ON</span><span class="knob"></span></span></span></div>
+    <div class="sub">
+      <div class="mod-head"><h3>Mic recognition</h3><span class="switch on"><span class="track"><span class="tx">ON</span><span class="knob"></span></span></span></div>
+      <div class="ledpair" style="padding-bottom:4px"><span><span class="lamp m1 on"></span>Mic 1 glows purple</span><span><span class="lamp m2 on"></span>Mic 2 glows yellow</span></div>
+    </div>
+  </div>
+
+  <nav class="p-tabs" aria-label="Sections">
+    <a class="p-tab on" aria-current="page"><i></i>Overview</a><a class="p-tab"><i></i>Audio</a><a class="p-tab"><i></i>Settings</a><a class="p-tab"><i></i>Device</a>
+  </nav>
+</section>
+</div>
+
+<!-- ═════════════ (d) Phone send-only ═════════════ -->
+<div class="wrap" data-frame="phone-writeonly">
+<div class="cap">(d) Phone · Overview · send-only (macOS)</div>
+<section class="frame phone" aria-label="Overview, send-only">
+  <header class="p-top">
+    <span class="glyph"><i></i><i></i></span><span class="wordmark">Mic Console</span>
+    <div class="p-dev"><span class="lamp hollow"></span><b>LARK A2</b>
+      <button class="key icon quiet" aria-label="Menu"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 8h16M4 16h16"/></svg></button></div>
+  </header>
+
+  <div class="window wo" role="status">
+    <div class="h"><svg width="22" height="12" viewBox="0 0 22 12" fill="none" stroke="#ECEBE6" stroke-width="1.6" aria-hidden="true"><path d="M1 6h18M14 1.5L19.5 6 14 10.5"/></svg>SEND-ONLY LINK</div>
+    <p>macOS drops the receiver’s replies. Changes still reach it, but battery, mute and current settings can’t be read. Controls show what this browser last sent.</p>
+    <div class="acts"><button class="key light">Connect through local bridge</button><button class="key quiet">Why?</button></div>
+  </div>
+
+  <article class="p-ch ch-c1">
+    <div class="ch-head">
+      <span class="lamp lg m1 on"></span><span class="name">Mic 1</span>
+      <button class="rename" aria-label="Rename Mic 1"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/></svg></button>
+      <div class="right" style="color:var(--ink-3)"><span class="chid">TX1</span><span class="lamp sm hollow"></span>Not read</div>
+    </div>
+    <div class="window meterbox">
+      <div class="stack">
+        <div class="hist" data-trace="talk" data-seed="7" data-n="56" data-now="-18.4"></div>
+        <div class="meter" data-level="-18.4" data-peak="-12.1" data-segs="28"></div>
+        <div class="scale" data-marks="-60,-36,-18,-6,0"></div>
+      </div>
+      <div class="readout"><div class="rv"><span class="lbl">RMS dBFS</span><span class="big">−18<small>.4</small></span><span class="lbl">pk <b>−12.1</b></span></div></div>
+    </div>
+    <dl class="stats">
+      <div class="stat"><dt>Battery</dt><dd><span class="cells unk" data-v="0"></span><span class="dash">– –</span></dd></div>
+      <div class="stat"><dt>Mute</dt><dd><span class="lamp hollow"></span><span class="dash">–</span></dd></div>
+      <div class="stat"><dt>Output</dt><dd><span class="num">L</span></dd></div>
+    </dl>
+  </article>
+
+  <article class="p-ch ch-c2">
+    <div class="ch-head">
+      <span class="lamp lg m2 on"></span><span class="name">Mic 2</span>
+      <button class="rename" aria-label="Rename Mic 2"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/></svg></button>
+      <div class="right" style="color:var(--ink-3)"><span class="chid">TX2</span><span class="lamp sm hollow"></span>Not read</div>
+    </div>
+    <div class="window meterbox">
+      <div class="stack">
+        <div class="hist" data-trace="quiet" data-seed="21" data-n="56" data-now="-27.6"></div>
+        <div class="meter" data-level="-27.6" data-peak="-21.3" data-segs="28"></div>
+        <div class="scale" data-marks="-60,-36,-18,-6,0"></div>
+      </div>
+      <div class="readout"><div class="rv"><span class="lbl">RMS dBFS</span><span class="big">−27<small>.6</small></span><span class="lbl">pk <b>−21.3</b></span></div></div>
+    </div>
+    <dl class="stats">
+      <div class="stat"><dt>Battery</dt><dd><span class="cells unk" data-v="0"></span><span class="dash">– –</span></dd></div>
+      <div class="stat"><dt>Mute</dt><dd><span class="lamp hollow"></span><span class="dash">–</span></dd></div>
+      <div class="stat"><dt>Output</dt><dd><span class="num">R</span></dd></div>
+    </dl>
+  </article>
+
+  <div class="p-sec"><h2>Receiver</h2><p>Applies to both mics</p></div>
+
+  <div class="p-row">
+    <div class="mod-head"><h3>Noise cancellation</h3><span class="switch unk"><span class="track"><span class="tx">– –</span><span class="knob"></span></span></span></div>
+    <div class="keys k3"><button class="key">Weak</button><button class="key">Medium</button><button class="key">Strong</button></div>
+    <div class="unknote"><i></i>Not sent from this browser yet · tap to set</div>
+  </div>
+  <div class="p-row">
+    <div class="mod-head"><h3>Receiver volume</h3><span class="big-val">5<small>/6</small></span></div>
+    <div class="vol"><button class="key" aria-label="Volume down">−</button><div class="fader sentf" data-steps="6" data-value="4"></div><button class="key" aria-label="Volume up">+</button></div>
+    <div class="sentnote"><i></i>Last sent 17:42 · not confirmed</div>
+  </div>
+  <div class="p-row">
+    <div class="mod-head"><h3>Channel mode</h3></div>
+    <div class="keys k3">
+      <button class="key tallkey"><span class="modeglyph" data-mode="mono"></span><span class="t">Mono</span></button>
+      <button class="key tallkey sent"><span class="modeglyph" data-mode="stereo"></span><span class="t">Stereo</span></button>
+      <button class="key tallkey"><span class="modeglyph" data-mode="safe"></span><span class="t">SafeTr</span></button>
+    </div>
+    <div class="sentnote"><i></i>Last sent 17:42 · not confirmed</div>
+  </div>
+  <div class="p-row">
+    <div class="mod-head"><h3>Bel canto</h3><span class="switch unk"><span class="track"><span class="tx">– –</span><span class="knob"></span></span></span></div>
+    <div class="unknote"><i></i>Not sent from this browser yet</div>
+  </div>
+  <div class="p-row">
+    <div class="mod-head"><h3>Indicator light</h3><span class="switch unk"><span class="track"><span class="tx">– –</span><span class="knob"></span></span></span></div>
+    <div class="unknote"><i></i>Not sent from this browser yet</div>
+  </div>
+
+  <nav class="p-tabs" aria-label="Sections">
+    <a class="p-tab on" aria-current="page"><i></i>Overview</a><a class="p-tab"><i></i>Audio</a><a class="p-tab"><i></i>Settings</a><a class="p-tab"><i></i>Device</a>
+  </nav>
+</section>
+</div>
+
+<!-- ═════════════ (c1) Desktop audio ═════════════ -->
+<div class="wrap" data-frame="desk-audio">
+<div class="cap">(c) Desktop · Audio</div>
+<section class="frame desk" aria-label="Audio">
+  <header class="top">
+    <div class="brand"><span class="glyph"><i></i><i></i></span><span class="wordmark">Mic Console</span><span class="unofficial">Unofficial</span></div>
+    <nav class="tabs"><a class="tab">Overview</a><a class="tab on" aria-current="page">Audio</a><a class="tab">Settings</a><a class="tab">Device</a></nav>
+    <div class="device">
+      <div class="devname"><span class="lamp on"></span><b>LARK A2</b><span>Live · read &amp; write</span></div>
+      <span class="vr"></span>
+      <button class="key quiet">Disconnect</button>
+      <button class="key icon quiet" aria-label="Switch to dark theme"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg></button>
+    </div>
+  </header>
+  <main class="dmain" style="grid-template-rows:auto auto 1fr">
+    <section class="row">
+      <div class="rail"><h2>Input</h2><p>Wireless Microphone</p><span class="mono">USB audio<br>48 kHz · 2 ch</span></div>
+      <div style="padding:22px 0 22px 28px;border-left:1px solid var(--rule)">
+        <div class="window bridge">
+          <div class="brow ch-c1">
+            <div class="who"><b>Mic 1</b>Left · TX1</div>
+            <div class="meter" data-level="-18.4" data-peak="-12.1" data-segs="60"></div>
+            <div class="rd"><div><span class="k">RMS</span><span class="v">−18.4</span></div><div><span class="k">PEAK</span><span class="v">−12.1</span></div><div><span class="clip"><span class="lamp rec sm"></span>CLIP</span></div></div>
+          </div>
+          <div class="brow"><div></div><div class="scale" data-marks="-60,-54,-48,-42,-36,-30,-24,-18,-12,-6,0"></div><div class="lbl" style="text-align:right">dBFS · peak hold 2 s</div></div>
+          <div class="brow ch-c2">
+            <div class="who"><b>Mic 2</b>Right · TX2</div>
+            <div class="meter" data-level="-27.6" data-peak="-21.3" data-segs="60"></div>
+            <div class="rd"><div><span class="k">RMS</span><span class="v">−27.6</span></div><div><span class="k">PEAK</span><span class="v">−21.3</span></div><div><span class="clip"><span class="lamp rec sm"></span>CLIP</span></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section class="row">
+      <div class="rail"><h2>Voice effect</h2><p>Runs in this browser, on monitoring and recordings. The mics are not changed.</p></div>
+      <div style="padding:18px 0 22px 28px;border-left:1px solid var(--rule);display:grid;gap:10px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <p class="desc">Eight profiles. <span class="dim">Each curve shows the tonal shape against flat (dashed).</span></p>
+          <span class="switch on"><span class="track"><span class="tx">ON</span><span class="knob"></span></span></span>
+        </div>
+        <div class="bank" id="bank"></div>
+      </div>
+    </section>
+    <section class="row">
+      <div class="rail"><h2>Recorder</h2><p>Saves WAV files in this browser.</p><span class="mono">48 kHz · 24-bit<br>2 ch · stereo</span></div>
+      <div style="padding:22px 0 0 28px;border-left:1px solid var(--rule);display:grid;grid-template-columns:330px 1fr;gap:32px;align-content:start">
+        <div style="display:grid;grid-template-columns:auto 1fr;gap:22px;align-items:start;padding-top:4px">
+          <div style="display:grid;justify-items:center;gap:6px"><button class="recbtn" aria-label="Stop recording"><i></i></button><span class="mono dim" style="font-size:10.5px">STOP</span></div>
+          <div style="display:grid;gap:8px">
+            <span class="mono" style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--rec);font-weight:600"><span class="lamp rec sm on"></span>RECORDING · TAKE 3</span>
+            <span class="tc">01:42<small>.18</small></span>
+            <span class="mono dim" style="font-size:10.5px">Warm &amp; Solid · 29.4 MB</span>
+          </div>
+        </div>
+        <div style="display:grid;gap:16px">
+          <div class="window timeline" aria-label="Take 3 waveform">
+            <div style="position:relative;display:grid;gap:4px">
+              <div class="lane ch-c1" data-seed="7" data-rec="0.74"></div>
+              <div class="lane ch-c2" data-seed="21" data-rec="0.74" data-quiet="1"></div>
+              <span class="playhead" style="left:74%"><em>01:42</em></span>
+            </div>
+            <div class="ruler"><span style="left:0">00:00</span><span style="left:21.7%">00:30</span><span style="left:43.5%">01:00</span><span style="left:65.2%">01:30</span><span style="left:87%">02:00</span></div>
+          </div>
+          <table class="takes">
+            <thead><tr><th>Take</th><th>Started</th><th>Length</th><th>Effect</th><th>Size</th><th></th></tr></thead>
+            <tbody>
+              <tr><td><b style="font-weight:620">Take 2</b></td><td class="m">17:38:04</td><td class="m">02:16.4</td><td>Warm &amp; Solid</td><td class="m">39.3 MB</td><td><div class="act"><button class="key">Play</button><button class="key">Save</button></div></td></tr>
+              <tr><td><b style="font-weight:620">Take 1</b></td><td class="m">17:31:50</td><td class="m">00:48.9</td><td>Clean Voice</td><td class="m">14.1 MB</td><td><div class="act"><button class="key">Play</button><button class="key">Save</button></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+  <footer class="statusline">
+    <span><span class="lamp on"></span>WebHID · two-way</span>
+    <span>audio engine 48 kHz · latency 10 ms</span>
+    <span class="sp">Recordings stay in this browser until you save them</span>
+  </footer>
+</section>
+</div>
+
+<!-- ═════════════ (c2) Desktop connect ═════════════ -->
+<div class="wrap" data-frame="desk-connect">
+<div class="cap">(c) Desktop · Connect</div>
+<section class="frame desk" aria-label="Connect">
+  <header class="top">
+    <div class="brand"><span class="glyph"><i></i><i></i></span><span class="wordmark">Mic Console</span><span class="unofficial">Unofficial</span></div>
+    <nav class="tabs"><a class="tab on" aria-current="page">Connect</a><a class="tab">Audio</a></nav>
+    <div class="device"><div class="devname"><span class="lamp hollow"></span><span>No receiver</span></div></div>
+  </header>
+  <main class="dmain" style="grid-template-rows:auto 1fr">
+    <section class="row">
+      <div class="rail"><h2>Connect</h2><p>Settings go straight from this page to the receiver over USB. Nothing is uploaded.</p></div>
+      <div class="cgrid">
+        <div class="cpane">
+          <h2>Connect the receiver</h2>
+          <ol class="steps">
+            <li>Plug the receiver into this computer’s USB-C port.</li>
+            <li>Switch on the mics.</li>
+            <li>Press Connect and pick “Wireless Microphone” in Chrome’s list.</li>
+          </ol>
+          <div style="display:flex;gap:16px;align-items:center"><button class="key primary">Connect receiver</button><span class="mono dim" style="font-size:10.5px">Linux, ChromeOS: read &amp; write<br>macOS, Windows: send only</span></div>
+          <div class="window chooser" aria-hidden="true">
+            <span class="q">Chrome then asks which HID device to connect</span>
+            <div class="it">Wireless Microphone<span>pick this</span></div>
+          </div>
+        </div>
+        <div class="cpane">
+          <h3>Full control on a Mac</h3>
+          <p class="desc" style="font-size:14px">Run the local bridge from the project folder. It asks for your password, and the receiver’s USB audio pauses while it runs.</p>
+          <div class="window code">npm run bridge<span>wait for “captured”</span></div>
+          <div><button class="key" style="min-height:48px;font-size:14px;padding:0 18px">Connect through local bridge</button></div>
+          <p class="sentnote" style="color:var(--ink-3)"><span class="lamp sm hollow"></span>No bridge on 127.0.0.1:47321</p>
+        </div>
+        <div class="cpane">
+          <h3>Receiver not in the list?</h3>
+          <ul class="trouble">
+            <li>Unplug and re-plug it, or try another port. It must be a data cable.</li>
+            <li>Close the official app or other pages that might be using it.</li>
+            <li>Windows: check it shows as “Wireless Microphone” in Sound settings.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+    <section class="row">
+      <div class="rail"><h2>How it connects</h2><p>The receiver gives this page two separate USB links.</p></div>
+      <div style="border-left:1px solid var(--rule);padding:26px 0 22px 28px;display:flex;align-items:center">
+        <svg class="diagram" width="1180" height="232" viewBox="0 0 1180 232" role="img" aria-label="Mics to receiver over 2.4 GHz; receiver to this browser over USB audio (available) and USB control (not connected)">
+          <!-- mics -->
+          <rect class="node" x="0.5" y="14.5" width="190" height="60" rx="6"/>
+          <circle cx="26" cy="44.5" r="10" fill="var(--bezel)"/><circle cx="26" cy="44.5" r="6" fill="var(--mic1)"/>
+          <text class="t-name" x="46" y="41">Mic 1</text><text class="t-mono" x="46" y="59">TX1 · purple LED</text>
+          <rect class="node" x="0.5" y="150.5" width="190" height="60" rx="6"/>
+          <circle cx="26" cy="180.5" r="10" fill="var(--bezel)"/><circle cx="26" cy="180.5" r="6" fill="var(--mic2)"/>
+          <text class="t-name" x="46" y="177">Mic 2</text><text class="t-mono" x="46" y="195">TX2 · yellow LED</text>
+          <!-- wireless -->
+          <path class="w" d="M191 44.5 C 270 44.5, 270 100, 350 100"/>
+          <path class="w" d="M191 180.5 C 270 180.5, 270 126, 350 126"/>
+          <text class="t-mono" x="226" y="118">2.4 GHz</text>
+          <!-- receiver -->
+          <rect class="node" x="350.5" y="72.5" width="200" height="82" rx="6" style="stroke:var(--ink);stroke-width:1.5"/>
+          <text class="t-name" x="370" y="104">Receiver</text>
+          <text class="t-mono" x="370" y="122">RX · USB-C</text>
+          <text class="t-mono" x="370" y="139">plug in to start</text>
+          <!-- links -->
+          <path class="w" d="M551 96 H 874"/>
+          <circle cx="595" cy="76" r="6" fill="var(--bezel)"/><circle cx="595" cy="76" r="3.5" fill="var(--live)"/>
+          <text class="t-mono ink2" x="608" y="80">USB audio · available now</text>
+          <text class="t-mono" x="608" y="118">levels, voice effects, recording</text>
+          <path class="w dash" d="M551 136 H 874"/>
+          <circle cx="595" cy="158" r="6" fill="var(--bezel)"/><circle cx="595" cy="158" r="4" fill="none" stroke="#77777d" stroke-width="1.5"/>
+          <text class="t-mono ink2" x="608" y="162">USB control (WebHID) · not connected</text>
+          <text class="t-mono" x="608" y="179">settings, battery, mute, firmware</text>
+          <!-- browser -->
+          <rect class="node" x="880.5" y="20.5" width="298" height="146" rx="6"/>
+          <text class="t-name" x="900" y="46">This browser</text>
+          <text class="t-mono" x="900" y="64">Chrome · WebHID available</text>
+          <line x1="880.5" y1="76.5" x2="1178.5" y2="76.5" stroke="var(--rule)"/>
+          <text class="t-mono ink2" x="900" y="100">Audio page · ready</text>
+          <text class="t-mono ink2" x="900" y="140">Overview, Settings, Device · waiting</text>
+          <rect x="874" y="90" width="12" height="12" rx="2" fill="var(--ink)"/>
+          <rect x="874" y="130" width="12" height="12" rx="2" fill="var(--chassis)" stroke="var(--ink-3)" stroke-dasharray="2 2"/>
+        </svg>
+      </div>
+    </section>
+  </main>
+  <footer class="statusline">
+    <span><span class="lamp hollow"></span>Not connected</span>
+    <span>WebHID available · secure context</span>
+    <span class="sp">Independent project · not affiliated with Hollyland · LARK is a trademark of its owner</span>
+  </footer>
+</section>
+</div>
+
+<script>
+(function(){
+  const q = new URLSearchParams(location.search);
+  const theme = q.get('theme'); if (theme) document.documentElement.dataset.theme = theme;
+  if (q.get('full')) document.body.classList.add('full');
+  const only = q.get('frame');
+  if (only){ document.body.classList.add('solo'); document.querySelectorAll('.wrap').forEach(w=>{ if(w.dataset.frame!==only) w.remove(); }); }
+
+  function rng(seed){ let s = seed>>>0 || 1; return ()=>{ s^=s<<13; s>>>=0; s^=s>>17; s^=s<<5; s>>>=0; return (s%10000)/10000; }; }
+  const minus = d => d===0 ? '0' : '−'+Math.abs(d);
+
+  // segmented bar meters (−60…0 dBFS, linear in dB)
+  document.querySelectorAll('.meter').forEach(m=>{
+    const n=+m.dataset.segs||40, lv=+m.dataset.level, pk=+m.dataset.peak, step=60/n;
+    const litTo=Math.floor((lv+60)/step), pkI=Math.min(n-1,Math.floor((pk+60)/step));
+    let html='';
+    for(let i=0;i<n;i++){
+      const db=-60+(i+1)*step; let c='seg';
+      if(db>-6) c+=' hot';
+      if(i<litTo-2) c+=' lit'; else if(i===litTo-2) c+=' d1'; else if(i===litTo-1) c+=' d2';
+      if(i===pkI) c+=' pk';
+      html+=`<i class="${c}"></i>`;
+    }
+    m.innerHTML=html;
+  });
+  document.querySelectorAll('.scale').forEach(s=>{
+    s.innerHTML=s.dataset.marks.split(',').map(Number).map(d=>`<span style="left:${(d+60)/60*100}%">${minus(d)}</span>`).join('');
+  });
+  // level history: speech-like bursts, plotted on the same dB scale as the meter
+  document.querySelectorAll('.hist').forEach(t=>{
+    const r=rng(+t.dataset.seed), n=+t.dataset.n||100, quiet=t.dataset.trace==='quiet', now=+t.dataset.now;
+    let bars='', env=-55, burst=0;
+    for(let i=0;i<n;i++){
+      if(burst<=0){ burst=Math.floor(r()*7)+3; const pause=r()<(quiet?0.42:0.2); env = pause ? -56+r()*5 : (quiet ? -38+r()*12 : -30+r()*15); }
+      burst--;
+      let db = env + (r()-0.5)*6;
+      if(i>=n-3) db = now - (n-1-i)*1.5;
+      const h=Math.max(2,(db+60)/60*100);
+      bars+=`<i class="${i>=n-2?'now':''}" style="height:${h.toFixed(1)}%"></i>`;
+    }
+    const grid = t.dataset.grid ? [-6,-12,-24,-36,-48].map(d=>`<span class="gl${d===-6?' hot':''}" style="bottom:${(d+60)/60*100}%"><em>${minus(d)}</em></span>`).join('') + '<span class="tl">last 10 s</span>' : '';
+    t.innerHTML=`<div class="bars">${bars}</div>${grid}`;
+  });
+  // recorder lanes
+  document.querySelectorAll('.lane').forEach(l=>{
+    const r=rng(+l.dataset.seed), n=180, rec=+l.dataset.rec, quiet=!!l.dataset.quiet;
+    let h='', env=.1, burst=0;
+    for(let i=0;i<n;i++){
+      if(i/n>rec){ h+='<i class="e"></i>'; continue; }
+      if(burst<=0){ burst=Math.floor(r()*8)+3; env = r()<(quiet?.45:.2) ? .06 : (quiet? .2+r()*.3 : .35+r()*.55); }
+      burst--;
+      h+=`<i style="height:${Math.max(6,Math.round(env*(.6+r()*.4)*100))}%"></i>`;
+    }
+    l.innerHTML=h;
+  });
+  document.querySelectorAll('.cells').forEach(c=>{
+    const f=Math.round(+c.dataset.v/10); let h='';
+    for(let i=0;i<10;i++) h+=`<i class="${i<f && !c.classList.contains('unk')?'f':''}"></i>`;
+    c.innerHTML=h;
+  });
+  // detent fader
+  document.querySelectorAll('.fader').forEach(f=>{
+    const n=+f.dataset.steps, v=+f.dataset.value, pos=i=>`calc(16px + (100% - 32px) * ${i/(n-1)})`;
+    let h='<span class="slot"></span>';
+    h+=`<span class="fill" style="width:calc((100% - 32px) * ${v/(n-1)})"></span>`;
+    for(let i=0;i<n;i++) h+=`<span class="det${i===v?' cur':''}" style="left:${pos(i)}"><b>${i+1}</b></span>`;
+    h+=`<span class="fcap${f.dataset.focus?' focus':''}" role="slider" aria-valuemin="1" aria-valuemax="${n}" aria-valuenow="${v+1}" style="left:${pos(v)}"></span>`;
+    f.innerHTML=h;
+    if(f.classList.contains('sentf')){
+      f.querySelector('.fcap').style.background='repeating-linear-gradient(135deg,color-mix(in srgb,var(--ink) 24%,transparent) 0 1.5px,transparent 1.5px 5px),var(--key)';
+      f.querySelector('.fill').style.background='repeating-linear-gradient(90deg,var(--ink) 0 4px,transparent 4px 7px)';
+    }
+  });
+  // channel-mode glyphs: what lands on L and R
+  const G={ mono:[['p1','p2'],['p1','p2']], stereo:[['p1','p1'],['p2','p2']], safe:[['p1','p2'],['p1s','p2s']] };
+  document.querySelectorAll('.modeglyph').forEach(g=>{
+    g.innerHTML=['L','R'].map((ch,ri)=>`<span class="r"><span>${ch}</span><span class="b">${G[g.dataset.mode][ri].map(c=>`<i class="${c.replace('s','')}" style="width:${c.endsWith('s')?'9px':'15px'}"></i>`).join('')}</span></span>`).join('');
+  });
+  // voice-effect bank
+  const P=[
+    ['Clean Voice',[20,14,12,12,12,12,12,12,13]],
+    ['Vocal Boost',[18,14,12,12,11,8,7,9,11]],
+    ['Warm & Solid',[14,9,8,10,12,12,13,14,15]],
+    ['Warm & Resonant',[12,8,9,8,11,12,13,13,14]],
+    ['Bright Youthful',[17,14,13,12,11,9,7,6,6]],
+    ['Mellow & Full-bodied',[10,8,9,11,12,13,14,15,16]],
+    ['Bright & Energetic',[19,15,12,12,10,8,7,6,7]],
+    ['Rich & Full',[11,8,9,11,12,11,9,8,9]],
+  ];
+  const bank=document.getElementById('bank');
+  if(bank) bank.innerHTML=P.map(([nm,pts],i)=>{
+    const d=pts.map((y,j)=>`${j?'L':'M'}${j*8} ${y}`).join(' ');
+    return `<button class="key preset${i===2?' on':''}" role="radio" aria-checked="${i===2}"><span class="l"><span class="no">0${i+1}</span><span class="nm">${nm.replace('&','&amp;')}</span></span><svg width="76" height="30" viewBox="-2 3 68 18" aria-hidden="true"><path class="flat" d="M0 12H64"/><path class="curve" d="${d}"/></svg></button>`;
+  }).join('');
+})();
+</script>
+</body>
+</html>
