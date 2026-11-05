@@ -3,6 +3,7 @@
   import Button from '../lib/ui/Button.svelte'
   import Banner from '../lib/ui/Banner.svelte'
   import KitGlyph from './KitGlyph.svelte'
+  import { HOSTED_ORIGIN, NPM_PACKAGE_PUBLISHED, REPO_URL, bridgeStartHelp, pageContext } from '../lib/protocol'
 
   interface Props {
     supported: boolean
@@ -30,6 +31,11 @@
     onbridge,
     via = null,
   }: Props = $props()
+
+  // The bridge command depends on where this page is served from (this computer or the hosted site).
+  const startHelp = bridgeStartHelp()
+  const notLocal = pageContext() !== 'loopback'
+  const hostedHost = new URL(HOSTED_ORIGIN).host
 
   const bridgeBusy = $derived(busy && via === 'bridge')
   const hidBusy = $derived(busy && via !== 'bridge')
@@ -111,18 +117,28 @@
             <summary>How to start the local bridge</summary>
             <ol>
               <li>
-                In a terminal, in the Mic Console project folder, run <code>npm run bridge</code> and enter your
-                computer password when asked.
+                In a terminal{startHelp.where ? `, ${startHelp.where}` : ''}, run <code>{startHelp.command}</code> and enter
+                your computer password when asked.{#if startHelp.fromClone}
+                  From a clone of the project, <code>{startHelp.fromClone}</code> does the same.{/if}
               </li>
               <li>Wait until it prints "captured", then press <strong>Connect through local bridge</strong>.</li>
+              {#if notLocal}
+                <li>
+                  If Chrome asks whether this site may access apps and services on this device, choose
+                  <strong>Allow</strong>: the bridge runs on this computer.
+                </li>
+              {/if}
               <li>
                 Press <kbd>Ctrl</kbd>+<kbd>C</kbd> in the terminal when you're done. The receiver's audio comes back; if it
                 doesn't, unplug and re-plug the receiver.
               </li>
             </ol>
             <p>
-              The bridge only listens on this computer (127.0.0.1) and only accepts pages served from localhost.
-              Details and options: <code>docs/BRIDGE.md</code> in the project.
+              The bridge only listens on this computer (127.0.0.1). It accepts pages served from this computer{NPM_PACKAGE_PUBLISHED
+                ? `, and the hosted Mic Console (${hostedHost}) when started with --bridge-only`
+                : ', and other sites only when they are named with --allow-origin'}. Details and options: <a href="{REPO_URL}/blob/main/docs/BRIDGE.md" target="_blank" rel="noreferrer"
+                >docs/BRIDGE.md</a
+              >.
             </p>
           </details>
         </div>

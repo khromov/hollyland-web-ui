@@ -18,6 +18,10 @@
  *
  * Do not run this file with plain `node` + sudo: use `npm run bridge` (scripts/bridge-launch.mjs),
  * which re-launches it under sudo with the current node binary and tsx.
+ *
+ * `npx mic-console` (cli/mic-console.mjs) runs a bundled copy (cli/dist/bridge.mjs, built by
+ * `npm run build:cli`) under sudo with --embedded: a short banner and log lines marked "bridge",
+ * because its output shares the terminal with the CLI's.
  */
 import { createRequire } from 'node:module'
 import type * as UsbTypes from 'usb'
@@ -26,6 +30,14 @@ import { BRIDGE_DEFAULT_PORT, type BridgeDeviceInfo } from '../src/lib/protocol/
 import { EAGLESHERO_VENDOR_ID, HOLLYLAND_VENDOR_ID, PRODUCTS } from '../src/lib/protocol/models'
 
 const BRIDGE_VERSION = '1.0.0'
+
+/**
+ * Origin of the hosted Mic Console build on GitHub Pages (https://khromov.github.io/hollyland-web-ui/).
+ * Not accepted by default: an origin covers every page on that host and the bridge relays any
+ * command (factory reset included), so only `npx mic-console --bridge-only` (or an explicit
+ * --allow-origin) lets the hosted page in. Used here only to label it in the banner.
+ */
+const GITHUB_PAGES_ORIGIN = 'https://khromov.github.io'
 
 type Usb = typeof UsbTypes
 type Device = UsbTypes.Device
@@ -43,6 +55,8 @@ interface Options {
   iap2Interface: number
   pid: number | null
   verbose: boolean
+  /** Started by `npx mic-console`: short banner, log lines marked "bridge". */
+  embedded: boolean
 }
 
 const HELP = `Mic Console USB bridge ${BRIDGE_VERSION}
@@ -51,13 +65,15 @@ Usage: npm run bridge [-- options]
 
 Options:
   --port <n>              WebSocket port on 127.0.0.1 (default ${BRIDGE_DEFAULT_PORT})
-  --allow-origin <url>    also accept pages from this origin, e.g. https://mic.example.com
-                          (repeatable; localhost and 127.0.0.1 pages are always accepted)
+  --allow-origin <url>    also accept pages from this origin, e.g. ${GITHUB_PAGES_ORIGIN}
+                          for the hosted Mic Console (repeatable; localhost and
+                          127.0.0.1 pages are always accepted)
   --allow-no-origin       accept clients without an Origin header (local Node scripts)
   --iap2                  also relay the vendor bulk interface on /iap2 (experimental)
   --iap2-interface <n>    interface number for --iap2 (default 7)
   --pid <n>               only capture this USB product id (decimal or 0x hex)
   --verbose               print every packet
+  --embedded              short banner and "bridge" log prefix (used by npx mic-console)
   -h, --help              show this help
 
 USB audio from the receiver pauses while the bridge runs. Press Ctrl+C to give it back.
@@ -75,6 +91,7 @@ function parseNumber(flag: string, v: string | undefined, min: number, max: numb
 function parseArgs(argv: readonly string[]): Options | 'help' {
   const o: Options = {
     port: BRIDGE_DEFAULT_PORT, allowOrigins: [], allowNoOrigin: false, iap2: false, iap2Interface: 7, pid: null, verbose: false,
+    embedded: false,
   }
   for (let i = 0; i < argv.length; i++) {
     const [flag, inline] = argv[i].includes('=') ? (argv[i].split(/=(.*)/s, 2) as [string, string]) : [argv[i], undefined]
@@ -111,6 +128,9 @@ function parseArgs(argv: readonly string[]): Options | 'help' {
       case '-v':
         o.verbose = true
         break
+      case '--embedded':
+        o.embedded = true
+        break
       default:
         throw new UsageError(`unknown option ${argv[i]}`)
     }
@@ -121,9 +141,11 @@ function parseArgs(argv: readonly string[]): Options | 'help' {
 // --------------------------------------------------------------------------------- logging
 
 const t0 = Date.now()
+/** "bridge" under npx mic-console, whose own messages share the terminal. */
+let logLabel = ''
 function log(line: string): void {
   const s = ((Date.now() - t0) / 1000).toFixed(1).padStart(7)
-  console.log(`${s}s  ${line}`)
+  console.log(`${logLabel}${s}s  ${line}`)
 }
 
 function hexdump(b: Uint8Array): string {
@@ -570,8 +592,15 @@ function stopPoll(ep: InEndpoint, ms: number): Promise<void> {
 
 // ------------------------------------------------------------------------------------ main
 
-function printRootHelp(): void {
+function printRootHelp(embedded: boolean): void {
   const node = process.execPath
+  if (embedded) {
+    console.error(
+      'The bridge needs root to take the receiver away from the operating system.\n' +
+        'Start it with "npx mic-console", which asks for your password through sudo.',
+    )
+    return
+  }
   console.error(`The bridge needs root.
 
 To read the receiver's replies it has to take the receiver away from the operating system
@@ -610,8 +639,9 @@ async function main(): Promise<void> {
     )
     process.exit(1)
   }
+  if (opts.embedded) logLabel = '  bridge'
   if (typeof process.getuid === 'function' && process.getuid() !== 0) {
-    printRootHelp()
+    printRootHelp(opts.embedded)
     process.exit(1)
   }
 
@@ -620,7 +650,12 @@ async function main(): Promise<void> {
   try {
     usb = require('usb') as Usb
   } catch (e) {
-    console.error(`Could not load the "usb" package (${errText(e)}). Run "npm install" in the project folder first.`)
+    console.error(
+      `Could not load the "usb" package (${errText(e)}). ` +
+        (opts.embedded
+          ? 'Try a fresh copy: npx --yes mic-console@latest'
+          : 'Run "npm install" in the project folder first.'),
+    )
     process.exit(1)
   }
 
@@ -639,12 +674,15 @@ async function main(): Promise<void> {
 
   // ------------------------------------------------------------- always give the receiver back
   let stopping = false
+  let stoppingSince = 0
   const shutdown = (code: number, why: string) => {
     if (stopping) {
-      log('still giving the receiver back to the OS…')
+      // One Ctrl+C can arrive twice: from the terminal and relayed by a launcher (npx mic-console, sudo).
+      if (Date.now() - stoppingSince > 1500) log('still giving the receiver back to the OS…')
       return
     }
     stopping = true
+    stoppingSince = Date.now()
     log(`${why}: giving the receiver back to the OS…`)
     const hard = setTimeout(() => {
       console.error('Cleanup took too long. If the receiver\'s audio does not come back, unplug and re-plug it.')
@@ -672,10 +710,20 @@ async function main(): Promise<void> {
   })
   process.on('exit', () => bridge.releaseSync())
 
+  if (opts.embedded) {
+    // npx mic-console prints the page address and the instructions itself.
+    log(`listening on ${bridge.server.url('hid')} (this computer only; one page at a time)`)
+    if (opts.iap2) log(`iAP2 relay on ${bridge.server.url('iap2')} (experimental, raw bulk bytes)`)
+    bridge.start()
+    return
+  }
+
   const origins = [
     'http://localhost:*, https://localhost:*',
     'http://127.0.0.1:*, https://127.0.0.1:*',
-    ...bridge.server.allowedOrigins.map((o) => `${o} (--allow-origin)`),
+    ...bridge.server.allowedOrigins.map((o) =>
+      o === GITHUB_PAGES_ORIGIN ? `${o} (hosted Mic Console, --allow-origin)` : `${o} (--allow-origin)`,
+    ),
     ...(opts.allowNoOrigin ? ['clients without an Origin header (--allow-no-origin)'] : []),
   ]
   console.log(`

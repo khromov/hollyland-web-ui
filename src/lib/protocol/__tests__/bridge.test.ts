@@ -4,14 +4,14 @@
  * The canned replies are the live LARK A2 capture from 2026-11-05 (root libusb, interface 0).
  */
 import { createServer, type AddressInfo } from 'node:net'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { WebSocket as WsClient, WebSocketServer } from 'ws'
 import {
   BridgeServer, isHostAllowed, isLoopbackOrigin, isOriginAllowed, normalizeOrigin, type BridgeServerOptions,
 } from '../../../../scripts/bridge-server'
 import {
-  BRIDGE_CLOSE, BRIDGE_DEFAULT_URL, BridgeError, BridgeTransport, resolveBridgeUrl, type BridgeDeviceInfo,
-  type BridgeSocketConstructor,
+  BRIDGE_CLOSE, BRIDGE_DEFAULT_URL, BridgeError, BridgeTransport, bridgeCloseError, bridgeStartHelp, bridgeStartSentence,
+  pageContext, resolveBridgeUrl, type BridgeDeviceInfo, type BridgeSocketConstructor,
 } from '../bridge'
 import { fromHex, Target } from '../codec'
 import { HollylandDevice, type HollylandDeviceOptions } from '../device'
@@ -320,5 +320,84 @@ describe('bridge security helpers', () => {
     expect(resolveBridgeUrl('ws://localhost:47400')).toBe('ws://localhost:47400/hid')
     expect(resolveBridgeUrl('ws://evil.example:47321/hid')).toBe(BRIDGE_DEFAULT_URL)
     expect(resolveBridgeUrl('99999')).toBe(BRIDGE_DEFAULT_URL)
+  })
+})
+
+describe('how the page tells people to start the bridge', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('tells pages on this computer, the hosted page and other sites apart', () => {
+    expect(pageContext(null)).toBe('loopback')
+    for (const o of ['http://localhost:5173', 'http://127.0.0.1:47320', 'http://[::1]:5173']) expect(pageContext(o)).toBe('loopback')
+    expect(pageContext('https://khromov.github.io')).toBe('hosted')
+    expect(pageContext('https://khromov.github.io.evil.example')).toBe('other')
+    expect(pageContext('https://mic.example.com')).toBe('other')
+  })
+
+  it('names npx --bridge-only once the package is published, with the clone command next to it', () => {
+    expect(bridgeStartHelp('https://khromov.github.io', true)).toEqual({
+      command: 'npx mic-console --bridge-only', where: null, fromClone: 'npm run bridge -- --allow-origin https://khromov.github.io',
+    })
+    expect(bridgeStartHelp('http://127.0.0.1:47320', true)).toEqual({
+      command: 'npx mic-console --bridge-only', where: null, fromClone: 'npm run bridge',
+    })
+    // --bridge-only accepts only the hosted origin: other sites need --allow-origin from a clone.
+    expect(bridgeStartHelp('https://mic.example.com', true).command).toBe('npm run bridge -- --allow-origin https://mic.example.com')
+    expect(bridgeStartSentence(bridgeStartHelp('https://khromov.github.io', true))).toBe(
+      'Start it in a terminal with "npx mic-console --bridge-only" (from a clone: "npm run bridge -- --allow-origin https://khromov.github.io")',
+    )
+  })
+
+  it('never names npx while the package is not published', () => {
+    for (const o of [null, 'http://localhost:5173', 'https://khromov.github.io', 'https://mic.example.com']) {
+      const help = bridgeStartHelp(o, false)
+      expect(help.command).not.toContain('npx')
+      expect(help.command).toMatch(/^npm run bridge/)
+      expect(help.where).toBeTruthy()
+    }
+    expect(bridgeStartHelp('https://khromov.github.io', false).command).toBe('npm run bridge -- --allow-origin https://khromov.github.io')
+  })
+
+  it('the origin error on the hosted page says how to restart the bridge for it', () => {
+    vi.stubGlobal('location', { origin: 'https://khromov.github.io' })
+    const e = bridgeCloseError(BRIDGE_CLOSE.origin, '', true, BRIDGE_DEFAULT_URL)
+    expect(e.kind).toBe('origin')
+    expect(e.message).toContain('https://khromov.github.io')
+    expect(e.message).not.toContain('only accepts pages served from localhost')
+  })
+
+  async function failWithPermission(query: (d: { name: string }) => Promise<{ state: PermissionState }>): Promise<BridgeError> {
+    vi.stubGlobal('location', { origin: 'https://khromov.github.io' })
+    vi.stubGlobal('navigator', { permissions: { query } })
+    const url = `ws://127.0.0.1:${await freePort()}/hid`
+    return rejection(BridgeTransport.connect(url, 1000, { WebSocket: browserSocket('https://khromov.github.io') }))
+  }
+
+  it('hosted page: a denied local network permission is reported as such, not as "not running"', async () => {
+    const asked: string[] = []
+    const e = await failWithPermission(async ({ name }) => {
+      asked.push(name)
+      if (name !== 'local-network-access') throw new TypeError(`unknown permission ${name}`)
+      return { state: 'denied' }
+    })
+    expect(asked).toEqual(['loopback-network', 'local-network-access'])
+    expect(e.kind).toBe('blocked') // App.svelte only retries 'not-running'
+    expect(e.message).toContain('Local network access')
+    expect(e.message).not.toMatch(/open|busy|not supported/i)
+  })
+
+  it('hosted page: a pending permission keeps "not running" and says to accept the prompt', async () => {
+    const e = await failWithPermission(async () => ({ state: 'prompt' }))
+    expect(e.kind).toBe('not-running')
+    expect(e.message).toContain('choose Allow')
+  })
+
+  it('hosted page: a granted permission (or none to ask) leaves "not running" as is', async () => {
+    const e = await failWithPermission(async () => ({ state: 'granted' }))
+    expect(e.kind).toBe('not-running')
+    expect(e.message).not.toContain('choose Allow')
+    expect(e.message).toContain(bridgeStartHelp('https://khromov.github.io').command)
   })
 })

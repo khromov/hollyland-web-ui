@@ -25,8 +25,113 @@ import { BaseTransport, TransportError, type TransportCapabilities, type Transpo
 
 export const BRIDGE_DEFAULT_PORT = 47321
 export const BRIDGE_DEFAULT_URL = `ws://127.0.0.1:${BRIDGE_DEFAULT_PORT}/hid`
-/** The command users run to start the bridge (shown in UI copy and errors). */
-export const BRIDGE_COMMAND = 'npm run bridge'
+
+/** The npm package of the launcher (cli/mic-console.mjs): web UI and bridge in one command. */
+export const NPM_PACKAGE = 'mic-console'
+/**
+ * Whether NPM_PACKAGE is on npm yet. While false, the page tells people to start the bridge from a
+ * clone of the repository, never with npx: the bridge runs as root, so the page must not point at a
+ * package name that isn't published (and could be claimed by someone else). Set it to true once
+ * `npm view mic-console` shows the published package.
+ */
+export const NPM_PACKAGE_PUBLISHED: boolean = false
+export const REPO_URL = 'https://github.com/khromov/hollyland-web-ui'
+/** Origin of the hosted Mic Console (GitHub Pages, https://khromov.github.io/hollyland-web-ui/). */
+export const HOSTED_ORIGIN = 'https://khromov.github.io'
+
+/** Where the page is served from, which decides how the bridge has to be started for it. */
+export type PageContext = 'loopback' | 'hosted' | 'other'
+
+/** `origin` defaults to this page's; no origin (Node, tests) counts as loopback. */
+export function pageContext(origin: string | null = pageOrigin()): PageContext {
+  if (!origin) return 'loopback'
+  if (origin === HOSTED_ORIGIN) return 'hosted'
+  try {
+    return LOOPBACK_HOSTS.has(new URL(origin).hostname) ? 'loopback' : 'other'
+  } catch {
+    return 'other'
+  }
+}
+
+export interface BridgeStartHelp {
+  /** What to type in a terminal. */
+  command: string
+  /** Where to type it, e.g. "in a clone of …"; null: in any terminal. */
+  where: string | null
+  /** The command for people who have a clone of the repository; null when `command` is that already. */
+  fromClone: string | null
+}
+
+/**
+ * How to start a bridge that accepts this page (shown in the connect screen and in errors).
+ * - With the npm package: `npx mic-console --bridge-only` (only the bridge: this page is already
+ *   open; that mode also accepts the hosted page).
+ * - From a clone: `npm run bridge`, which accepts pages on this computer only; other pages need
+ *   `--allow-origin`.
+ */
+export function bridgeStartHelp(origin: string | null = pageOrigin(), published = NPM_PACKAGE_PUBLISHED): BridgeStartHelp {
+  const ctx = pageContext(origin)
+  const clone =
+    ctx === 'loopback' ? 'npm run bridge' : `npm run bridge -- --allow-origin ${ctx === 'hosted' ? HOSTED_ORIGIN : origin}`
+  const repo = REPO_URL.replace(/^https:\/\//, '')
+  if (published && ctx !== 'other') {
+    return { command: `npx ${NPM_PACKAGE} --bridge-only`, where: null, fromClone: clone }
+  }
+  return {
+    command: clone,
+    where: ctx === 'loopback' ? 'in the Mic Console project folder' : `in a clone of ${repo}, after npm install`,
+    fromClone: null,
+  }
+}
+
+/** `Start it with "…" in …`: the sentence used in error messages. */
+export function bridgeStartSentence(help: BridgeStartHelp = bridgeStartHelp()): string {
+  if (help.where) return `Start it with "${help.command}" ${help.where}`
+  return `Start it in a terminal with "${help.command}"${help.fromClone ? ` (from a clone: "${help.fromClone}")` : ''}`
+}
+
+/**
+ * Chrome's Local Network Access permission for this page to reach 127.0.0.1 ("loopback-network",
+ * formerly "local-network-access"). Only public pages (the hosted site) need it; null when the
+ * browser doesn't know the permission or has no Permissions API.
+ */
+export async function loopbackPermission(): Promise<PermissionState | null> {
+  const permissions = (globalThis as { navigator?: { permissions?: Permissions } }).navigator?.permissions
+  if (!permissions?.query) return null
+  for (const name of ['loopback-network', 'local-network-access']) {
+    try {
+      return (await permissions.query({ name } as unknown as PermissionDescriptor)).state
+    } catch {
+      /* this browser doesn't know that permission name */
+    }
+  }
+  return null
+}
+
+/**
+ * A page that isn't on this computer can fail to reach a running bridge because Chrome's local
+ * network permission is denied (or still being asked): say so instead of "not running".
+ */
+async function explainLocalNetworkBlock(e: unknown): Promise<unknown> {
+  if (!(e instanceof BridgeError) || e.kind !== 'not-running' || pageContext() === 'loopback') return e
+  const state = await loopbackPermission()
+  if (state === 'denied') {
+    return new BridgeError(
+      'blocked',
+      'Chrome is blocking this site from reaching the bridge on this computer. Click the site-settings icon left of ' +
+        'the address, allow Local network access, and reload the page.',
+      { cause: e, closeCode: e.closeCode },
+    )
+  }
+  if (state === 'prompt') {
+    return new BridgeError(
+      'not-running',
+      `${e.message} When Chrome asks whether this site may access apps and services on this device, choose Allow.`,
+      { cause: e, closeCode: e.closeCode },
+    )
+  }
+  return e
+}
 
 export const BRIDGE_CLOSE = {
   /** The bridge is shutting down (Ctrl+C). */
@@ -75,7 +180,10 @@ export type BridgeErrorKind =
   | 'no-device'
   /** The requested channel is off. */
   | 'unavailable'
-  /** The browser refused to create the socket (mixed content, bad URL, no WebSocket API). */
+  /**
+   * The browser refused to create the socket (mixed content, bad URL, no WebSocket API), or Chrome's
+   * local network permission is denied for this (hosted) page.
+   */
   | 'blocked'
   /** The bridge closed an established connection. */
   | 'closed'
@@ -167,24 +275,26 @@ export function bridgeCloseError(code: number, reason: string, reachedServer: bo
       )
     case BRIDGE_CLOSE.origin: {
       const origin = pageOrigin()
-      const fix = origin ? `${BRIDGE_COMMAND} -- --allow-origin ${origin}` : `${BRIDGE_COMMAND} -- --allow-origin <this page's origin>`
-      return new BridgeError(
-        'origin',
-        `The bridge only accepts pages served from localhost or 127.0.0.1. To allow this page, restart it with: ${fix}`,
-        { closeCode: code },
-      )
+      const help = bridgeStartHelp(origin)
+      const fix = origin
+        ? `"${help.command}"${help.where ? ` ${help.where}` : ''}`
+        : `"npm run bridge -- --allow-origin <this page's origin>"`
+      const accepts = NPM_PACKAGE_PUBLISHED
+        ? `pages served from this computer, plus the hosted Mic Console (${new URL(HOSTED_ORIGIN).host}) when started with --bridge-only`
+        : 'pages served from this computer, plus sites named with --allow-origin'
+      return new BridgeError('origin', `The bridge accepts ${accepts}. To allow this page, stop it with Ctrl+C and start it with ${fix}.`, {
+        closeCode: code,
+      })
     }
     case BRIDGE_CLOSE.unavailable:
       return new BridgeError('unavailable', `The bridge has this channel switched off${why}.`, { closeCode: code })
     case BRIDGE_CLOSE.stopped:
-      return new BridgeError('closed', `The bridge stopped. Start it again with "${BRIDGE_COMMAND}".`, { closeCode: code })
+      return new BridgeError('closed', `The bridge stopped. ${bridgeStartSentence()} to use it again.`, { closeCode: code })
   }
   if (!reachedServer) {
-    return new BridgeError(
-      'not-running',
-      `No bridge answered at ${url}. Start it in a terminal with "${BRIDGE_COMMAND}", then try again.`,
-      { closeCode: code },
-    )
+    return new BridgeError('not-running', `No bridge answered at ${url}. ${bridgeStartSentence()}, then try again.`, {
+      closeCode: code,
+    })
   }
   return new BridgeError('closed', `The bridge closed the connection${why}.`, { closeCode: code })
 }
@@ -254,7 +364,7 @@ export class BridgeTransport extends BaseTransport {
       await t.open(timeoutMs)
     } catch (e) {
       await t.close()
-      throw e
+      throw await explainLocalNetworkBlock(e)
     }
     return t
   }
@@ -373,7 +483,7 @@ export class BridgeTransport extends BaseTransport {
         finish(
           this.reachedServer
             ? new BridgeError('timeout', `The bridge at ${this.url} accepted the connection but never said hello. Restart it and try again.`)
-            : new BridgeError('not-running', `No bridge answered at ${this.url} within ${Math.round(timeoutMs / 100) / 10} s. Start it with "${BRIDGE_COMMAND}".`),
+            : new BridgeError('not-running', `No bridge answered at ${this.url} within ${Math.round(timeoutMs / 100) / 10} s. ${bridgeStartSentence()}.`),
         )
         try {
           ws.close()

@@ -2,11 +2,13 @@
   import Banner from '../lib/ui/Banner.svelte'
   import Button from '../lib/ui/Button.svelte'
   import { session } from '../lib/state/session.svelte'
+  import { bridgeStartHelp } from '../lib/protocol'
 
   const platform = (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform ?? navigator.platform
   const isMac = /mac/i.test(platform)
   const isWin = /win/i.test(platform)
   let open = $state(false)
+  const startHelp = bridgeStartHelp()
 </script>
 
 <Banner tone="warning" title="Write-only connection">
@@ -17,10 +19,11 @@
     <div class="more">
       <p>
         Full live control works in Chrome on <strong>Linux</strong> and <strong>ChromeOS</strong>. On a Mac you can run the
-        optional local bridge from the project folder (it asks for your password and pauses the receiver's USB audio while
-        it runs):
+        optional local bridge{startHelp.where ? ` ${startHelp.where}` : ' in a terminal'} (it asks for your password and
+        pauses the receiver's USB audio while it runs):
       </p>
-      <code>npm run bridge</code>
+      <code>{startHelp.command}</code>
+      {#if startHelp.fromClone}<p>From a clone of the project: <code>{startHelp.fromClone}</code></p>{/if}
       <p>Then choose "Connect through local bridge" on this page. See docs/BRIDGE.md.</p>
     </div>
   {/if}

@@ -17,7 +17,7 @@
   import { session } from './lib/state/session.svelte'
   import { router, type Route } from './lib/state/router.svelte'
   import { prefs } from './lib/state/prefs.svelte'
-  import { BridgeError, BridgeTransport, isWebHidSupported, resolveBridgeUrl } from './lib/protocol'
+  import { BridgeError, BridgeTransport, isWebHidSupported, pageContext, resolveBridgeUrl } from './lib/protocol'
 
   const connected = $derived(session.phase === 'ready' || session.phase === 'restarting' || session.phase === 'lost')
   const viaBridge = $derived(session.transportKind === 'bridge')
@@ -85,43 +85,71 @@
           : 'neutral',
   )
 
-  onMount(() => {
-    // Development-only simulator: ?mock=a2|a2s|blind|m2s|m2scam|m2
-    if (import.meta.env.DEV) {
-      const mock = new URLSearchParams(location.search).get('mock')
-      if (mock) void session.connectMock(mock)
-    }
-  })
-
   const lastSeen = $derived(session.lastUpdate ? new Date(session.lastUpdate).toLocaleTimeString() : null)
 
   // Optional local USB bridge (docs/BRIDGE.md): full read/write where the OS drops replies.
-  // `?bridge=<port>` points the page at a bridge started with --port.
-  const bridgeUrl = resolveBridgeUrl(new URLSearchParams(location.search).get('bridge'))
+  // `?bridge=<port>` points the page at a bridge started with --port. `npx mic-console` opens the
+  // page with `?bridge=auto` (or `?bridge=<port>&auto=1`): connect through the bridge on load.
+  const query = new URLSearchParams(location.search)
+  const bridgeParam = query.get('bridge')
+  const bridgeUrl = resolveBridgeUrl(bridgeParam === 'auto' ? null : bridgeParam)
+  const autoBridge = bridgeParam === 'auto' || (query.has('auto') && query.get('auto') !== '0')
+  /** How long the automatic connect waits for the bridge (sudo password, finding the receiver). */
+  const AUTO_BRIDGE_WAIT_MS = 20_000
   let stopReplug: (() => void) | null = null
 
-  async function connectBridge() {
+  /** `waitMs` > 0: keep trying while the bridge isn't up yet or has no receiver yet. */
+  async function connectBridge(waitMs = 0) {
     // The bridge takes the receiver away from WebHID: leave a WebHID session first.
     if (session.transportKind !== 'bridge' && (session.phase === 'ready' || session.phase === 'lost' || session.phase === 'restarting')) {
       await session.disconnect()
     }
     const failure: { error: BridgeError | null } = { error: null }
+    const deadline = Date.now() + waitMs
     await session.connectWith('bridge', async () => {
-      try {
-        const t = await BridgeTransport.connect(bridgeUrl)
-        stopReplug?.()
-        // After an unplug or an RX restart the bridge captures the receiver again: reattach.
-        stopReplug = t.onReplug(() => {
-          if (session.transportKind === 'bridge') void session.reattach(t)
-        })
-        return t
-      } catch (e) {
-        if (e instanceof BridgeError) failure.error = e
-        throw e
+      if (waitMs > 0) session.step = 'Waiting for the local bridge…'
+      for (;;) {
+        try {
+          // While waiting, one attempt also waits for the receiver until the deadline, so the
+          // bridge doesn't see a new client every few seconds.
+          const t = await BridgeTransport.connect(bridgeUrl, Math.max(3000, deadline - Date.now()))
+          stopReplug?.()
+          // After an unplug or an RX restart the bridge captures the receiver again: reattach.
+          stopReplug = t.onReplug(() => {
+            if (session.transportKind === 'bridge') void session.reattach(t)
+          })
+          return t
+        } catch (e) {
+          // Not listening yet (sudo is still asking for the password): try again shortly.
+          if (e instanceof BridgeError && e.kind === 'not-running' && Date.now() + 1000 < deadline) {
+            await new Promise((r) => setTimeout(r, 1000))
+            continue
+          }
+          if (e instanceof BridgeError) failure.error = e
+          throw e
+        }
       }
     })
-    if (failure.error && session.error) session.error = { title: failure.error.title, detail: failure.error.message }
+    if (failure.error && session.error) {
+      const e = failure.error
+      session.error = {
+        title: e.title,
+        // Opened by `npx mic-console` (a page on this computer), which starts and stops the bridge itself.
+        // The hosted page with ?bridge=auto needs `npx mic-console --bridge-only`, which e.message names.
+        detail:
+          autoBridge && e.kind === 'not-running' && pageContext() === 'loopback'
+            ? `No bridge answered at ${bridgeUrl}. It runs while "npx mic-console" runs in your terminal: start it again there, then press Connect through local bridge.`
+            : e.message,
+      }
+    }
   }
+
+  onMount(() => {
+    // Development-only simulator: ?mock=a2|a2s|blind|m2s|m2scam|m2
+    const mock = import.meta.env.DEV ? query.get('mock') : null
+    if (mock) void session.connectMock(mock)
+    else if (autoBridge) void connectBridge(AUTO_BRIDGE_WAIT_MS)
+  })
 </script>
 
 <!-- While the receiver restarts, the overlay is the only interactive area (it is a modal). -->
@@ -148,7 +176,7 @@
             Reconnect
           </Button>
           {#if !viaBridge && session.writeOnly}
-            <Button size="sm" variant="ghost" onclick={connectBridge}>Connect through local bridge</Button>
+            <Button size="sm" variant="ghost" onclick={() => connectBridge()}>Connect through local bridge</Button>
           {/if}
         {/snippet}
       </Banner>
@@ -166,7 +194,7 @@
       known={session.known}
       onconnect={() => session.connect()}
       onreconnect={() => session.reconnect()}
-      onbridge={connectBridge}
+      onbridge={() => connectBridge()}
       via={session.transportKind}
     />
     <p class="audio-only">

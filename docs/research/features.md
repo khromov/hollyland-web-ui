@@ -3,6 +3,16 @@
 Status: static analysis of HollyAudio 3.1.0 (Android `com.hollyland.larkc1`, iOS `com.hollyland.larkc2`). No device traffic was generated for this document.
 Scope: the user-facing feature catalogue (screens, controls, values, states, copy) and browser feasibility. Byte-level framing, checksums and transport belong to the protocol research documents. This document only states which command each feature uses and how the value is encoded, so features can be linked to the protocol.
 
+> **Verified on hardware since (LARK A2, macOS, Chrome, 2026-11-05).** Details are in `docs/PROTOCOL.md` §11.7.
+>
+> - Chrome WebHID writes on macOS take effect: the indicator light and channel mode.
+> - The **TX button toggles noise cancellation** and does not mute. That partly answers open question 6: the A2
+>   still has no known way to mute a TX.
+> - Turning NC on restores the last level used. That answers the "what level is restored" part of open
+>   question 1. The first enable showed Medium.
+> - A TX docked in the charging case reports **offline**.
+> - The local USB bridge gives full live state on macOS, while the receiver's USB audio is paused.
+
 ## 0. TL;DR
 
 * The LARK A2 has a small app surface: one home screen with 6 device settings, a "More Settings" screen with 3 toggles and 4 sub-pages (Device Information, Paired Devices, Firmware Update, User Manual), plus Factory Reset.
@@ -16,8 +26,8 @@ Scope: the user-facing feature catalogue (screens, controls, values, states, cop
 
 | Prefix | Root |
 |---|---|
-| `A:` | Android decompiled sources, `/private/tmp/claude-501/-Users-k-Documents-GitHub-hollyland-web-ui/043bcd7c-fcdb-4a2f-9b2c-c34d8e8e52b2/scratchpad/jadx-out/sources/` |
-| `R:` | Android decoded resources (created by this agent with `jadx --no-src`), `/private/tmp/claude-501/-Users-k-Documents-GitHub-hollyland-web-ui/043bcd7c-fcdb-4a2f-9b2c-c34d8e8e52b2/scratchpad/jadx-res/resources/` |
+| `A:` | Android decompiled sources, `<scratchpad>/jadx-out/sources/` |
+| `R:` | Android decoded resources (created by this agent with `jadx --no-src`), `<scratchpad>/jadx-res/resources/` |
 | `iOS:` | `/Applications/larkSound.app/Wrapper/larkSound.app/`. `L["<zh key>"]` is `en.lproj/Localizable.strings`. Class and ivar names come from `otool -ov larkSound`. |
 
 String values are quoted exactly from `R:res/values/strings.xml` (`@string/<name>`). The base APK has only the default (English) `values/`. `config.zh.apk` was not in the extracted XAPK. Chinese source strings come from the iOS `Localizable.strings` keys.

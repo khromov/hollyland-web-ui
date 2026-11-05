@@ -267,7 +267,8 @@ describe('VoiceProcessor', () => {
       'Clean Voice', 'Vocal Boost', 'Warm & Solid', 'Warm & Resonant', 'Bright Youthful', 'Mellow & Full-bodied', 'Bright & Energetic', 'Rich & Full',
     ])
   })
-  it('is deterministic across reset() and across instances', () => {
+  // About 2 s on an idle Apple Silicon Mac; give slow CI runners (the Pages deploy runs the tests) room.
+  it('is deterministic across reset() and across instances', { timeout: 30_000 }, () => {
     const x = signal(FRAME * 200)
     for (const t of PRESET_TEMPLATES) {
       const a = new VoiceProcessor()

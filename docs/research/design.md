@@ -26,7 +26,7 @@ It holds 26 screens and 5 flows. Section 5 lists them.
 | Risky actions | Firmware update and factory reset use dedicated flows: a pre-flight checklist, typed confirmation, wake lock and an unload guard. |
 | Debug | Console is hidden behind "Developer mode". On desktop it is a resizable bottom drawer; on mobile it is a full-screen page. Raw send is gated separately. |
 | Type | Geist and Geist Mono (OFL, on Google Fonts), self-hosted, with a system stack fallback. Readouts use tabular numerals. |
-| Colour | TX1 is cyan and TX2 is coral (the blue/orange axis is safe for colour-vision deficiency). The UI accent is indigo. Meters use green, amber and red in a dark "meter well" in both themes. Every pairing below has been checked against WCAG AA. |
+| Colour | TX1 is purple and TX2 is yellow, the colours of the mics' own LEDs (also told apart by their labels). The UI accent is sky blue. Meters use green, amber and red in a dark "meter well" in both themes. Every text pairing below has been checked against WCAG AA. |
 
 ---
 
@@ -682,6 +682,10 @@ set on `<html>`. The theme picker offers System, Dark and Light, and the choice 
 
 ### 4.1 Tokens (CSS custom properties)
 
+Channel colours follow the hardware: the transmitters' identity LEDs are purple (TX1) and yellow (TX2),
+so the UI uses the same pair (revised 2026-11-05, replacing cyan/coral). The accent moved from indigo
+to sky blue to stay clear of purple, and warning moved from amber to orange to keep yellow for TX2.
+
 ```css
 /* ============================================================
    Mic Console design tokens. Dark is the default theme.
@@ -699,34 +703,35 @@ set on `<html>`. The theme picker offers System, Dark and Light, and the choice 
   /* ---- Borders ---- */
   --color-border:         #262B33;  /* hairline between surfaces (decorative) */
   --color-border-strong:  #3A414B;  /* dividers needing visibility */
-  --color-border-control: #646D7A;  /* input/switch/segment outlines, >= 3:1 on surface-1/2 */
+  --color-border-control: #6E7785;  /* input/switch/segment outlines, >= 3:1 on surface-1/2/3 */
 
   /* ---- Text ---- */
   --color-text:          #ECEEF1;   /* 15.6:1 on surface-1 */
   --color-text-muted:    #A6AFBB;   /*  8.2:1 on surface-1 */
-  --color-text-subtle:   #818B98;   /*  5.3:1 on surface-1 (hints, timestamps) */
+  --color-text-subtle:   #868F9C;   /*  5.5:1 on surface-1, 4.5:1 on surface-3 (hints, timestamps) */
   --color-text-disabled: #5A626E;   /* disabled only (exempt from contrast) */
 
-  /* ---- Interactive accent (UI, focus, selection) ---- */
-  --color-accent:        #8E9CFF;   /* 7.2:1 on surface-1 */
-  --color-accent-hover:  #A5B0FF;
-  --color-on-accent:     #0B0D10;   /* 7.7:1 on accent */
+  /* ---- Interactive accent (UI, focus, selection) ----
+     Sky blue: kept clear of the purple TX1 (OKLCH hue 233 vs 301, also for deuteranopes) and of success green. */
+  --color-accent:        #38BDF8;   /* 8.5:1 on surface-1 */
+  --color-accent-hover:  #7DD3FC;
+  --color-on-accent:     #0B0D10;   /* 9.1:1 on accent */
   --color-accent-soft:   color-mix(in oklab, var(--color-accent) 16%, transparent);
-  --color-focus:         #8E9CFF;
+  --color-focus:         #38BDF8;
 
-  /* ---- Channel identity ---- */
-  --color-tx1:           #4CC9F0;   /* cyan  - 9.4:1 on surface-1 */
-  --color-on-tx1:        #0B0D10;
+  /* ---- Channel identity: the colours of the mics' own LEDs (TX1 purple, TX2 yellow) ---- */
+  --color-tx1:           #B37DFF;   /* purple - 6.3:1 on surface-1 */
+  --color-on-tx1:        #0B0D10;   /*          6.8:1 on tx1 */
   --color-tx1-soft:      color-mix(in oklab, var(--color-tx1) 14%, transparent);
-  --color-tx2:           #FF9166;   /* coral - 8.2:1 on surface-1 */
-  --color-on-tx2:        #0B0D10;
+  --color-tx2:           #F5D33D;   /* yellow - 12.3:1 on surface-1 */
+  --color-on-tx2:        #0B0D10;   /*          13.2:1 on tx2 */
   --color-tx2-soft:      color-mix(in oklab, var(--color-tx2) 14%, transparent);
   --color-rx:            #C3CBD6;   /* neutral silver */
   --color-on-rx:         #0B0D10;
 
-  /* ---- Semantic ---- */
+  /* ---- Semantic (warning is orange so yellow stays unique to TX2) ---- */
   --color-success:       #4ADE8A;
-  --color-warning:       #F5C451;
+  --color-warning:       #FF9F4A;
   --color-danger:        #FF6B6B;
   --color-on-danger:     #0B0D10;   /* 7.0:1 */
   --color-info:          var(--color-accent);
@@ -835,22 +840,22 @@ set on `<html>`. The theme picker offers System, Dark and Light, and the choice 
   --color-text-subtle:   #606A76;   /*  5.5:1 */
   --color-text-disabled: #A3AAB4;
 
-  --color-accent:        #3F4FD8;   /*  6.3:1 on white */
-  --color-accent-hover:  #3241C2;
-  --color-on-accent:     #FFFFFF;   /*  6.3:1 */
-  --color-focus:         #3F4FD8;
+  --color-accent:        #0B6399;   /*  6.4:1 on white, 5.1:1 on accent-soft */
+  --color-accent-hover:  #08527F;
+  --color-on-accent:     #FFFFFF;   /*  6.4:1 */
+  --color-focus:         #0B6399;
 
-  --color-tx1:           #076F90;   /*  5.7:1 on white */
+  --color-tx1:           #8040D8;   /*  5.8:1 on white: deep violet */
   --color-on-tx1:        #FFFFFF;
-  --color-tx2:           #B04317;   /*  5.7:1 on white */
-  --color-on-tx2:        #FFFFFF;
+  --color-tx2:           #EAB308;   /* yellow, like the LED. Fills only (badge, stripe, glyph), never text: 1.9:1 on white */
+  --color-on-tx2:        #11151A;   /*  9.6:1 on tx2 */
   --color-rx:            #3B4450;
   --color-on-rx:         #FFFFFF;
 
   --color-success:       #14773A;   /* 5.6:1 */
-  --color-warning:       #9A5B00;   /* 5.4:1 */
-  --color-danger:        #C62828;   /* 5.6:1 */
-  --color-on-danger:     #FFFFFF;   /* 5.6:1 */
+  --color-warning:       #9C4C00;   /* 6.1:1 on white, 5.0:1 on the warning-soft chip */
+  --color-danger:        #B42020;   /* 6.6:1 on white, 5.0:1 on the danger-soft chip */
+  --color-on-danger:     #FFFFFF;   /*  6.6:1 */
 
   --shadow-1: 0 1px 2px rgb(16 24 40 / 0.06), 0 1px 1px rgb(16 24 40 / 0.04);
   --shadow-2: 0 8px 24px rgb(16 24 40 / 0.10);
@@ -948,7 +953,7 @@ sections), so the same Svelte component adapts in any slot. Respect
 ### 4.5 Focus
 
 - `:focus-visible` only: a 2 px solid `--color-focus` outline with a 2 px offset that follows the
-  element's radius. In dark mode, the accent outline is 7.7:1 against the page.
+  element's radius. In dark mode, the accent outline is 9.1:1 against the page.
 - In segmented controls and radio lists, focus moves with the arrow keys and the ring wraps the
   focused option rather than the track.
 - Sheets and modals move focus to the first meaningful control (the least destructive one in
@@ -958,39 +963,53 @@ sections), so the same Svelte component adapts in any slot. Respect
 
 ### 4.6 Contrast (WCAG 2.2 AA), measured
 
-These ratios were computed for the token values above using the WCAG relative-luminance formula.
+These ratios were computed from `src/styles/tokens.css` using the WCAG relative-luminance formula
+(re-measured 2026-11-05 for the purple/yellow channel palette). Soft tints are composited over
+surface-1 at their `color-mix` percentage. In the light theme surface-1 and surface-2 are both white.
 
 | Pair | Dark | Light | Requirement |
 |---|---|---|---|
 | text on surface-1 | 15.60 | 18.32 | 4.5 (text) |
-| text-muted on surface-1 / surface-3 | 8.18 / 6.68 | 7.56 / 6.08 | 4.5 |
-| text-subtle on surface-1 / surface-2 | 5.25 / 4.84 | 5.50 / 4.81 | 4.5 |
-| accent on surface-1 | 7.21 | 6.32 | 4.5 (link text) |
-| on-accent on accent (primary button) | 7.74 | 6.32 | 4.5 |
-| tx1 on surface-1 / surface-2 | 9.43 / 8.70 | 5.70 / 4.99 | 4.5 (badge text in colour) |
-| tx2 on surface-1 / surface-2 | 8.20 / 7.56 | 5.74 / 5.02 | 4.5 |
-| on-tx1 / on-tx2 on channel fill | 10.12 / 8.80 | 5.70 / 5.74 | 4.5 |
-| success / warning / danger on surface-1 | 10.45 / 11.13 / 6.53 | 5.63 / 5.43 / 5.62 | 4.5 (status text) |
-| on-danger on danger (mute latch, danger button) | 7.01 | 5.62 | 4.5 |
-| border-control on surface-1 / surface-2 | 3.46 / 3.20 | 3.83 / 3.55 (bg) | 3.0 (UI component) |
+| text-muted on surface-1 / surface-3 | 8.18 / 6.68 | 7.56 / 6.62 | 4.5 |
+| text-subtle on surface-1 / surface-2 / surface-3 | 5.55 / 5.12 / 4.53 | 5.50 / 5.50 / 4.81 | 4.5 |
+| accent on surface-1 / surface-2 | 8.46 / 7.81 | 6.44 / 6.44 | 4.5 (link text) |
+| accent on accent-soft (info chip) | 6.32 | 5.06 | 4.5 |
+| on-accent on accent (primary button) | 9.08 | 6.44 | 4.5 |
+| tx1 on surface-1 / surface-2 / surface-3 | 6.30 / 5.81 / 5.15 | 5.76 / 5.76 / 5.05 | 4.5 if ever used as text |
+| tx2 on surface-1 / surface-2 / surface-3 | 12.32 / 11.37 / 10.06 | 1.92 / 1.92 / 1.68 | fill only in light (see notes) |
+| on-tx1 / on-tx2 on channel fill | 6.76 / 13.22 | 5.76 / 9.55 | 4.5 |
+| success / warning / danger on surface-1 | 10.45 / 8.90 / 6.53 | 5.63 / 6.09 / 6.63 | 4.5 (status text) |
+| success / warning / danger chip on its soft tint | 7.87 / 6.94 / 5.19 | 4.62 / 4.96 / 5.04 | 4.5 |
+| text-muted in a warning / info banner | 6.37 / 6.11 | 6.15 / 5.93 | 4.5 |
+| on-danger on danger (mute latch, danger button) | 7.01 | 6.63 | 4.5 |
+| border-control on surface-1 / surface-2 / surface-3 | 4.01 / 3.70 / 3.27 | 3.83 / 3.83 / 3.36 | 3.0 (UI component) |
 | meter-ok / hot / clip on meter-well | 10.26 / 10.93 / 6.41 | same (well stays dark) | 3.0 (graphics) |
 | lit vs unlit segment (ok / hot / clip vs meter-off) | 7.67 / 8.17 / 4.79 | same | 3.0 |
-| focus ring on page | 7.74 | 6.32 | 3.0 |
+| focus ring on page | 9.08 | 5.96 | 3.0 |
 
 Notes:
 - `--color-border` (hairlines) is decorative and intentionally low contrast. Any border that is the
   *only* indicator of a control's boundary must use `--color-border-control`.
-- **Do not use `--color-text-subtle` on surface-3** in light mode (about 4.3:1). Use `--color-text-muted`
-  there.
-- TX1 and TX2 have similar luminance, so they are told apart by **hue** (blue against orange, which
-  stays distinct under protanopia, deuteranopia and tritanopia simulations) **and by their text
-  labels**. Never encode a channel by colour alone.
+- `--color-text-subtle` passes on surface-3 in both themes, but only just (4.53 dark). Prefer
+  `--color-text-muted` on surface-3 and on anything darker or tinted.
+- **TX colours are fills, never text.** They appear as badge backgrounds (with `--color-on-tx1/2` text),
+  card and panel stripes, the wordmark and the kit glyph. In the light theme TX2 is a real yellow
+  (`#EAB308`, the LED colour) at 1.9:1 on white, which is fine for a fill whose meaning is also in a
+  label, but not for text. If TX2 is ever needed as text, add a darker `--color-tx2-text` instead of
+  darkening the fill (a text-safe yellow on white reads as brown). The `-soft` tints are currently unused.
+- TX1 and TX2 are told apart by **hue** (purple against yellow, matching the mics' LEDs; in dark
+  mode also by lightness, OKLCH L 0.70 vs 0.87) **and by their text labels**. Simulated protanopia,
+  deuteranopia and tritanopia keep the pair apart in both themes (OKLab distance 0.10 or more).
+  Never encode a channel by colour alone.
+- Hue separation (OKLCH, dark theme): TX1 301, accent 233, success 154, TX2 96, warning 59,
+  danger 23. Yellow belongs to TX2 in the chrome; only the meter's "hot" segment (inside the dark
+  well, never used for identity) is also yellow-amber.
 - If the team rejects the "always-dark meter well" in light mode, use these light-safe meter colours
   on a `#E3E7EC` track: ok `#138A4A` (3.55:1), hot `#A86E00` (3.45:1), clip `#C62828` (4.53:1).
 
 ### 4.7 Colour usage rules
 
-1. One interactive accent (indigo), used for primary buttons, selection, focus, links and progress.
+1. One interactive accent (sky blue), used for primary buttons, selection, focus, links and progress.
 2. Channel colours are for identity only: badge, top rule, selection outline and inspector switcher
    segment.
 3. Semantic colours carry status: success (linked, confirmed), warning (low battery, weak signal,

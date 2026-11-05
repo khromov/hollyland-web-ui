@@ -49,7 +49,16 @@
   const ncSwitch = $derived(!!caps?.noiseToggle && !writeOnly)
   const ncLevelsVisible = $derived(ncSwitch ? s.noiseEnabled === true : true)
   const ncLabel = $derived(noiseLabel(family))
-  const ncDescription = $derived(family === '6118' ? 'Reduces steady background noise.' : 'Noise cancellation: reduces steady background noise.')
+  /**
+   * Seen on a LARK A2 (2026-11-05): switching NC on brings back the last level used, and the
+   * button on either transmitter toggles NC (it does not mute). Only claimed for the A2 family.
+   */
+  const ncButtonToggles = $derived(family === '6118')
+  const ncDescription = $derived(
+    family === '6118'
+      ? 'Reduces steady background noise. Turning it on restores the last level used. Pressing the button on either mic also toggles it; this card follows within a second.'
+      : 'Noise cancellation: reduces steady background noise.',
+  )
   /** Lark M2 firmware without the on/off switch (live mode, RX version too old). */
   const ncNoToggleFirmware = $derived(!writeOnly && !caps?.noiseToggle)
 
@@ -170,7 +179,8 @@
                 <Info size={14} aria-hidden="true" />
                 <span>
                   Turning noise cancellation fully off needs a live connection (Linux, ChromeOS or the local bridge). The
-                  receiver only offers an on/off toggle, and this browser can't read which state it is in.
+                  receiver only offers an on/off toggle, and this browser can't read which state it is in.{#if ncButtonToggles}{' '}Pressing
+                    the button on either mic also toggles it, and turning it on restores the last level used.{/if}
                 </span>
               </p>
             {/if}

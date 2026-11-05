@@ -45,7 +45,8 @@
     ),
   )
 
-  const MUTE_HELP = 'Mute is set with the button on the mic. The receiver reports it here, but it cannot be changed from this page.'
+  // Not "set with the mic's button": on the LARK A2 that button toggles noise cancellation instead.
+  const MUTE_HELP = "Shown when the transmitter reports that it is muted. Mute can't be changed from this page."
 
   // ---------------------------------------------------------------- inline rename
   let editing = $state(false)
@@ -140,7 +141,8 @@
     {:else if !statusKnown}
       <span class="unavailable">Reading status…</span>
     {:else if !online}
-      <span class="unavailable">Not connected. Turn the mic on or check its pairing.</span>
+      <!-- A mic docked in the charging case also reports offline (seen on a LARK A2). -->
+      <span class="unavailable">Not connected. Take the mic out of the case, turn it on, or check its pairing.</span>
     {:else if showBattery}
       <Battery percent={battery} {charging} label="{name} battery" />
       <span class="word" class:low={batteryWord === 'Low'}>{batteryWord}</span>

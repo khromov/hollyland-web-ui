@@ -14,34 +14,35 @@
   /* ---- Borders ---- */
   --color-border:         #262B33;  /* hairline between surfaces (decorative) */
   --color-border-strong:  #3A414B;  /* dividers needing visibility */
-  --color-border-control: #646D7A;  /* input/switch/segment outlines, >= 3:1 on surface-1/2 */
+  --color-border-control: #6E7785;  /* input/switch/segment outlines, >= 3:1 on surface-1/2/3 */
 
   /* ---- Text ---- */
   --color-text:          #ECEEF1;   /* 15.6:1 on surface-1 */
   --color-text-muted:    #A6AFBB;   /*  8.2:1 on surface-1 */
-  --color-text-subtle:   #818B98;   /*  5.3:1 on surface-1 (hints, timestamps) */
+  --color-text-subtle:   #868F9C;   /*  5.5:1 on surface-1, 4.5:1 on surface-3 (hints, timestamps) */
   --color-text-disabled: #5A626E;   /* disabled only (exempt from contrast) */
 
-  /* ---- Interactive accent (UI, focus, selection) ---- */
-  --color-accent:        #8E9CFF;   /* 7.2:1 on surface-1 */
-  --color-accent-hover:  #A5B0FF;
-  --color-on-accent:     #0B0D10;   /* 7.7:1 on accent */
+  /* ---- Interactive accent (UI, focus, selection) ----
+     Sky blue: kept clear of the purple TX1 (OKLCH hue 233 vs 301, also for deuteranopes) and of success green. */
+  --color-accent:        #38BDF8;   /* 8.5:1 on surface-1 */
+  --color-accent-hover:  #7DD3FC;
+  --color-on-accent:     #0B0D10;   /* 9.1:1 on accent */
   --color-accent-soft:   color-mix(in oklab, var(--color-accent) 16%, transparent);
-  --color-focus:         #8E9CFF;
+  --color-focus:         #38BDF8;
 
-  /* ---- Channel identity ---- */
-  --color-tx1:           #4CC9F0;   /* cyan  - 9.4:1 on surface-1 */
-  --color-on-tx1:        #0B0D10;
+  /* ---- Channel identity: the colours of the mics' own LEDs (TX1 purple, TX2 yellow) ---- */
+  --color-tx1:           #B37DFF;   /* purple - 6.3:1 on surface-1 */
+  --color-on-tx1:        #0B0D10;   /*          6.8:1 on tx1 */
   --color-tx1-soft:      color-mix(in oklab, var(--color-tx1) 14%, transparent);
-  --color-tx2:           #FF9166;   /* coral - 8.2:1 on surface-1 */
-  --color-on-tx2:        #0B0D10;
+  --color-tx2:           #F5D33D;   /* yellow - 12.3:1 on surface-1 */
+  --color-on-tx2:        #0B0D10;   /*          13.2:1 on tx2 */
   --color-tx2-soft:      color-mix(in oklab, var(--color-tx2) 14%, transparent);
   --color-rx:            #C3CBD6;   /* neutral silver */
   --color-on-rx:         #0B0D10;
 
-  /* ---- Semantic ---- */
+  /* ---- Semantic (warning is orange so yellow stays unique to TX2) ---- */
   --color-success:       #4ADE8A;
-  --color-warning:       #F5C451;
+  --color-warning:       #FF9F4A;
   --color-danger:        #FF6B6B;
   --color-on-danger:     #0B0D10;   /* 7.0:1 */
   --color-info:          var(--color-accent);
@@ -150,22 +151,22 @@
   --color-text-subtle:   #606A76;   /*  5.5:1 */
   --color-text-disabled: #A3AAB4;
 
-  --color-accent:        #3F4FD8;   /*  6.3:1 on white */
-  --color-accent-hover:  #3241C2;
-  --color-on-accent:     #FFFFFF;   /*  6.3:1 */
-  --color-focus:         #3F4FD8;
+  --color-accent:        #0B6399;   /*  6.4:1 on white, 5.1:1 on accent-soft */
+  --color-accent-hover:  #08527F;
+  --color-on-accent:     #FFFFFF;   /*  6.4:1 */
+  --color-focus:         #0B6399;
 
-  --color-tx1:           #076F90;   /*  5.7:1 on white */
+  --color-tx1:           #8040D8;   /*  5.8:1 on white: deep violet */
   --color-on-tx1:        #FFFFFF;
-  --color-tx2:           #B04317;   /*  5.7:1 on white */
-  --color-on-tx2:        #FFFFFF;
+  --color-tx2:           #EAB308;   /* yellow, like the LED. Fills only (badge, stripe, glyph), never text: 1.9:1 on white */
+  --color-on-tx2:        #11151A;   /*  9.6:1 on tx2 */
   --color-rx:            #3B4450;
   --color-on-rx:         #FFFFFF;
 
   --color-success:       #14773A;   /* 5.6:1 */
-  --color-warning:       #8A5100;   /* 6.4:1 on white, 5.3:1 on the warning-soft chip */
-  --color-danger:        #C62828;   /* 5.6:1 */
-  --color-on-danger:     #FFFFFF;   /* 5.6:1 */
+  --color-warning:       #9C4C00;   /* 6.1:1 on white, 5.0:1 on the warning-soft chip */
+  --color-danger:        #B42020;   /* 6.6:1 on white, 5.0:1 on the danger-soft chip */
+  --color-on-danger:     #FFFFFF;   /*  6.6:1 */
 
   --shadow-1: 0 1px 2px rgb(16 24 40 / 0.06), 0 1px 1px rgb(16 24 40 / 0.04);
   --shadow-2: 0 8px 24px rgb(16 24 40 / 0.10);
@@ -191,22 +192,22 @@
   --color-text-subtle:   #606A76;   /*  5.5:1 */
   --color-text-disabled: #A3AAB4;
 
-  --color-accent:        #3F4FD8;   /*  6.3:1 on white */
-  --color-accent-hover:  #3241C2;
-  --color-on-accent:     #FFFFFF;   /*  6.3:1 */
-  --color-focus:         #3F4FD8;
+  --color-accent:        #0B6399;   /*  6.4:1 on white, 5.1:1 on accent-soft */
+  --color-accent-hover:  #08527F;
+  --color-on-accent:     #FFFFFF;   /*  6.4:1 */
+  --color-focus:         #0B6399;
 
-  --color-tx1:           #076F90;   /*  5.7:1 on white */
+  --color-tx1:           #8040D8;   /*  5.8:1 on white: deep violet */
   --color-on-tx1:        #FFFFFF;
-  --color-tx2:           #B04317;   /*  5.7:1 on white */
-  --color-on-tx2:        #FFFFFF;
+  --color-tx2:           #EAB308;   /* yellow, like the LED. Fills only (badge, stripe, glyph), never text: 1.9:1 on white */
+  --color-on-tx2:        #11151A;   /*  9.6:1 on tx2 */
   --color-rx:            #3B4450;
   --color-on-rx:         #FFFFFF;
 
   --color-success:       #14773A;   /* 5.6:1 */
-  --color-warning:       #8A5100;   /* 6.4:1 on white, 5.3:1 on the warning-soft chip */
-  --color-danger:        #C62828;   /* 5.6:1 */
-  --color-on-danger:     #FFFFFF;   /* 5.6:1 */
+  --color-warning:       #9C4C00;   /* 6.1:1 on white, 5.0:1 on the warning-soft chip */
+  --color-danger:        #B42020;   /* 6.6:1 on white, 5.0:1 on the danger-soft chip */
+  --color-on-danger:     #FFFFFF;   /*  6.6:1 */
 
   --shadow-1: 0 1px 2px rgb(16 24 40 / 0.06), 0 1px 1px rgb(16 24 40 / 0.04);
   --shadow-2: 0 8px 24px rgb(16 24 40 / 0.10);

@@ -31,8 +31,8 @@ Citation conventions:
 | Fragmentation / sequence numbers | None. Payload ≤ 58 bytes, one frame per packet. Correlation is by echoed command byte plus source unit. |
 | Handshake / authentication | None. The first command can be the heartbeat. |
 | Heartbeat | `0x10` to the RX. It carries link, battery, all settings and, on the 6118 only, TX mute/charging. The Android app polls every 1 s (A2, M2S) or 3 s (M2); iOS polls every 3 s. |
-| Notifications | None. Everything is polled. The only device-initiated frames are OTA acks. A 3 s passive listen produced 0 IN reports (L). |
-| **Platform caveat (L)** | On **macOS** the device's replies never reach user space through HID. IOHIDFamily drops input reports whose report ID (0xBB) is not declared. Writes do reach the device. WebHID on macOS can therefore only send blind, unconfirmed writes. Linux/ChromeOS (hidraw) should work in both directions. Windows is expected to fail (§2.4). A root libusb session that detaches the HID driver does receive the replies (§11.6). |
+| Notifications | None. Everything is polled. The only device-initiated frames are OTA acks. A 3 s passive listen produced 0 IN reports (L), and a TX button press produced none either; it shows up only in the next heartbeat (L §11.7). |
+| **Platform caveat (L)** | On **macOS** the device's replies never reach user space through HID. IOHIDFamily drops input reports whose report ID (0xBB) is not declared. Writes do reach the device. WebHID on macOS can therefore only send blind, unconfirmed writes; Chrome's `sendReport(0xAA, …)` resolves and the writes take effect (verified, §11.7). Linux/ChromeOS (hidraw) should work in both directions. Windows is expected to fail (§2.4). A root libusb session that detaches the HID driver does receive the replies (§11.6), and the local bridge (`docs/BRIDGE.md`) gives the page full live state that way, at the cost of the receiver's USB audio while it runs (§11.7). |
 | Runtime features | The PID gives a capability superset; some features also need RX firmware above a threshold. `HollylandDevice.state.features` applies those gates (§4.1). The apps' UI preconditions (TX online, NC on, not locked, …) are enforced as `PreconditionError` (§5.4). |
 
 ---
@@ -117,7 +117,8 @@ Rules:
 | Platform / API | Send (`AA` report) | Receive (`BB` report) | Evidence |
 |---|---|---|---|
 | macOS: hidapi / node-hid / IOKit | ✅ reaches the device. `SetReportCount` +1, and the device answers. | ❌ **dropped by IOHIDFamily**. The driver's `InputReportCount` grows by 2, but the IOKit callback gets nothing, even with the device opened `kIOHIDOptionsTypeSeizeDevice`. | L §11.2–11.3 |
-| macOS: Chrome WebHID | expected ✅. Chromium's `HidConnectionMac` calls the same `IOHIDDeviceSetReport(type, 0xAA, buf, 64)`. Not run here: the chooser needs a user gesture. | ❌ Chromium uses the same `IOHIDDeviceRegisterInputReportCallback`. | inference from L |
+| macOS: Chrome WebHID | ✅ **verified** (2026-11-05): `sendReport(0xAA, 63 B)` resolves and takes effect. Indicator Light Switch (0x39) switched the mic LEDs; Channel Mode (0x18) Stereo/Mono changed the USB audio channels. Chromium's `HidConnectionMac` calls the same `IOHIDDeviceSetReport(type, 0xAA, buf, 64)`. | ❌ Chromium uses the same `IOHIDDeviceRegisterInputReportCallback`; the connect heartbeat gets no reply, so the UI runs write-only. | L §11.7 |
+| macOS: root libusb (local bridge, `scripts/bridge.ts`) | ✅ interrupt OUT `0x03` | ✅ interrupt IN `0x82`, one reply per request. Capturing the device takes the **whole** receiver from macOS, so its USB audio is unavailable until the bridge hands it back. | L §11.6, §11.7 |
 | macOS: WebUSB | ❌ HID is a protected class, and interface #7 is claimed by `accessoryd`. | ❌ | L (ioreg) |
 | macOS: ExternalAccessory (the iOS path) | ❌ `IAPAppRegisterClient: registerWasSuccessful 0`, 0 accessories. No iapd/iap2d on macOS. | ❌ | L §11.5 |
 | Linux: hidraw (Chrome WebHID, node-hid) | expected ✅ (raw write to the interrupt OUT) | expected ✅. hidraw does not filter report IDs. Needs a udev rule for access: `SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3547", MODE="0660", TAG+="uaccess"` | not tested (no Linux host) |
@@ -131,7 +132,7 @@ Consequences for the UI:
 - With `blindWrites: true`, idempotent setters still go out and resolve `{ ok: true, confirmed: false }`. These
   are noise level, volume, channel mode, preset, LED, mic recognition, smart battery and auto-off.
 - The noise on/off **toggle** (0x19) is never sent blind, because a toggle with unknown state can invert it.
-- The UI should warn that state cannot be read on macOS (and Windows).
+- The UI should warn that state cannot be read on macOS (and Windows), and on macOS offer the local bridge (`docs/BRIDGE.md`).
 - M2 and M2S descriptors are unknown. If those devices do not use report IDs, the transport switches to
   `framing: 'no-report-id'` and replies may arrive on every OS. The same applies if their replies use a declared ID.
 
@@ -153,8 +154,8 @@ Consequences for the UI:
 - Disconnect: `navigator.hid` `disconnect` event where `e.device === device`. Reconnect: `WebHidTransport.reconnect()`
   uses `navigator.hid.getDevices()` filtered by VID. `WebHidTransport.onDeviceConnect()` listens for `connect`.
 - Chromium blocks only protected usages (FIDO, keyboard, mouse, system control). Consumer, Telephony and
-  vendor pages are not protected, so undeclared report IDs on this device should not count as protected. **To
-  verify in the UI stage:** that `sendReport(0xAA, …)` resolves on macOS Chrome.
+  vendor pages are not protected, so undeclared report IDs on this device should not count as protected.
+  **Verified (§11.7):** `sendReport(0xAA, …)` resolves on macOS Chrome and the device applies the setting.
 - tsconfig: `"types": [..., "w3c-web-hid"]` (added to `tsconfig.app.json`).
 
 ### 2.6 Transfer pacing and timeouts (sources)
@@ -377,8 +378,8 @@ Start-up sequences the apps use:
 
 ### 5.3 Notifications
 
-There are none outside OTA. Connection, battery, button mute, charging and settings changed on the hardware are
-seen only through the heartbeat poll (A `C6118RuntimeSession.consumeRuntimeNotification`, which only handles
+There are none outside OTA. Connection, battery, mute, charging, TX button presses (on the A2 the button toggles
+noise cancellation, §11.7), docking and settings changed on the hardware are seen only through the heartbeat poll (A `C6118RuntimeSession.consumeRuntimeNotification`, which only handles
 poll replies). `HIP_6501_DEVWARNING = 0x0A` is declared, but no class implements it, and iOS ignores `0x0A`
 and `0x0F`. L: a 3 s passive listen saw 0 IN reports at the driver. The library still applies any unsolicited
 `0x10` frame and emits every other unexpected frame as `unsolicited`.
@@ -417,12 +418,12 @@ reports volume 0, mono, auto-off on, LED on or a bogus noise level (`Heartbeat61
 
 | body | frame | iOS off | Field | Decoding |
 |---|---|---|---|---|
-| 0 | 6 | 4 | TX1 online | `== 1` |
-| 1 | 7 | 5 | TX2 online | `== 1` |
+| 0 | 6 | 4 | TX1 online | `== 1`. A TX docked in the charging case reports 0 (L §11.7). |
+| 1 | 7 | 5 | TX2 online | `== 1` (as body[0]) |
 | 2 | 8 | 6 | TX1 battery | percent |
 | 3 | 9 | 7 | TX2 battery | percent |
 | 4–5 | 10–11 | 8–9 | not decoded on 6118. M2 "uvValue" (signed b4·256 + b5). | – |
-| 6 | 12 | 10 | noise level | 0 = NC off, 1 Weak, 2 Medium, 3 Strong. `noiseEnabled = level != 0`. iOS accepts only < 4 (`isHeartbeatNoiseLevelValid:` @0x1000bafac). |
+| 6 | 12 | 10 | noise level | 0 = NC off, 1 Weak, 2 Medium, 3 Strong. `noiseEnabled = level != 0`. iOS accepts only < 4 (`isHeartbeatNoiseLevelValid:` @0x1000bafac). The level kept while NC is off is not visible here; turning NC on (0x19 or the TX button) brings back the last level used (L §11.7). |
 | 7 | 13 | 11 | RX volume step | 0–5 (A2), 0–2 (A2S) |
 | 8 | 14 | 12 | volume lock byte. Android ignores it on 6118. iOS copies `!= 0` into `volumeLocked` for every deviceType ≥ 3, the A2 included (`handleHeartbeatEntity:` @0x1000bc474), but no A2 view reads it. Exposed as `lockByte`, not applied. | – |
 | 9 | 15 | 13 | channel mode | 0 Mono, 1 Stereo, 2 Safety track |
@@ -430,7 +431,7 @@ reports volume 0, mono, auto-off on, LED on or a bogus noise level (`Heartbeat61
 | 11–12 | 17–18 | 15–16 | not decoded on 6118. M2S custom buttons. | – |
 | 13 | 19 | 17 | LED | `== 0` → LED **on** (A `== 0`; I `setLightEnabled:(lightStatus ^ 1)` @0x1000bc614) |
 | 14 | 20 | 18 | voice preset | bit0 = enabled, bits1–7 = preset (0 Bright, 1 Low, 2 Balance). iOS calls these `eqSwitch` / `eqMode`. |
-| 15 | 21 | 19 | flags | bit0 TX1 muted, bit1 TX2 muted, bit2 TX1 charging, bit3 TX2 charging, bit4 camera-RX charging (A `LEGACY_6118_*_MASK`). iOS applies them only when `+[HLDeviceUtils isConnect6118Device]` (@0x1000bc628). |
+| 15 | 21 | 19 | flags | bit0 TX1 muted, bit1 TX2 muted, bit2 TX1 charging, bit3 TX2 charging, bit4 camera-RX charging (A `LEGACY_6118_*_MASK`). iOS applies them only when `+[HLDeviceUtils isConnect6118Device]` (@0x1000bc628). The A2 TX button does **not** set the mute bits (it toggles NC, L §11.7); what does is open (§13). |
 | 16 | 22 | 20 | camera-RX battery | percent (A2S only, `shouldShowRxCameraStatus`) |
 | ≥17 | | | unknown | `Heartbeat6118.unknown` exposes these |
 
@@ -474,7 +475,7 @@ Columns:
 | 0x08 | DEVICE_ID_GET | R (OTA prep) | 40/41/42 | `AA DD 08 4t 00 01 0t` | payload[0] = devId | A `CmdGetDeviceId6118.encodeLegacyPayload` repeats the target. iOS sends an empty payload for the RX. |
 | 0x11 | NOISE_LEVEL_GET | R | 40 | `AA DD 11 40 00 00` | **Unresolved.** Android: bit7 = enabled, bits0–6 = level, level = `enabled ? b & 0x7F : 0`, clamped 0..3. iOS: level = raw byte, NC on = raw > 0 (no bit7, no range check). They agree only for `00` (the live reply with NC off). The library takes 6118 noise state from the heartbeat, never from 0x11; `parseNoiseLevelGet6118` returns both readings and `agree`. | A `CmdGetNoiseLevel6118` (the A2 UI never sends 0x11); I `messageForNoiseLevel:` @0x1000d9eb0, `handleNoiseLevelEvent:` block @0x1000bd034 |
 | 0x06 | NOISE_LEVEL_SET | W | 40 | `AA DD 06 40 00 01 LL` (LL 1–3) | set-ack | A `CmdSetNoiseLevel6118` (coerceIn 0..3). UI levels: `blemic/device/DeviceConnectVariable.NoiseLevel`. |
-| 0x19 | NOISE_TOGGLE | W, **toggle** | 40 | `AA DD 19 40 00 01 02` (always 02) | set-ack (Android); iOS shows "设置成功" whatever payload[0] is and uses the flag only to clear the protect window (@0x1000bcc48) | A `CmdSetNoiseSwitch6118` (`LEGACY_6118_NOISE_SWITCH_TOGGLE = 2`, isOpen ignored). I codec @0x10011b9fc case 0x19 ignores `isOn`. The library judges the result from the heartbeat read right after. |
+| 0x19 | NOISE_TOGGLE | W, **toggle** | 40 | `AA DD 19 40 00 01 02` (always 02) | set-ack (Android); iOS shows "设置成功" whatever payload[0] is and uses the flag only to clear the protect window (@0x1000bcc48) | A `CmdSetNoiseSwitch6118` (`LEGACY_6118_NOISE_SWITCH_TOGGLE = 2`, isOpen ignored). I codec @0x10011b9fc case 0x19 ignores `isOn`. The library judges the result from the heartbeat read right after. L §11.7: switching on restores the last level used; the TX button flips the same state. |
 | 0x04 | VOLUME_GET | R | 40 | `AA DD 04 40 00 00` | b0 = step | A `CmdGetVoiceLevel6118` |
 | 0x05 | VOLUME_SET | W | 40 | `AA DD 05 40 00 01 VV` (0–5; 0–2 on A2S) | set-ack | A `CmdSetVoiceLevel6118`, `homeRxVolumeStepCount`. UI default index 3. |
 | 0x18 | CHANNEL_MODE_SET | W | 40 | `AA DD 18 40 00 01 MM` (0 mono, 1 stereo, 2 safety) | set-ack | A `C6118DeviceActivity.setupVoiceModeActions` (0/1/2). R `c6118_safe_track` = "SafeTr". |
@@ -502,7 +503,8 @@ Columns:
 (`messageForConfigResponse:command:` @0x1000da000). The library reports that case as `{ ok: false, code: null }`
 so the UI can decide.
 
-There is **no** command for TX mute (button only), per-TX gain, low-cut, or starting pairing (A §4 tail; I §6).
+There is **no** command for TX mute, per-TX gain, low-cut, or starting pairing (A §4 tail; I §6). On the A2 the TX
+button toggles noise cancellation, not mute (L §11.7), so how a TX gets muted is open (§13).
 
 ---
 
@@ -759,6 +761,30 @@ One 64-byte zero-padded reply per request (not two), no unsolicited packets duri
 | `aa dd 38 40 00 00` (M2S command) | `bb dd 38 80 00 02 00 00` | the A2 answers it with zeros |
 | `41 aa dd 10 40 …` | none | report-0x41 prefix rejected |
 
+### 11.7 Verified on hardware (LARK A2, firmware 3.0.2.008, macOS, Chrome, 2026-11-05)
+
+The user tested Mic Console on the LARK A2 in two ways:
+
+- first over WebHID (write-only, §2.4);
+- then through the local bridge (`docs/BRIDGE.md`, root libusb as in §11.6), which shows the heartbeat live.
+
+| What | Path | Observed | Consequence |
+|---|---|---|---|
+| WebHID writes on macOS | Chrome WebHID, write-only | `sendReport(0xAA, 63 B)` resolves. Indicator Light Switch (0x39) switched the mic LEDs. Channel Mode (0x18) Stereo/Mono changed the channels of the receiver's USB audio (seen in the level meters). | macOS send ✅ (§2.4). Open question 2 is answered for macOS. |
+| Live state through the bridge | bridge | Full live readback: heartbeat, versions, serials and settings, the same as on a two-way transport. | Full control on macOS is possible, with the audio trade-off in the next row. |
+| USB audio while the bridge runs | bridge | The receiver gives no USB audio while the bridge holds it. Audio returns after the bridge hands the device back. | On macOS, libusb's driver detach captures the **whole** device, the audio interfaces 1 and 3 included. This is expected and can't be avoided (`docs/BRIDGE.md`). |
+| TX button press | bridge, heartbeat | Pressing the button on either transmitter **toggles noise cancellation**: body[6] flips between 0 and a level. The mute bits (body[15] bit0/1) stay 0. No IN report arrives except the polled replies. | On the A2 the button is an NC toggle, not mute (§5.3, §6.1, §7). NC is RX-global, so the button on either TX flips the same state. The UI follows on the next heartbeat. |
+| Docking a TX | bridge, heartbeat | A TX put into the charging case goes **offline**: its online byte (body[0]/[1]) becomes 0. | The UI shows a docked mic as not connected. Whether the charging bits are ever set is open (§13). |
+| NC off → on | bridge, heartbeat | Turning NC on **restores the last level used**. Weak, then off, then on gives Weak again; the same with Medium. The first enable in the session showed Medium (2). | The RX keeps the level while NC is off, when body[6] reads 0. After a toggle, take the level from the heartbeat and never assume one. Medium may be the factory default or a level stored earlier (§13). |
+| Unsolicited packets | bridge | None. Every IN packet answered a request. Button presses and docking showed up only in the next heartbeat. | Agrees with §5.3 and §11.6. |
+
+Not verified yet:
+
+- set-ack bytes;
+- TX-addressed heartbeats;
+- the Lark M2, LARK M2S and LARK A2S;
+- Chrome on Linux, ChromeOS and Windows.
+
 ---
 
 ## 12. Triage log
@@ -827,6 +853,10 @@ One 64-byte zero-padded reply per request (not two), no unsolicited packets duri
 | 60 | Confirming re-reads | 0x3E 150 ms after every 0x3D; 0x13 150 ms after a **failed** 0x12 only | – | **Partly confirmed** (the speaker re-read is only after a failure), implemented | A `MoreSetting6118ViewModel.scheduleSmartBatteryRefresh`, `scheduleAutoSpeakerRefresh`, `handleSpeakerSettingResponse` |
 | 61 | Session rebuild after factory reset | `startFactoryResetRuntimeRecovery` (shutdown, 1 s, `ensureSessionActive`) | – | **Partly refuted:** the method has no call site in 3.1.0 (`handleFactoryResetResponse` only updates the UI). Implemented anyway as a read-only refresh 1 s after a successful reset | A `MoreSetting6118ViewModel` |
 | 62 | Heartbeat pause during OTA | nested `pauseCount`, `C6118OtaTrafficGate` | – | **Confirmed:** `pauseHeartbeat`/`resumeHeartbeat` now nest; nothing ties them to OTA because OTA is not implemented | A `C6118RuntimeSession.pauseHeartbeat/resumeHeartbeat`, `C6118OtaTrafficGate` |
+| 63 | A2 TX button | mute shown read-only; no A2 mute command | – | **Live (L §11.7):** the button toggles NC (heartbeat body[6]); the mute bits stay 0. Mute stays read-only in the UI, and the UI says the button toggles NC | L §11.7 |
+| 64 | NC level after switching on | – | – | **Live:** the RX restores the last level used; the first enable in the session showed Medium | L §11.7 |
+| 65 | Docked TX | – | – | **Live:** online byte 0 (offline), not "charging" | L §11.7 |
+| 66 | WebHID writes on macOS | – | – | **Live:** `sendReport(0xAA, 63 B)` resolves and the setting is applied (LED, channel mode). Closes open question 2 for macOS | L §11.7 |
 
 ---
 
@@ -834,22 +864,31 @@ One 64-byte zero-padded reply per request (not two), no unsolicited packets duri
 
 1. **Replies that are still unseen.** §11.6 covers the A2's read-only replies. Still needed (Linux/ChromeOS or root
    libusb): set acks, TX-addressed heartbeats, the second IN report the macOS driver counts, and everything on
-   M2/M2S. `probe.ts sweep` / `probe.ts device` print them.
-2. **Chrome WebHID on macOS:** does `sendReport(0xAA, 63 B)` resolve, or does Chromium refuse an undeclared
-   output ID? (The UI stage has to test this with a user gesture.) On Windows, does it fail as expected?
+   M2/M2S. `probe.ts sweep` / `probe.ts device` print them. On macOS the local bridge can capture them too
+   (`npm run bridge -- --verbose` prints every packet).
+2. **Chrome WebHID:** answered for macOS (§11.7). `sendReport(0xAA, 63 B)` resolves and the writes take effect.
+   Still open: Windows. Do writes work there too, and are the replies dropped as expected?
 3. M2 / M2S HID descriptors: do they use report IDs at all? If not, receiving may work on macOS too.
 4. Does `0x06 [level]` turn NC on when it is off, or only change the stored level? Both apps refuse to send it
-   while NC is off (§5.4), so only a firmware test can tell.
+   while NC is off (§5.4), so only a firmware test can tell. §11.7 shows that the RX keeps the level while NC is off;
+   this question asks whether 0x06 also switches NC on.
 5. Meaning of heartbeat bytes 4–5, 8 and 11–12 on the 6118 (all 0 on the live A2), anything past byte 16, and
    0x16 payload bytes 1–8 (`00 00 06 01 01 5b 5c 00`; 5b/5c equal the TX batteries in the same session).
 6. Why the RX 0x15 serial (`RXSERIAL001`) is one character shorter than the USB iSerial (`RXSERIAL001B`).
 7. **M2/M2S volume range (#33):** does 0x05 accept 3..5, and what does heartbeat byte 7 report after it? Is the
    step a linear dB scale?
 8. **0x11 on the 6118 with NC on (#48):** bit7 + level (Android) or raw level (iOS)? Turn NC on on the device and read it.
+   This is now testable on macOS through the bridge.
 9. **0x34 reply on the Lark M2 (#49):** ack or new state after an unlock?
 10. Do 0x0C and 0x40 send their ack before the RX drops off USB?
 11. Which commands does the 6118 accept when addressed to TX1/TX2, beyond version, serial, device ID and OTA?
 12. OTA ack semantics on real hardware (needCount vs same-index resend, §10.2).
+13. **What sets the A2 mute bits** (heartbeat body[15] bit0/1)? A short press of the TX button toggles NC instead
+    (§11.7). A double or long press, or a mic setting? Not seen yet.
+14. **A2 charging bits** (body[15] bit2/3): a docked TX reports offline (§11.7). Are the bits set while a TX that is
+    switched on charges by cable, or never?
+15. **NC level default and persistence:** the first enable showed Medium (§11.7). Is that the factory default, or a
+    level stored before the session? Does the stored level survive a power cycle of the RX?
 
 ---
 
@@ -864,5 +903,7 @@ One 64-byte zero-padded reply per request (not two), no unsolicited packets duri
 | `src/lib/protocol/models.ts` | product registry, per-PID capability matrix, `firmwareGates`, `resolveFeatures` (§4) |
 | `src/lib/protocol/device.ts` | `HollylandDevice`: queue, correlation, timeouts/retries, heartbeat (nested pause), identity fetch, runtime `features`, typed getters and setters, `PreconditionError` (§5.4), protect window, read-backs, destructive gating, RX-unavailable mode, `onTraffic` |
 | `src/lib/protocol/mock.ts` | `MockTransport`, `SimulatedReceiver` (firmware model for tests and for UI work without hardware) |
+| `src/lib/protocol/bridge.ts` | `BridgeTransport` (WebSocket to the local USB bridge), `BridgeError`, wire types |
+| `scripts/bridge.ts`, `scripts/bridge-server.ts` | Local USB bridge: root libusb capture of interface 0, WebSocket relay with Origin/Host checks (`docs/BRIDGE.md`) |
 | `scripts/node-hid-transport.ts` | `NodeHidTransport`, `readDarwinHidCounters()` (macOS diagnostics) |
 | `scripts/probe.ts` | read-only CLI: `list`, `info`, `status`, `battery`, `settings`, `sweep`, `device`, `listen`, `raw` |

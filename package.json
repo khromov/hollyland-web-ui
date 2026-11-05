@@ -1,8 +1,42 @@
 {
-  "name": "hollyland-web-ui",
-  "private": true,
-  "version": "0.0.0",
+  "name": "mic-console",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Unofficial control panel for Hollyland LARK A2 / A2S / M2 / M2S wireless mics in your browser, with a local USB bridge for full read/write on macOS. Run: npx mic-console",
+  "keywords": [
+    "hollyland",
+    "lark",
+    "lark-a2",
+    "lark-m2",
+    "lark-m2s",
+    "wireless-microphone",
+    "microphone",
+    "webhid",
+    "usb",
+    "cli"
+  ],
+  "homepage": "https://github.com/khromov/hollyland-web-ui#readme",
+  "bugs": {
+    "url": "https://github.com/khromov/hollyland-web-ui/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/khromov/hollyland-web-ui.git"
+  },
+  "license": "MIT",
+  "author": "Stanislav Khromov",
   "type": "module",
+  "bin": {
+    "mic-console": "cli/mic-console.mjs"
+  },
+  "files": [
+    "cli/mic-console.mjs",
+    "cli/lib/",
+    "cli/dist/"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -17,28 +51,34 @@
     "dsp:compare": "tsx tools/dsp-harness/compare.ts",
     "typecheck:tools": "tsc -p tools/tsconfig.json && tsc -p tools/dsp-harness/browser/tsconfig.json",
     "bridge": "node scripts/bridge-launch.mjs",
-    "dsp:browser": "tsx tools/dsp-harness/browser-check.ts"
+    "dsp:browser": "tsx tools/dsp-harness/browser-check.ts",
+    "build:cli": "npm run build:cli:web && npm run build:cli:bridge",
+    "build:cli:web": "vite build --base / --outDir cli/dist/web --emptyOutDir",
+    "build:cli:bridge": "esbuild scripts/bridge.ts --bundle --platform=node --format=esm --target=node20 --external:usb --external:ws --legal-comments=none --log-level=warning --outfile=cli/dist/bridge.mjs",
+    "start": "node cli/mic-console.mjs",
+    "prepack": "npm run build:cli"
+  },
+  "dependencies": {
+    "usb": "^2.19.1",
+    "ws": "^8.22.1"
   },
   "devDependencies": {
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
+    "@lucide/svelte": "^1.68.0",
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
     "@tsconfig/svelte": "^5.0.8",
     "@types/node": "^24.19.2",
     "@types/w3c-web-hid": "^1.0.7",
     "@types/ws": "^8.18.2",
+    "esbuild": "^0.28.2",
     "node-hid": "^3.4.0",
     "puppeteer-core": "^25.16.0",
     "svelte": "^5.57.2",
     "svelte-check": "^4.7.7",
     "tsx": "^4.23.15",
     "typescript": "~6.0.3",
-    "usb": "^2.19.1",
     "vite": "^8.3.5",
-    "vitest": "^5.1.0",
-    "ws": "^8.22.1"
-  },
-  "dependencies": {
-    "@fontsource-variable/geist": "^5.3.0",
-    "@fontsource-variable/geist-mono": "^5.3.0",
-    "@lucide/svelte": "^1.68.0"
+    "vitest": "^5.1.0"
   }
 }
