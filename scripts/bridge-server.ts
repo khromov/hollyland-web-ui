@@ -3,7 +3,9 @@
  * security rules (Origin / Host checks, one client per channel) are unit-tested with a fake
  * receiver in src/lib/protocol/__tests__/bridge.test.ts. Protocol: src/lib/protocol/bridge.ts.
  *
- *  - listens on 127.0.0.1 only; paths /hid (64-byte packets) and, optionally, /iap2 (raw bytes)
+ *  - listens on 127.0.0.1 only; paths /hid (interrupt packets: exactly 64 bytes for the legacy
+ *    receivers, 1..maxOut bytes for receivers whose packet contract says so; see BridgePacketInfo
+ *    in src/lib/protocol/bridge.ts) and, optionally, /iap2 (raw bytes)
  *  - refuses upgrades whose Host header is not a loopback name with our port (DNS rebinding)
  *  - accepts pages from http(s)://localhost:*, http(s)://127.0.0.1:*, http(s)://[::1]:* and
  *    origins passed with --allow-origin; a refused page is closed with code 4003 so it can
@@ -13,7 +15,9 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { Duplex } from 'node:stream'
 import { WebSocket, WebSocketServer, type RawData } from 'ws'
-import { BRIDGE_CLOSE, type BridgeDeviceInfo, type BridgeServerMessage } from '../src/lib/protocol/bridge'
+import {
+  BRIDGE_CLOSE, LEGACY_BRIDGE_PACKET, type BridgeDeviceInfo, type BridgePacketInfo, type BridgeServerMessage,
+} from '../src/lib/protocol/bridge'
 
 export type BridgeChannel = 'hid' | 'iap2'
 
@@ -29,7 +33,7 @@ export interface BridgeServerOptions {
   allowNoOrigin?: boolean
   /** Serve /iap2 (raw bulk passthrough). */
   iap2?: boolean
-  /** Binary data from a client: exactly 64 bytes on 'hid', any length on 'iap2'. */
+  /** Binary data from a client: on 'hid' as the device's packet contract allows (legacy: exactly 64 bytes), any length on 'iap2'. */
   onClientData: (channel: BridgeChannel, data: Buffer) => void
   /** A client attached or left a channel. */
   onClientChange?: (channel: BridgeChannel, connected: boolean, origin: string | undefined) => void
@@ -37,7 +41,6 @@ export interface BridgeServerOptions {
 }
 
 const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]'])
-const HID_PACKET = 64
 
 /** "https://Example.com:443/" -> "https://example.com"; null when not an http(s) origin. */
 export function normalizeOrigin(origin: string): string | null {
@@ -104,6 +107,7 @@ export class BridgeServer {
   private readonly wss: WebSocketServer
   private readonly clients: Record<BridgeChannel, WebSocket | null> = { hid: null, iap2: null }
   private device: BridgeDeviceInfo | null = null
+  private packet: BridgePacketInfo = LEGACY_BRIDGE_PACKET
   private boundPort = 0
 
   constructor(opts: BridgeServerOptions) {
@@ -147,15 +151,24 @@ export class BridgeServer {
     })
   }
 
-  /** The receiver was captured (info) or lost (null). Tells connected clients. */
-  setDevice(info: BridgeDeviceInfo | null): void {
+  /**
+   * The receiver was captured (info) or lost (null). Tells connected clients. `packet` is the
+   * receiver's interrupt-OUT contract (default: exactly 64 bytes, the legacy receivers).
+   */
+  setDevice(info: BridgeDeviceInfo | null, packet: BridgePacketInfo = LEGACY_BRIDGE_PACKET): void {
     const had = this.device !== null
     this.device = info
+    this.packet = packet
     let msg: BridgeServerMessage
-    if (info) msg = { type: 'replugged', device: info }
+    if (info) msg = { type: 'replugged', device: info, packet }
     else if (had) msg = { type: 'unplugged' }
     else return
     for (const ch of ['hid', 'iap2'] as const) this.sendJson(ch, msg)
+  }
+
+  /** Current interrupt-OUT packet contract. */
+  get packetInfo(): BridgePacketInfo {
+    return this.packet
   }
 
   /** Relay one packet from the receiver to the channel's client. Returns false when nobody listens. */
@@ -266,9 +279,16 @@ export class BridgeServer {
         return
       }
       const buf = toBuffer(data)
-      if (channel === 'hid' && buf.length !== HID_PACKET) {
-        this.sendJson(channel, { type: 'error', message: `expected exactly ${HID_PACKET} bytes, got ${buf.length}` })
-        return
+      if (channel === 'hid') {
+        const { maxOut, fixed } = this.packet
+        if (fixed && buf.length !== maxOut) {
+          this.sendJson(channel, { type: 'error', message: `expected exactly ${maxOut} bytes, got ${buf.length}` })
+          return
+        }
+        if (!fixed && (buf.length < 1 || buf.length > maxOut)) {
+          this.sendJson(channel, { type: 'error', message: `expected 1..${maxOut} bytes, got ${buf.length}` })
+          return
+        }
       }
       if (!this.device) {
         this.sendJson(channel, { type: 'error', message: 'no receiver captured; packet dropped' })
@@ -293,6 +313,7 @@ export class BridgeServer {
       device: this.device,
       bridge: { version: this.opts.version, iap2: !!this.opts.iap2 },
       channel,
+      ...(channel === 'hid' ? { packet: this.packet } : {}),
     }
     ws.send(JSON.stringify(hello))
   }

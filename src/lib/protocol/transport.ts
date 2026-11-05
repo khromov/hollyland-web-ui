@@ -1,14 +1,19 @@
 /**
  * Transport abstraction. Higher layers (codec, device) never touch WebHID / node-hid directly.
  *
- * Contract (see docs/PROTOCOL.md §2):
- *  - `send(packet)` receives a complete wire packet exactly as the device must see it on the
- *    interrupt-OUT endpoint, i.e. the 64-byte buffer that starts with `AA DD` (or `55` for OTA
- *    data). The transport is responsible for mapping byte 0 onto its own API (WebHID:
- *    `sendReport(packet[0], packet.subarray(1))`, hidapi: `write(packet)`).
- *  - `onPacket` delivers every raw interrupt-IN packet with the leading byte restored, so a
- *    control reply arrives as `BB DD cmd src lenHi lenLo payload…` exactly like Android's
- *    `bulkTransfer` sees it.
+ * Contract (see docs/PROTOCOL.md §2, docs/FAMILIES.md §3.4):
+ *  - `send(frame)` receives one complete protocol frame exactly as the family's Android builder
+ *    produces it. For the legacy families that is the 64-byte buffer that starts with `AA DD`
+ *    (or `55` for OTA data); M3 frames start with report id 08 and are 64 or 512 bytes; MAX 2 /
+ *    MELO P1 frames are unpadded. The transport maps the frame onto its own API: report id and
+ *    padding to the declared report size (WebHID: `sendReport(frame[0], frame.subarray(1))`,
+ *    hidapi: `write(frame)`), feature reports, or GATT chunking.
+ *  - `onPacket` delivers every raw packet the device sent, with the leading byte restored, so a
+ *    legacy reply arrives as `BB DD cmd src lenHi lenLo payload…` exactly like Android's
+ *    `bulkTransfer` sees it. A packet may hold part of a frame (BLE notifications, multi-report
+ *    frames): the family's assembler reassembles.
+ *  - A synchronous transport (feature reports) emits the reply through `onPacket` before `send()`
+ *    resolves, so the engines need no special case.
  */
 import { Emitter } from './emitter'
 
@@ -29,6 +34,14 @@ export interface TransportCapabilities {
    * the undeclared report ID 0xBB, see PROTOCOL.md §2.4), `'unknown'` = try and see.
    */
   receive: 'yes' | 'no' | 'unknown'
+  /**
+   * Which pipe carries the frames (optional; added for the other families). 'interrupt' = HID
+   * input/output reports, 'feature' = SET/GET_REPORT, 'gatt' = Web Bluetooth, 'bridge' = the local
+   * root-libusb relay, 'mock' = in-memory.
+   */
+  link?: 'interrupt' | 'feature' | 'gatt' | 'bridge' | 'mock'
+  /** Largest frame `send()` accepts in one call (optional; legacy transports: 64). */
+  maxWrite?: number
 }
 
 export interface TransportEvents {
@@ -45,7 +58,7 @@ export interface Transport {
   readonly capabilities: TransportCapabilities
   open(): Promise<void>
   close(): Promise<void>
-  /** Send one 64-byte wire packet (byte 0 is 0xAA for control frames, 0x55 for OTA data). */
+  /** Send one complete frame (legacy: the 64-byte wire packet; byte 0 is 0xAA for control frames, 0x55 for OTA data). */
   send(packet: Uint8Array): Promise<void>
   onPacket(listener: (packet: Uint8Array) => void): () => void
   onDisconnect(listener: (reason?: Error) => void): () => void

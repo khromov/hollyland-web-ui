@@ -3,7 +3,9 @@
  * development without hardware (or on macOS, where the OS drops the real replies).
  *
  * The simulator implements the documented behaviour of the 6118 / 6301 / 6302 firmware
- * (PROTOCOL.md §6–§8). It is a model, not a capture: values are plausible, not real.
+ * (PROTOCOL.md §6–§8) and of the 6501 group (docs/research/families/legacy-6501.md: Lark C1 PID 1,
+ * C1 2nd gen PID 11, M1 2nd gen PID 12, Lark Mini PID 13). It is a model, not a capture: values are
+ * plausible, not real; nothing of the 6501 group has been seen on hardware.
  */
 import { decodeFrame, HEADER_SIZE, MAGIC1, PACKET_SIZE, RESPONSE_MAGIC0, Target, type DecodedFrame } from './codec'
 import { Cmd, type Family } from './commands'
@@ -96,6 +98,13 @@ export interface SimTx {
 export interface SimulatorOptions {
   family?: Family
   camera?: boolean
+  /**
+   * 6501 group: the USB PID, which selects the profile (legacy-6501.md §3, §7):
+   *  1  Lark C1: 6-byte heartbeat (the minimum Pro_get_heart accepts; [?] the firmware may send only that)
+   *  13 Lark Mini: 0x16 body[0] = 3 (I resolveDeviceHeaderImageWithPayload: @0x1000bd910)
+   *  11 / 12: 14-byte heartbeat like the Lark M2, 0x16 body[0] = 0
+   */
+  productId?: number
   /** Send each reply twice (the live A2 produces 2 IN reports per request). */
   duplicateReplies?: boolean
   /** Drop every reply (models macOS/Windows HID filtering). */
@@ -133,6 +142,10 @@ export class SimulatedReceiver {
   buttonColors = [1, 2]
   rxCamBattery = 77
   rxCamCharging = false
+  /** Truncate the heartbeat payload to this many bytes (6501 Lark C1: 6). null = the family's full layout. */
+  heartbeatLength: number | null = null
+  /** 0x16 body[0] (A2 live capture: 0; 2 = camera RX; 6501 Lark Mini: 3). null = the family default. */
+  deviceInfoVariant: number | null = null
 
   constructor(o: SimulatorOptions = {}) {
     this.family = o.family ?? '6118'
@@ -140,6 +153,18 @@ export class SimulatedReceiver {
     if (this.family !== '6118') {
       this.rxVersion = [2, 0, 0, 32, 0, 0]
       for (const t of this.tx) t.version = [2, 0, 0, 20, 0, 0]
+    }
+    if (this.family === '6501') {
+      // Invented values. "1.0.4.5" is the research example: parts[2] = 4 = TYPEC firmware line (isNew6501).
+      const pid = o.productId ?? 12
+      this.rxVersion = pid === 1 ? [1, 0, 4, 5, 0, 0] : [1, 0, 1, 8, 0, 0]
+      for (const t of this.tx) t.version = pid === 1 ? [1, 0, 4, 3, 0, 0] : [1, 0, 1, 6, 0, 0]
+      this.rxSerial = 'SIMC1RX00001'
+      // Not used by this group (views hidden): the firmware is assumed to report zeros.
+      this.channelMode = 0
+      this.buttons = [0, 0]
+      this.heartbeatLength = pid === 1 ? 6 : null
+      this.deviceInfoVariant = pid === 13 ? 3 : 0
     }
     this.duplicateReplies = o.duplicateReplies ?? false
     this.dropReplies = o.dropReplies ?? false
@@ -156,6 +181,11 @@ export class SimulatedReceiver {
   }
 
   heartbeatPayload(): number[] {
+    const full = this.fullHeartbeatPayload()
+    return this.heartbeatLength === null ? full : full.slice(0, this.heartbeatLength)
+  }
+
+  private fullHeartbeatPayload(): number[] {
     const [t1, t2] = this.tx
     if (this.family === '6118') {
       const flags = (t1.muted ? 1 : 0) | (t2.muted ? 2 : 0) | (t1.charging ? 4 : 0) | (t2.charging ? 8 : 0) | (this.rxCamCharging ? 16 : 0)
@@ -196,7 +226,7 @@ export class SimulatedReceiver {
         return encodeResponse(f.cmd, f.target, Array.from(u.serial, (ch) => ch.charCodeAt(0)))
       case Cmd.DEVICE_INFO_GET:
         // live A2: LEN 9 `00 00 00 06 01 01 5b 5c 00` (PROTOCOL.md §11.6); byte 0 = 2 on a camera RX
-        return encodeResponse(f.cmd, Target.RX, [this.camera ? 2 : 0, 0, 0, 6, 1, 1, 0x5b, 0x5c, 0])
+        return encodeResponse(f.cmd, Target.RX, [this.deviceInfoVariant ?? (this.camera ? 2 : 0), 0, 0, 6, 1, 1, 0x5b, 0x5c, 0])
       case Cmd.DEVICE_ID_GET:
         return encodeResponse(f.cmd, f.target, [0x10 + f.target])
       case Cmd.NOISE_LEVEL_GET:

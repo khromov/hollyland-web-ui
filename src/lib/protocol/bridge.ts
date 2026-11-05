@@ -9,9 +9,13 @@
  * transport receives replies everywhere (`capabilities.receive === 'yes'`).
  *
  * Wire protocol on ws://127.0.0.1:47321/hid:
- *   client -> bridge  binary   exactly one 64-byte interrupt-OUT packet (AA DD cmd dst …)
- *   bridge -> client  binary   one interrupt-IN packet exactly as read (BB DD cmd src …)
+ *   client -> bridge  binary   one interrupt-OUT transfer. Legacy receivers: exactly 64 bytes
+ *                              (AA DD cmd dst …). Other families: 1..packet.maxOut bytes as the
+ *                              hello's `packet` says (M3: 64 or 512 bytes starting with report id 08)
+ *   bridge -> client  binary   one interrupt-IN transfer exactly as read (BB DD cmd src …)
  *   bridge -> client  text     JSON: hello | unplugged | replugged | error (BridgeServerMessage)
+ *   hello / replugged carry `packet: { maxOut, fixed }` (absent from bridges before this field:
+ *   the client then assumes { maxOut: 64, fixed: true }, i.e. exactly 64 bytes)
  *   close codes       4001 another client is connected, 4003 origin refused,
  *                     4004 channel not available, 1001 bridge stopped
  *
@@ -22,6 +26,7 @@
 import { PACKET_SIZE } from './codec'
 import { Emitter } from './emitter'
 import { BaseTransport, TransportError, type TransportCapabilities, type TransportDeviceInfo } from './transport'
+import type { WebHidLinkSpec } from './core/types'
 
 export const BRIDGE_DEFAULT_PORT = 47321
 export const BRIDGE_DEFAULT_URL = `ws://127.0.0.1:${BRIDGE_DEFAULT_PORT}/hid`
@@ -153,18 +158,50 @@ export interface BridgeDeviceInfo {
   serialNumber?: string
 }
 
+/**
+ * Interrupt-OUT packet contract for the captured receiver (docs/FAMILIES.md §3.4).
+ *  fixed: true   every client packet must be exactly `maxOut` bytes (legacy: 64; the client pads)
+ *  fixed: false  1..maxOut bytes, relayed as one transfer at its own length (M3: up to 512)
+ */
+export interface BridgePacketInfo {
+  maxOut: number
+  fixed: boolean
+}
+
+/** What a bridge without the `packet` field accepts: exactly 64 bytes. */
+export const LEGACY_BRIDGE_PACKET: BridgePacketInfo = { maxOut: 64, fixed: true }
+
+/** Upper bound for variable-length frames (MAX 2 / MELO P1 USB frames are unpadded; libusb splits a transfer into max-size packets). */
+export const BRIDGE_MAX_VARIABLE_PACKET = 4096
+
+/**
+ * Packet contract for a captured receiver from its registry link (scripts/bridge.ts):
+ *  - legacy `byte0` link with 64-byte frames (or no link): exactly 64 bytes, as before
+ *  - numbered report id (M3: 08, frames 64 / 512): 1..largest frame size
+ *  - variable-length frames (MAX 2 / MELO P1): 1..BRIDGE_MAX_VARIABLE_PACKET
+ */
+export function bridgePacketForLink(link: WebHidLinkSpec | undefined, wMaxPacketSize = 64): BridgePacketInfo {
+  if (!link) return LEGACY_BRIDGE_PACKET
+  const largest = Math.max(0, ...(link.outSizes ?? []))
+  if (link.variableLength) return { maxOut: Math.max(BRIDGE_MAX_VARIABLE_PACKET, largest), fixed: false }
+  if (link.reportId === 'byte0' && largest <= PACKET_SIZE) return LEGACY_BRIDGE_PACKET
+  return { maxOut: Math.max(largest, wMaxPacketSize, PACKET_SIZE), fixed: false }
+}
+
 export interface BridgeHello {
   type: 'hello'
   /** null while the bridge has no receiver (unplugged or still capturing). */
   device: BridgeDeviceInfo | null
   bridge: { version: string; iap2?: boolean }
   channel?: 'hid' | 'iap2'
+  /** Packet contract for `device` (absent: LEGACY_BRIDGE_PACKET). */
+  packet?: BridgePacketInfo
 }
 
 export type BridgeServerMessage =
   | BridgeHello
   | { type: 'unplugged' }
-  | { type: 'replugged'; device: BridgeDeviceInfo }
+  | { type: 'replugged'; device: BridgeDeviceInfo; packet?: BridgePacketInfo }
   | { type: 'error'; message: string }
 
 export type BridgeErrorKind =
@@ -299,6 +336,14 @@ export function bridgeCloseError(code: number, reason: string, reachedServer: bo
   return new BridgeError('closed', `The bridge closed the connection${why}.`, { closeCode: code })
 }
 
+function parsePacket(raw: unknown): BridgePacketInfo {
+  if (!raw || typeof raw !== 'object') return LEGACY_BRIDGE_PACKET
+  const p = raw as Record<string, unknown>
+  const max = p.maxOut
+  if (typeof max !== 'number' || !Number.isInteger(max) || max < 1 || max > 1 << 16) return LEGACY_BRIDGE_PACKET
+  return { maxOut: max, fixed: p.fixed !== false }
+}
+
 function parseDevice(raw: unknown): BridgeDeviceInfo | null {
   if (!raw || typeof raw !== 'object') return null
   const d = raw as Record<string, unknown>
@@ -322,10 +367,12 @@ const WS_OPEN = 1
 
 export class BridgeTransport extends BaseTransport {
   readonly kind = 'bridge'
-  readonly capabilities: TransportCapabilities = { receive: 'yes' }
+  readonly capabilities: TransportCapabilities = { receive: 'yes', link: 'bridge', maxWrite: PACKET_SIZE }
   readonly url: string
   /** Bridge build from the last hello, e.g. { version: '1.0.0' }. */
   bridge: BridgeHello['bridge'] | null = null
+  /** Packet contract for the captured receiver (from hello / replugged). */
+  packet: BridgePacketInfo = LEGACY_BRIDGE_PACKET
 
   /** One live transport per URL, so a new connect() frees the bridge's single client slot. */
   private static readonly registry = new Map<string, BridgeTransport>()
@@ -438,10 +485,15 @@ export class BridgeTransport extends BaseTransport {
     const ws = this.ws
     if (!ws || ws.readyState !== WS_OPEN) throw new TransportError('the bridge connection is closed')
     if (!this.device) throw new BridgeError('unplugged', 'The receiver is not connected to the bridge right now.')
-    if (packet.length === 0 || packet.length > PACKET_SIZE) throw new TransportError(`packet length ${packet.length} not in 1..64`)
-    const out = new Uint8Array(PACKET_SIZE) // the bridge accepts exactly 64 bytes
-    out.set(packet)
-    ws.send(out)
+    const { maxOut, fixed } = this.packet
+    if (packet.length === 0 || packet.length > maxOut) throw new TransportError(`packet length ${packet.length} not in 1..${maxOut}`)
+    if (fixed) {
+      const out = new Uint8Array(maxOut) // legacy: the bridge accepts exactly 64 bytes
+      out.set(packet)
+      ws.send(out)
+    } else {
+      ws.send(packet.slice())
+    }
   }
 
   // ------------------------------------------------------------------------------ internals
@@ -553,6 +605,7 @@ export class BridgeTransport extends BaseTransport {
         const b = msg.bridge as { version?: unknown; iap2?: unknown } | undefined
         this.bridge = { version: typeof b?.version === 'string' ? b.version : 'unknown', iap2: b?.iap2 === true }
         const d = parseDevice(msg.device)
+        this.setPacket(msg.packet)
         this.setDevice(d)
         this.debug(
           `bridge ${this.bridge.version} at ${this.url}: ` +
@@ -572,6 +625,7 @@ export class BridgeTransport extends BaseTransport {
       case 'replugged': {
         const d = parseDevice(msg.device)
         if (!d) return
+        this.setPacket(msg.packet)
         this.setDevice(d)
         this.debug('bridge: receiver captured again')
         const info = this.info
@@ -584,6 +638,11 @@ export class BridgeTransport extends BaseTransport {
       default:
         this.debug(`bridge sent unknown message type ${String(msg.type)}`)
     }
+  }
+
+  private setPacket(raw: unknown): void {
+    this.packet = parsePacket(raw)
+    this.capabilities.maxWrite = this.packet.maxOut
   }
 
   private setDevice(d: BridgeDeviceInfo | null): void {

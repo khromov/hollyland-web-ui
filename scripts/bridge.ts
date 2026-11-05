@@ -6,11 +6,14 @@
  *
  * What it does (needs root):
  *  1. listens on ws://127.0.0.1:<port>/hid (loopback only, Origin + Host checks, one client)
- *  2. finds a supported receiver (VID 0x3547 / 0x4417, PIDs from src/lib/protocol/models.ts),
- *     detaches the OS drivers (on macOS this takes the WHOLE receiver: its USB audio pauses),
- *     claims the HID control interface (interface 0: interrupt IN 0x82 / OUT 0x03)
- *  3. relays every interrupt-IN packet to the client and every 64-byte client packet to the
- *     interrupt-OUT endpoint, byte for byte; re-captures the receiver after an unplug/restart
+ *  2. finds a supported receiver (VID 0x3547 / 0x4417, connectable PIDs with an interrupt HID link
+ *     from the registry in src/lib/protocol/models.ts), detaches the OS drivers (on macOS this
+ *     takes the WHOLE receiver: its USB audio pauses), claims the HID control interface
+ *     (interface 0: interrupt IN 0x82 / OUT 0x03)
+ *  3. relays every interrupt-IN packet to the client and every client packet to the interrupt-OUT
+ *     endpoint, byte for byte (legacy receivers: exactly 64 bytes; other families: the packet
+ *     contract sent in the hello, see bridgePacketForLink); re-captures the receiver after an
+ *     unplug/restart
  *  4. always hands the receiver back to the OS on exit (Ctrl+C, SIGTERM, crashes)
  *
  * --iap2 additionally claims interface 7 (vendor class, bulk IN 0x83 / OUT 0x02) and relays raw
@@ -26,8 +29,10 @@
 import { createRequire } from 'node:module'
 import type * as UsbTypes from 'usb'
 import { BridgeServer, hex4, isLoopbackOrigin, normalizeOrigin } from './bridge-server'
-import { BRIDGE_DEFAULT_PORT, type BridgeDeviceInfo } from '../src/lib/protocol/bridge'
-import { EAGLESHERO_VENDOR_ID, HOLLYLAND_VENDOR_ID, PRODUCTS } from '../src/lib/protocol/models'
+import { BRIDGE_DEFAULT_PORT, bridgePacketForLink, type BridgeDeviceInfo, type BridgePacketInfo } from '../src/lib/protocol/bridge'
+import {
+  EAGLESHERO_VENDOR_ID, HOLLYLAND_VENDOR_ID, PRODUCTS, isConnectableProduct, webHidLinkOf,
+} from '../src/lib/protocol/models'
 
 const BRIDGE_VERSION = '1.0.0'
 
@@ -173,9 +178,15 @@ interface Captured {
   info: BridgeDeviceInfo
   hid: Pipe
   iap2: Pipe | null
+  /** Interrupt-OUT packet contract sent to clients (legacy: exactly 64 bytes). */
+  packet: BridgePacketInfo
 }
 
-const SUPPORTED = PRODUCTS.filter((p) => p.family !== null && p.capabilities !== null)
+/**
+ * USB products the bridge captures: connectable registry rows with an interrupt HID link. While
+ * the other families are stubs this is exactly the LARK A2 / A2S / M2 / M2S set.
+ */
+const SUPPORTED = PRODUCTS.filter((p) => p.idKind !== 'app' && isConnectableProduct(p) && !!webHidLinkOf(p))
 
 function productName(vid: number, pid: number): string {
   return PRODUCTS.find((p) => p.vendorId === vid && p.productId === pid)?.name ?? `${hex4(vid)}:${hex4(pid)}`
@@ -275,7 +286,7 @@ class Bridge {
           (c.iap2 ? `; iAP2 interface ${c.iap2.number}, IN 0x${c.iap2.inEp.address.toString(16)} / OUT 0x${c.iap2.outEp.address.toString(16)}` : ''),
       )
       log('USB audio from this receiver is PAUSED until the bridge stops (Ctrl+C)')
-      this.server.setDevice(info)
+      this.server.setDevice(info, c.packet)
     } catch (e) {
       if (this.state === 'capturing') this.state = 'searching'
       const msg = errText(e)
@@ -335,7 +346,9 @@ class Bridge {
         manufacturer,
         serialNumber,
       }
-      const c: Captured = { device, info, hid, iap2 }
+      const row = PRODUCTS.find((p) => p.vendorId === dd.idVendor && p.productId === dd.idProduct)
+      const packet = bridgePacketForLink(row ? webHidLinkOf(row) : undefined, hid.outEp.descriptor.wMaxPacketSize)
+      const c: Captured = { device, info, hid, iap2, packet }
       this.startPoll(c, hid, Math.max(64, hid.inEp.descriptor.wMaxPacketSize))
       if (iap2) this.startPoll(c, iap2, Math.max(64, iap2.inEp.descriptor.wMaxPacketSize))
       return c

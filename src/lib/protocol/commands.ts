@@ -54,8 +54,21 @@ export const Cmd = {
 } as const
 export type CmdId = (typeof Cmd)[keyof typeof Cmd]
 
-export type Family = '6118' | '6301' | '6302'
+/**
+ * Legacy `AA DD` families HollylandDevice drives:
+ *  - 6118  LARK A2 / A2S
+ *  - 6301  Lark M2 (+ EAGLESHERO OEM)
+ *  - 6302  LARK M2S
+ *  - 6501  Lark C1 / C1 (2nd gen) / M1 (2nd gen) / Lark Mini. Same Android screen and `Pro_*` classes as
+ *          the Lark M2 (A larkc1/utils/OpenPageHelper.obtainUsbPageIntent → larkc1/HLDeviceActivity; the codec
+ *          constants are literally `Protocol.HIP_6501_*`), same iOS engine (I HL6501Engine). Only a few UI
+ *          rules differ (models.ts Capabilities 6501 fields; docs/research/families/legacy-6501.md).
+ */
+export type Family = '6118' | '6301' | '6302' | '6501'
+/** The A2 / M2 / M2S families (unchanged since before the 6501 group was added; see LEGACY_FAMILIES). */
 export const ALL_FAMILIES: readonly Family[] = ['6118', '6301', '6302']
+/** Every legacy family, the 6501 group included. */
+export const LEGACY_FAMILIES: readonly Family[] = ['6118', '6301', '6302', '6501']
 
 /**
  * Safety class.
@@ -88,14 +101,22 @@ const RX: readonly Target[] = [Target.RX]
 const ANY: readonly Target[] = [Target.RX, Target.TX1, Target.TX2]
 const A2: readonly Family[] = ['6118']
 const M2S: readonly Family[] = ['6302']
+/**
+ * Commands the 6501 group uses too (legacy-6501.md §5): sent by A larkc1/HLDeviceActivity
+ * (getDeviceVersion: 0x03 0x11 0x04 0x13 0x15 0x35; heartbeat 0x10; setters 0x06 0x05 0x12; 0x0C after
+ * 0x12; OTA 0x08 0x09 0x0D) or I +[HL6501Messenger getDeviceInitialInfo] @0x10008aa48 (0x16), plus the
+ * device-initiated OTA notifications. NOT for 6501: 0x19 NC toggle, 0x34 volume lock, 0x18 channel mode,
+ * 0x36 auto-off (registered, views hidden for these PIDs), 0x37-0x39 (M2S only).
+ */
+const WITH_6501: readonly Family[] = LEGACY_FAMILIES
 
 const c = (i: CommandInfo): CommandInfo => i
 
 export const COMMANDS: Readonly<Record<number, CommandInfo>> = {
   [Cmd.HEARTBEAT]: c({
-    id: Cmd.HEARTBEAT, name: 'HEARTBEAT', safety: 'read', families: ALL_FAMILIES, targets: RX, retrySafe: true,
-    description: 'Status poll: link, battery, mute/charge flags and all settings',
-    android: 'device6118/CmdGetHeart6118.decodeLegacyPayload; usbmic/protocol/Pro_get_heart.receiveData',
+    id: Cmd.HEARTBEAT, name: 'HEARTBEAT', safety: 'read', families: WITH_6501, targets: RX, retrySafe: true,
+    description: 'Status poll: link, battery, mute/charge flags and all settings. 6501: Lark C1 (PID 1) applies link/battery only; PIDs 11/12/13 also NC level and volume',
+    android: 'device6118/CmdGetHeart6118.decodeLegacyPayload; usbmic/protocol/Pro_get_heart.receiveData; larkc1/HLDeviceActivity.onEvent cmd 16 (`productId != 1`, `productId >= 8`), AnonymousClass8.run (every 3 s)',
     ios: '-[HLDeviceController sendHeartInfo] @0x1002c4998; -[HLHeartEntity initEntityWithData:] @0x1001fa17c',
   }),
   [Cmd.VERSION_GET]: c({
@@ -105,38 +126,38 @@ export const COMMANDS: Readonly<Record<number, CommandInfo>> = {
     ios: '+[HL6501Messenger sendGetDeviceInfoVersion:] @0x10008af00 (0x41 when isConnect6118Device); getNewVersionWithData: @0x1001fd054',
   }),
   [Cmd.VERSION_LEGACY_GET]: c({
-    id: Cmd.VERSION_LEGACY_GET, name: 'VERSION_LEGACY_GET', safety: 'read', families: ALL_FAMILIES, targets: ANY, retrySafe: true,
+    id: Cmd.VERSION_LEGACY_GET, name: 'VERSION_LEGACY_GET', safety: 'read', families: WITH_6501, targets: ANY, retrySafe: true,
     description: 'Firmware version, bytes joined with "."',
     android: 'usbmic/protocol/Pro_get_version.receiveData; device6118/CmdGetDeviceVersion6118 (formatLegacyVersion)',
     ios: 'getVersionWithData: @0x1001fd0f8',
   }),
   [Cmd.SERIAL_GET]: c({
-    id: Cmd.SERIAL_GET, name: 'SERIAL_GET', safety: 'read', families: ALL_FAMILIES, targets: ANY, retrySafe: true,
+    id: Cmd.SERIAL_GET, name: 'SERIAL_GET', safety: 'read', families: WITH_6501, targets: ANY, retrySafe: true,
     description: 'Serial number (ASCII, NUL terminated)',
     android: 'device6118/CmdGetDeviceSn6118 (asciiString); usbmic/protocol/Pro_get_sn',
     ios: 'messageForDeviceSN: @0x1000da26c',
   }),
   [Cmd.DEVICE_INFO_GET]: c({
-    id: Cmd.DEVICE_INFO_GET, name: 'DEVICE_INFO_GET', safety: 'read', families: ALL_FAMILIES, targets: RX, retrySafe: true,
-    description: 'RX variant (iOS only): payload[0] == 2 -> camera RX; on Lark M2 also LEN > 8',
-    ios: 'getDeviceInitialInfo block @0x10008ac88; -[HL6501Engine resolveDeviceHeaderImageWithPayload:] @0x1000bd910',
+    id: Cmd.DEVICE_INFO_GET, name: 'DEVICE_INFO_GET', safety: 'read', families: WITH_6501, targets: RX, retrySafe: true,
+    description: 'RX variant (iOS only): payload[0] == 2 -> camera RX; on Lark M2 also LEN > 8. 6501 group: no camera variant; payload[0] == 3 on a "lark m1 pro" = Lark Mini',
+    ios: 'getDeviceInitialInfo block @0x10008ac88; -[HL6501Engine resolveDeviceHeaderImageWithPayload:] @0x1000bd910 (type 5 + body[0] == 3 -> type 6 @0x1000bda24; types 0/1/2/4/6 fall through @0x1000bda88)',
   }),
   [Cmd.DEVICE_ID_GET]: c({
-    id: Cmd.DEVICE_ID_GET, name: 'DEVICE_ID_GET', safety: 'read', families: ALL_FAMILIES, targets: ANY, retrySafe: true,
+    id: Cmd.DEVICE_ID_GET, name: 'DEVICE_ID_GET', safety: 'read', families: WITH_6501, targets: ANY, retrySafe: true,
     description: 'OTA device id (1 byte). Request payload repeats the target index.',
     android: 'device6118/CmdGetDeviceId6118.encodeLegacyPayload; usbmic/protocol/Pro_get_devid',
     ios: 'sendGetDeviceInfoIDWithType: @0x10008b11c',
   }),
   [Cmd.NOISE_LEVEL_GET]: c({
-    id: Cmd.NOISE_LEVEL_GET, name: 'NOISE_LEVEL_GET', safety: 'read', families: ALL_FAMILIES, targets: RX, retrySafe: true,
+    id: Cmd.NOISE_LEVEL_GET, name: 'NOISE_LEVEL_GET', safety: 'read', families: WITH_6501, targets: RX, retrySafe: true,
     description: 'M2/M2S: signed level 0..2. 6118: Android decodes bit7 = NC on + bits0-6 = level, iOS reads the raw byte as the level (unresolved, see parseNoiseLevelGet6118)',
     android: 'device6118/CmdGetNoiseLevel6118 (never sent by the A2 UI); usbmic/protocol/Pro_get_noise',
     ios: 'sendGetDeviceNoiseLevel @0x10008b3e4; -[HL6501PacketParser messageForNoiseLevel:] @0x1000d9eb0',
   }),
   [Cmd.NOISE_LEVEL_SET]: c({
-    id: Cmd.NOISE_LEVEL_SET, name: 'NOISE_LEVEL_SET', safety: 'write', families: ALL_FAMILIES, targets: RX, retrySafe: true,
-    description: 'Noise-cancellation strength. 6118: 1..3 (Weak/Medium/Strong); M2/M2S: 1..2 (Low/Strong)',
-    android: 'device6118/CmdSetNoiseLevel6118 (coerceIn 0..3); usbmic/protocol/Pro_set_noise',
+    id: Cmd.NOISE_LEVEL_SET, name: 'NOISE_LEVEL_SET', safety: 'write', families: WITH_6501, targets: RX, retrySafe: true,
+    description: 'Noise-cancellation strength. 6118: 1..3 (Weak/Medium/Strong); M2/M2S/6501: 1..2 (Low/Strong)',
+    android: 'device6118/CmdSetNoiseLevel6118 (coerceIn 0..3); usbmic/protocol/Pro_set_noise; larkc1/HLDeviceActivity.onClick strong_level / low_level',
     ios: 'sendSetDeviceNoiseLevel: @0x10008b460; codec @0x10011b9fc',
   }),
   [Cmd.NOISE_TOGGLE]: c({
@@ -146,15 +167,15 @@ export const COMMANDS: Readonly<Record<number, CommandInfo>> = {
     ios: 'codec @0x10011b9fc case 0x19 (isOn ignored); -[HLLarkM2View noiseViewSwitchChanged:] @0x1000ccf58',
   }),
   [Cmd.VOLUME_GET]: c({
-    id: Cmd.VOLUME_GET, name: 'VOLUME_GET', safety: 'read', families: ALL_FAMILIES, targets: RX, retrySafe: true,
-    description: 'RX output volume step',
-    android: 'device6118/CmdGetVoiceLevel6118; usbmic/protocol/Pro_get_voice',
+    id: Cmd.VOLUME_GET, name: 'VOLUME_GET', safety: 'read', families: WITH_6501, targets: RX, retrySafe: true,
+    description: 'RX output volume (the wire value; on the Lark C1, PID 1, a button tag, see LARK_C1_VOLUME_WIRE)',
+    android: 'device6118/CmdGetVoiceLevel6118; usbmic/protocol/Pro_get_voice; larkc1/HLDeviceActivity.onEvent cmd 4 (updateVoiceGroupWithIndex selects the button whose tag equals the value)',
     ios: 'sendGetDeviceVoliceLevel @0x10008b4f0',
   }),
   [Cmd.VOLUME_SET]: c({
-    id: Cmd.VOLUME_SET, name: 'VOLUME_SET', safety: 'write', families: ALL_FAMILIES, targets: RX, retrySafe: true,
-    description: 'RX output volume step (0-based). A2 mobile 0..5, A2S camera 0..2, M2/M2S 0..5',
-    android: 'device6118/CmdSetVoiceLevel6118; c6118/ui/home/C6118DeviceActivityKt.homeRxVolumeStepCount',
+    id: Cmd.VOLUME_SET, name: 'VOLUME_SET', safety: 'write', families: WITH_6501, targets: RX, retrySafe: true,
+    description: 'RX output volume step (0-based). A2 mobile 0..5, A2S camera 0..2, M2/M2S/6501 0..5. Lark C1 (PID 1): buttons 1..6 send 5,4,3,0,1,2',
+    android: 'device6118/CmdSetVoiceLevel6118; c6118/ui/home/C6118DeviceActivityKt.homeRxVolumeStepCount; application/common/compatibility/DeviceCompat.getVoiceLevels; larkc1/HLDeviceActivity.onClickBtnGroup (sends the button tag)',
     ios: 'sendSetDeviceVoliceLevel: @0x10008b56c',
   }),
   [Cmd.CHANNEL_MODE_SET]: c({
@@ -196,13 +217,13 @@ export const COMMANDS: Readonly<Record<number, CommandInfo>> = {
     android: 'device6118/CmdGetSmartBattery6118', ios: 'sendGetDeviceEndurance @0x10008b710',
   }),
   [Cmd.SPEAKER_SET]: c({
-    id: Cmd.SPEAKER_SET, name: 'SPEAKER_SET', safety: 'write', families: ALL_FAMILIES, targets: RX, retrySafe: true,
+    id: Cmd.SPEAKER_SET, name: 'SPEAKER_SET', safety: 'write', families: WITH_6501, targets: RX, retrySafe: true,
     description: '"External speaker without unplugging" / phone speaker: 0 = on, 1 = off. Takes effect after RX restart (0x0C).',
-    android: 'device6118/CmdSetSpeaker6118; c6118/ui/setting/viewmodel/MoreSetting6118ViewModel.startSpeakerRestartCountdown',
+    android: 'device6118/CmdSetSpeaker6118; c6118/ui/setting/viewmodel/MoreSetting6118ViewModel.startSpeakerRestartCountdown; larkc1/HLDeviceActivity.onCreate voice_outgoing_switch listener (!z ? 1 : 0)',
     ios: 'sendSetDeviceVoiceOutStatus: @0x10008b5fc ([!on])',
   }),
   [Cmd.SPEAKER_GET]: c({
-    id: Cmd.SPEAKER_GET, name: 'SPEAKER_GET', safety: 'read', families: ALL_FAMILIES, targets: RX, retrySafe: true,
+    id: Cmd.SPEAKER_GET, name: 'SPEAKER_GET', safety: 'read', families: WITH_6501, targets: RX, retrySafe: true,
     description: 'payload[0] == 0 -> speaker passthrough on',
     android: 'device6118/CmdGetSpeaker6118', ios: 'messageForSpeakerStatus: (== 0)',
   }),
@@ -219,9 +240,9 @@ export const COMMANDS: Readonly<Record<number, CommandInfo>> = {
     ios: 'codec case 0x34; -[HL6501PacketParser messageForVoiceLockStatus:] @0x1000da44c',
   }),
   [Cmd.VOICE_LOCK_GET]: c({
-    id: Cmd.VOICE_LOCK_GET, name: 'VOICE_LOCK_GET', safety: 'read', families: ALL_FAMILIES, targets: RX, retrySafe: true,
-    description: 'payload[0] == 1 -> locked. Android sends it at M2/M2S start-up; iOS never sends it',
-    android: 'usbmic/protocol/Pro_get_voice_lock; HLDevice6302Activity.getDeviceVersion; device6118/CmdGetVoiceLock6118',
+    id: Cmd.VOICE_LOCK_GET, name: 'VOICE_LOCK_GET', safety: 'read', families: WITH_6501, targets: RX, retrySafe: true,
+    description: 'payload[0] == 1 -> locked. Android sends it at M2/M2S/6501 start-up (6501: the lock view is hidden, but onClickBtnGroup still refuses volume while it reads locked); iOS never sends it',
+    android: 'usbmic/protocol/Pro_get_voice_lock; HLDevice6302Activity.getDeviceVersion; larkc1/HLDeviceActivity.getDeviceVersion + onEvent cmd 53; device6118/CmdGetVoiceLock6118',
     ios: 'not sent; the parser jump table treats 0x35 as unhandled (@0x1000d9888)',
   }),
   [Cmd.BUTTON_CUSTOM_SET]: c({
@@ -236,9 +257,10 @@ export const COMMANDS: Readonly<Record<number, CommandInfo>> = {
     android: 'usbmic/protocol/Pro_get_btn_custom', ios: '-[HLKeyFuncController requestLightColor] @0x1000dea9c',
   }),
   [Cmd.RESTART_RX]: c({
-    id: Cmd.RESTART_RX, name: 'RESTART_RX', safety: 'disruptive', families: ALL_FAMILIES, targets: RX, retrySafe: false,
+    id: Cmd.RESTART_RX, name: 'RESTART_RX', safety: 'disruptive', families: WITH_6501, targets: RX, retrySafe: false,
     description: 'Reboots the receiver; USB disconnects and re-enumerates',
-    android: 'device6118/CmdRestartRx6118; usbmic/protocol/Pro_set_restart', ios: 'sendRestartRxDevice @0x10008b1f4',
+    android: 'device6118/CmdRestartRx6118; usbmic/protocol/Pro_set_restart; larkc1/HLDeviceActivity.mVoiceRunable (3 s after a successful 0x12)',
+    ios: 'sendRestartRxDevice @0x10008b1f4',
   }),
   [Cmd.REMOVE_PAIRING]: c({
     id: Cmd.REMOVE_PAIRING, name: 'REMOVE_PAIRING', safety: 'destructive', families: A2, targets: RX, retrySafe: false,
@@ -252,29 +274,30 @@ export const COMMANDS: Readonly<Record<number, CommandInfo>> = {
     android: 'device6118/CmdFactoryReset6118; MoreSetting6118ViewModel', ios: 'sendRestoreFactoryReset @0x10008b8b0',
   }),
   [Cmd.OTA_TX_ENTER]: c({
-    id: Cmd.OTA_TX_ENTER, name: 'OTA_TX_ENTER', safety: 'ota', families: ALL_FAMILIES, targets: [Target.TX1, Target.TX2], retrySafe: false,
+    id: Cmd.OTA_TX_ENTER, name: 'OTA_TX_ENTER', safety: 'ota', families: WITH_6501, targets: [Target.TX1, Target.TX2], retrySafe: false,
     description: 'Put a TX into firmware-upgrade mode: payload = devId from 0x08 (Android: 1 byte; iOS: the whole 0x08 payload)',
     android: 'device6118/CmdOtaTxUpgrade6118; usbmic/protocol/Pro_tx_upgrade',
     ios: '+[HL6501Messenger sendEnterUpgradeToDevice:devid:] @0x10008aea4; messageForDeviceInfoID: @0x1000d9abc',
   }),
   [Cmd.OTA_RX_ENTER]: c({
-    id: Cmd.OTA_RX_ENTER, name: 'OTA_RX_ENTER', safety: 'ota', families: ALL_FAMILIES, targets: RX, retrySafe: false,
+    id: Cmd.OTA_RX_ENTER, name: 'OTA_RX_ENTER', safety: 'ota', families: WITH_6501, targets: RX, retrySafe: false,
     description: 'Put the RX into firmware-upgrade mode (empty payload)', android: 'device6118/CmdOtaRxUpgrade6118; usbmic/protocol/Pro_rx_upgrade',
     ios: 'sendEnterUpgradeToDevice:devid: @0x10008aea4 (RX devId is empty)',
   }),
   [Cmd.OTA_PACKET_ACK]: c({
-    id: Cmd.OTA_PACKET_ACK, name: 'OTA_PACKET_ACK', safety: 'notify', families: ALL_FAMILIES, targets: ANY, retrySafe: false,
+    id: Cmd.OTA_PACKET_ACK, name: 'OTA_PACKET_ACK', safety: 'notify', families: WITH_6501, targets: ANY, retrySafe: false,
     description: 'Per-0x55-packet ack. Android: [ok, needCount BE16]; iOS reads only payload[0]',
     android: 'device6118/CmdOtaPacketAck6118; c6118/ui/setting/viewmodel/C6118FirmwareUpgradeViewModel.handlePacketAckFailure',
     ios: '-[HL6501PacketParser messageForUpgradePacketResponse:] @0x1000d9e08; -[HL6501UpgradeCoordinator onUpgradePacketResponse:] @0x1000b7c48',
   }),
   [Cmd.OTA_RESULT]: c({
-    id: Cmd.OTA_RESULT, name: 'OTA_RESULT', safety: 'notify', families: ALL_FAMILIES, targets: ANY, retrySafe: false,
-    description: 'Final upgrade result: [1 = ok]', android: 'device6118/CmdOtaUpgradeResult6118',
-    ios: 'onUpgradeResult:result: @0x1000b777c',
+    id: Cmd.OTA_RESULT, name: 'OTA_RESULT', safety: 'notify', families: WITH_6501, targets: ANY, retrySafe: false,
+    description: 'Final upgrade result: [1 = ok]. 6501: next unit after 25 s on the Lark C1 (PID 1), 5 s otherwise (documented only)',
+    android: 'device6118/CmdOtaUpgradeResult6118; larkc1/HLDeviceActivity.onEvent cmd 11 ((pid != 1 ? 5 : 25) * 1000)',
+    ios: 'onUpgradeResult:result: @0x1000b777c (type > 2 -> 5 s, else 25 s @0x1000b79ac)',
   }),
   [Cmd.DEVICE_WARNING]: c({
-    id: Cmd.DEVICE_WARNING, name: 'DEVICE_WARNING', safety: 'notify', families: ALL_FAMILIES, targets: ANY, retrySafe: false,
+    id: Cmd.DEVICE_WARNING, name: 'DEVICE_WARNING', safety: 'notify', families: WITH_6501, targets: ANY, retrySafe: false,
     description: 'HIP_6501_DEVWARNING; declared, never implemented (iOS parser ignores 0x0A/0x0F)',
     android: 'application/common/protocol/Protocol.HIP_6501_DEVWARNING = 10',
   }),
@@ -294,6 +317,33 @@ export function isReadOnlyCommand(cmd: number): boolean {
 }
 
 // ----------------------------------------------------------------------------------- enums
+
+/**
+ * Lark C1 (PID 1) volume buttons 1..6 -> wire value of 0x05 / 0x04: the button tags of
+ * A application/common/compatibility/DeviceCompat.getVoiceLevels(1) = [5, 4, 3, 0, 1, 2] (the layout
+ * default tags of res/layout/activity_hldevice.xml voice_1..voice_6 are the same). Every other PID uses
+ * [0..5]. iOS sends 0..2 for every 6501-engine type (HLLarkM2View voiceView @0x1000cf8c4), i.e. the
+ * top three Android buttons. The meaning (dB) is not documented; [?] 0 = 0 dB, 1/2 = +1/+2, 3/4/5 = -1/-2/-3.
+ */
+export const LARK_C1_VOLUME_WIRE: readonly number[] = [5, 4, 3, 0, 1, 2]
+
+/** UI volume step (0-based button index) -> wire value. Without a map the step is the wire value. */
+export function volumeStepToWire(step: number, wireValues?: readonly number[]): number {
+  if (!wireValues) return step
+  const v = wireValues[step]
+  if (!Number.isInteger(step) || v === undefined) throw new CommandError(`volume step must be an integer in 0..${wireValues.length - 1}, got ${step}`)
+  return v
+}
+
+/**
+ * Wire value (0x04 reply, heartbeat body[7]) -> UI step. A larkc1/HLDeviceActivity.updateVoiceGroupWithIndex
+ * selects the button whose tag equals the value; a value no button carries selects none (undefined).
+ */
+export function volumeWireToStep(wire: number, wireValues?: readonly number[]): number | undefined {
+  if (!wireValues) return wire
+  const i = wireValues.indexOf(wire)
+  return i < 0 ? undefined : i
+}
 
 /** 6118 noise cancellation level (heartbeat byte 6, 0x06/0x11). 0 = off. */
 export const NoiseLevel6118 = { OFF: 0, WEAK: 1, MEDIUM: 2, STRONG: 3 } as const
@@ -591,8 +641,12 @@ export interface ButtonAssignment {
   keyOp: number
 }
 
+/**
+ * M2 / M2S heartbeat, also the 6501 group's: A larkc1/HLDeviceActivity parses it with the same
+ * usbmic/protocol/Pro_get_heart (legacy-6501.md §4). What each family APPLIES differs (device.ts).
+ */
 export interface HeartbeatM2 {
-  family: '6301' | '6302'
+  family: '6301' | '6302' | '6501'
   /** muted / charging are always undefined: neither app decodes them on M2/M2S. */
   tx: [TxStatus, TxStatus]
   /** Signed 16-bit (b4*256 + b5, both signed as in Pro_get_heart); unused by the app. */
@@ -613,8 +667,11 @@ export interface HeartbeatM2 {
 
 const s8 = (v: number): number => (v > 127 ? v - 256 : v)
 
-/** usbmic/protocol/Pro_get_heart.receiveData (fields gated on payload length). */
-export function parseHeartbeatM2(p: Uint8Array, family: '6301' | '6302' = '6302'): HeartbeatM2 {
+/**
+ * usbmic/protocol/Pro_get_heart.receiveData (fields gated on payload length; the minimum it accepts is
+ * 6 bytes, `data.length >= 6`, which is what a Lark C1 may send: legacy-6501.md §7.1 [?]).
+ */
+export function parseHeartbeatM2(p: Uint8Array, family: '6301' | '6302' | '6501' = '6302'): HeartbeatM2 {
   const has = (i: number) => p.length > i
   const nib = (v: number): ButtonAssignment => ({ func: (v >> 4) & 0x0f, keyOp: v & 0x0f })
   // HLHeartEntity (@0x1001fa17c) reads the 6118 mute/charge byte (body[15]) for every device, but
@@ -825,10 +882,40 @@ export function parseDeviceInfo(
   p: Uint8Array,
   family: Family = '6118',
   lenLo: number = p.length & 0xff,
-): { variant: number; cameraRx: boolean; raw: Uint8Array } {
+  productId?: number,
+): { variant: number; cameraRx: boolean; mini: boolean; raw: Uint8Array } {
   const variant = at(p, 0)
-  const cameraRx = variant === 2 && (family !== '6301' || lenLo > 8)
-  return { variant, cameraRx, raw: p }
+  // 6501 group: resolveDeviceHeaderImageWithPayload: has no camera branch for types 0/1/2/4/6
+  // (fall-through @0x1000bda88). Only type 5 ("lark m1 pro") reads body[0]: == 3 means Lark Mini (type 6,
+  // `cmp x23, 5; b.eq 0x1000bda24` → `cmp x22, 3; cinc` @0x1000bda2c). Types 0/1/2/4 (C1, MAX, C1 TYPEC,
+  // C1 2nd gen) never read it. With `productId` the flag is therefore set only for the PIDs iOS sees as
+  // `lark m1 pro` (LARK_M1_PRO_PIDS); without it, body[0] == 3 is reported as is. Over USB the PID already
+  // tells PID 12 and 13 apart, so the flag is informational.
+  const cameraRx = family !== '6501' && variant === 2 && (family !== '6301' || lenLo > 8)
+  const mini = family === '6501' && variant === 3 && (productId === undefined || LARK_M1_PRO_PIDS.includes(productId))
+  return { variant, cameraRx, mini, raw: p }
+}
+
+/**
+ * USB PIDs whose receiver iOS identifies as `lark m1 pro` (deviceType 5): PID 12 (Lark M1 2nd gen) and PID 13
+ * (Lark Mini, which has no EA model of its own and becomes type 6 through 0x16 body[0] == 3). models.ts rows
+ * 12/13; I -[EADSessionManager setupControllerForAccessory:withProtocolString:] @0x10012477c.
+ */
+export const LARK_M1_PRO_PIDS: readonly number[] = [12, 13]
+
+/**
+ * Lark C1 firmware line (A application/httpcommon/utils/Util.isNew6501): at least 4 dot parts and
+ * parts[2] >= 4 = the USB-C ("TYPEC") firmware, whose packages are `6501RX_TYPEC` / `6501TX_TYPEC`
+ * (HlDevice.getDeviceCode); iOS turns `lark c1` (type 0) into type 2 when the second-to-last part
+ * is "4" (-[HL6501Engine updateDeviceTypeIfNeededByVersion:] @0x1000bd6ac). Informational only: it
+ * changes the firmware source and the iOS banner, no command.
+ */
+export function isNew6501(version: string | undefined): boolean {
+  if (!version) return false
+  const parts = version.split('.')
+  if (parts.length < 4) return false
+  const n = parseInt(parts[2], 10)
+  return Number.isFinite(n) && n >= 4
 }
 
 /** 0x08: Android keeps the first byte (CmdGetDeviceId6118 take(1)); iOS keeps the whole payload as the devId. */
@@ -881,10 +968,11 @@ export function describePayload(cmd: number, direction: 'request' | 'response', 
       case Cmd.VOICE_LOCK_GET:
         return `${name} on=${parseFlagIsOne(payload)}`
       case Cmd.VOLUME_GET:
-        return `${name} step=${parseByte0(payload)}`
+        // 6501: a wire value (the Lark C1 maps it through LARK_C1_VOLUME_WIRE; the others use it as the step).
+        return `${name} ${family === '6501' ? 'wire' : 'step'}=${parseByte0(payload)}`
       case Cmd.DEVICE_INFO_GET: {
         const d = parseDeviceInfo(payload, family)
-        return `${name} variant=${d.variant} cameraRx=${d.cameraRx}`
+        return `${name} variant=${d.variant} ${family === '6501' ? `mini=${d.mini}` : `cameraRx=${d.cameraRx}`}`
       }
       case Cmd.DEVICE_ID_GET:
         return `${name} id=${hex8(parseDeviceId(payload).id)}`

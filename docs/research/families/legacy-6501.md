@@ -93,7 +93,7 @@ the app shows "当前APP无法支持该设备,请进行APP升级". Routing: `+[H
 | `lark c1` | 0 | @0x100124954 | "Lark C1" (case 0 @0x100321170) | "悦声S1" (en.lproj maps it to "LARK C1") | none from the cloud API. iOS uses the legacy JSON `https://appupgrade.blob.core.windows.net/6501json/6501upgrade.json` (`getDeviceLastestVersionWithType:block:` @0x10009505c, type 0 only). |
 | (derived from `lark c1`) | **2** | `-[HL6501Engine updateDeviceTypeIfNeededByVersion:]` @0x1000bd6ac: type 0 and the second-to-last version component equals `"4"` → `setDeviceType:2` @0x1000bd760 | "Lark C1" (case 2 = case 0) | "悦声S1" | `6501TX_TYPEC` / `6501RX_TYPEC` |
 | `lark m1 pro` | 5 | @0x1001249a4 | "Lark M1" (case 5 @0x100321324) | "Lark M1(二代)" | `6502PROTX` / `6502PRORX` |
-| (derived from `lark m1 pro`) | **6** | `-[HL6501Engine resolveDeviceHeaderImageWithPayload:]` @0x1000bd910: type 5 and the `0x16` reply byte at iOS offset 4 (= body[0]) == 3 → type 6 (`cinc` @0x1000bda2c, `setDeviceType:` @0x1000bda48) | "Lark Mini" (case 6 @0x100321380) | same | `6502JFTX` / `6502JFRX` |
+| (derived from `lark m1 pro`) | **6** | `-[HL6501Engine resolveDeviceHeaderImageWithPayload:]` @0x1000bd910: type 5 and the `0x16` reply byte at iOS offset 4 (= body[0]) == 3 → type 6 (`cinc` @0x1000bda2c, `setDeviceType:` @0x1000bda48). Only type 5 reads that byte (`cmp x23, 5; b.eq` @0x1000bd994); types 0/1/2/4 fall through @0x1000bda88, so `commands.ts parseDeviceInfo` sets `mini` only for PIDs 12/13 when given the PID | "Lark Mini" (case 6 @0x100321380) | same | `6502JFTX` / `6502JFRX` |
 | `lark c1 pro` | 4 | @0x1001249f4 | "Lark C1" (case 4 @0x100321270) | "悦声S1(二代)" | `6501PROTX` / `6501PRORX` |
 | `lark m2s` | 7 | @0x100124a44 | "LARK M2S" | "LARK M2" | 6302 (in scope elsewhere) |
 | `lark a2`, `lark a2s` | 8 (9 = camera via `0x16`) | @0x100124c20 / @0x100124c84 | "LARK A2" | "LARK A2/A2S" | 6118 (in scope elsewhere) |
@@ -229,7 +229,12 @@ There is no handshake or authentication. Android (`HLDeviceActivity`) does the f
      (`handleHeartbeatEntity:` block, `cmp x22,3; b.lt` @0x1000bc474). For PID 1 the heartbeat therefore carries
      link and battery only, as far as either app is concerned.
    - **PIDs 11/12/13** (≥ 8): noise level (body[6]) and volume (body[7]) are applied. Mode, auto-off and lock are
-     parsed but their views are hidden. iOS types 4/5/6 (≥ 3) apply noise, volume and lock.
+     parsed but their views are hidden. iOS types 4/5/6 (≥ 3) apply noise, volume and lock, but the NC level and
+     switch only when `-[HL6501Engine isHeartbeatNoiseLevelValid:]` holds (@0x1000bafac: `cmp x2, 4; cset lo`, i.e.
+     body[6] < 4; called @0x1000bc4ac, `setNoiseLevel:` / `setNoiseSwitch:` skipped by `cbz w22` @0x1000bc4c4).
+     Mic Console follows iOS: an out-of-range byte is ignored instead of reading as "NC on" (device.ts, added
+     2026-11-05 in the Phase 0/1 review). The same iOS check covers the M2 (type 3) and M2S (type 7); the library
+     leaves those families unchanged until the M2 hardware test.
    - **PID 11 / type 4:** TX1 and TX2 battery/online are swapped for display (§7.2).
 5. TX comes online (heartbeat edge) → `0x03` and `0x15` to that TX. For TX2 this is delayed 1 s by a `Timer`.
    TX goes offline → the toast "Mic1/Mic2 Disconnected" and the cached version, SN and MAC for it are cleared

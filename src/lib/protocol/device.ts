@@ -1,6 +1,8 @@
 /**
  * HollylandDevice: high-level, transport-agnostic controller for LARK A2 / A2S (6118),
- * Lark M2 (6301) and LARK M2S (6302) receivers. See docs/PROTOCOL.md §5 (session) and §9.
+ * Lark M2 (6301), LARK M2S (6302) and the 6501 group (Lark C1, C1 2nd gen, M1 2nd gen, Lark Mini)
+ * receivers. See docs/PROTOCOL.md §5 (session) and §9; the 6501 rules come from the product's
+ * Capabilities (models.ts, docs/research/families/legacy-6501.md §8).
  *
  *  - one request in flight at a time (the firmware has no transaction ids; replies echo the
  *    command byte, so correlation is by command + source unit)
@@ -24,11 +26,15 @@ import {
   Cmd, COMMANDS, CommandError, Requests, commandName, describePayload, isReadOnlyCommand, isVersionMissing,
   parseButtonColors, parseDeviceId, parseDeviceInfo, parseFlagIsOne, parseHeartbeat, parseNoiseLevelGet6118,
   parseNoiseLevelGetM2, parseNoiseSetM2, parseSerial, parseSetAck, parseSpeakerGet, parseVersion6118, parseVersionLegacy,
-  parseVoiceLockSetReply,
+  parseVoiceLockSetReply, volumeStepToWire, volumeWireToStep,
   type ButtonAssignment, type Family, type Heartbeat, type SetAck,
 } from './commands'
 import { Emitter } from './emitter'
-import { resolveFeatures, resolveProduct, type Capabilities, type FeatureGateState, type GatedFeature, type ProductInfo } from './models'
+import {
+  HOLLYLAND_VENDOR_ID, LEGACY_PRODUCTS, displayName, familyCodeOf, resolveFeatures, resolveProduct, unknownProduct,
+  type Capabilities, type FeatureGateState, type GatedFeature, type ProductInfo,
+} from './models'
+import { isLegacyFamilyCode } from './core/ids'
 import type { Transport } from './transport'
 
 // ------------------------------------------------------------------------------------ types
@@ -44,6 +50,12 @@ export interface UnitInfo {
   battery?: number
   charging?: boolean
   muted?: boolean
+  /**
+   * Display name when it is not the default "Mic1" / "Mic2" order. Lark C1 2nd gen (PID 11): the unit
+   * addressed as TX1 is shown as "Mic2" and TX2 as "Mic1" (Capabilities.txLabelSwap; R mic1 / mic2).
+   * Display only: `target` and the wire address never change.
+   */
+  label?: string
 }
 
 export interface Settings {
@@ -64,6 +76,13 @@ export interface Settings {
   rxVariant?: number
   /** 0x16 decoded with the iOS rule for this family (Lark M2 also needs LEN > 8). The PID stays authoritative. */
   rxCameraByDeviceInfo?: boolean
+  /** 6501 only: 0x16 body[0] == 3, which iOS reads as "Lark Mini" on a `lark m1 pro`. The PID stays authoritative. */
+  rxMiniByDeviceInfo?: boolean
+  /**
+   * Products with a volume wire map (Lark C1): the last wire value read or written; `volume` is then the
+   * button index (0-based). Absent for every other product, where the step is the wire value.
+   */
+  volumeWire?: number
 }
 
 export interface DeviceState {
@@ -83,6 +102,44 @@ export interface DeviceState {
   features: Capabilities | null
   /** Why each firmware-gated feature is (un)available. */
   featureGates: Partial<Record<GatedFeature, FeatureGateState>>
+  /** Every command that is not a catalogued read is refused (HollylandDeviceOptions.readOnly / forceProfile). Absent = false. */
+  readOnly?: boolean
+  /** Set while a developer profile is forced on the connected receiver (HollylandDeviceOptions.forceProfile). */
+  forcedProfile?: ForcedProfile
+}
+
+/** Identity of a registry row, for display. */
+export interface ProductRef {
+  vendorId: number
+  productId: number
+  name: string
+}
+
+/** A developer profile in effect (DeviceState.forcedProfile). */
+export interface ForcedProfile {
+  /** The row whose rules are applied (= DeviceState.product). */
+  profile: ProductRef
+  /** What the transport reports, resolved through the registry. */
+  actual: ProductRef
+  /** Writes refused (the default for a forced profile). */
+  readOnly: boolean
+}
+
+/**
+ * Developer option: drive the connected receiver with the rules of another legacy registry row
+ * (FAMILIES.md §5.6 step 4: a 6501 profile on a real Lark M2, same wire format and command set).
+ */
+export interface ForceProfileOption {
+  /** PID of the legacy row to apply (1, 11, 12, 13 for the 6501 group). */
+  productId: number
+  /** VID of that row; default: the only legacy row with this PID. */
+  vendorId?: number
+  /**
+   * Allow writes under the forced profile. Default false: every command that is not a catalogued
+   * read is refused (ReadOnlyError), because the profile's value mappings (e.g. the Lark C1 volume
+   * wire map) may mean something else on the real receiver.
+   */
+  allowWrites?: boolean
 }
 
 export interface TrafficEntry {
@@ -119,6 +176,18 @@ export interface SetResult {
 export interface HollylandDeviceOptions {
   /** Override PID-based product detection. */
   product?: ProductInfo
+  /**
+   * Developer option: apply another legacy row's rules to the connected receiver (see ForceProfileOption).
+   * Takes precedence over `product`, which then names the real device. Read-only unless `allowWrites`.
+   * connect() refuses it on a known product that does not speak the legacy `AA DD` protocol.
+   */
+  forceProfile?: ForceProfileOption
+  /**
+   * Refuse every command that is not a catalogued read (setters, toggles, restart, raw non-read frames,
+   * even with `force`) with ReadOnlyError. Default false; under `forceProfile` the default is
+   * `!forceProfile.allowWrites`.
+   */
+  readOnly?: boolean
   requestTimeoutMs?: number
   /** Extra attempts for retry-safe commands. */
   retries?: number
@@ -179,6 +248,16 @@ export class RxUnavailableError extends Error {
   constructor(message = 'device replies are not delivered on this platform (see PROTOCOL.md §2.4); enable blindWrites to send unconfirmed') {
     super(message)
     this.name = 'RxUnavailableError'
+  }
+}
+
+/** A command that is not a catalogued read, refused because the device is read-only (HollylandDeviceOptions.readOnly). */
+export class ReadOnlyError extends Error {
+  readonly cmd: number | null
+  constructor(cmd: number | null, message?: string) {
+    super(message ?? `${cmd === null ? 'unclassified bytes' : commandName(cmd)} refused: the device is read-only (developer profile)`)
+    this.name = 'ReadOnlyError'
+    this.cmd = cmd
   }
 }
 
@@ -255,10 +334,29 @@ type SettingKey = keyof Settings
 
 // ------------------------------------------------------------------------------------ class
 
+/** The legacy row a forced profile names (by PID, optionally VID). */
+function forcedProfileRow(f: ForceProfileOption): ProductInfo {
+  const row = LEGACY_PRODUCTS.find((p) => p.productId === f.productId && (f.vendorId === undefined || p.vendorId === f.vendorId))
+  return row ?? unknownProduct(f.vendorId ?? HOLLYLAND_VENDOR_ID, f.productId)
+}
+
+const ref = (p: ProductInfo): ProductRef => ({ vendorId: p.vendorId, productId: p.productId, name: displayName(p) })
+
+/** UnitInfo labels for a product (only set where the official app swaps Mic1 / Mic2, PID 11). */
+function unitLabel(product: ProductInfo, t: Target): string | undefined {
+  if (!product.capabilities?.txLabelSwap) return undefined
+  return t === Target.TX1 ? 'Mic2' : t === Target.TX2 ? 'Mic1' : undefined
+}
+
 export class HollylandDevice {
   readonly transport: Transport
   readonly product: ProductInfo
-  private readonly opts: Required<Omit<HollylandDeviceOptions, 'product' | 'heartbeatIntervalMs'>> & { heartbeatIntervalMs: number | null }
+  /** The device the transport reports (differs from `product` only under `forceProfile`). */
+  readonly actualProduct: ProductInfo
+  private readonly opts: Required<Omit<HollylandDeviceOptions, 'product' | 'heartbeatIntervalMs' | 'forceProfile'>> & {
+    heartbeatIntervalMs: number | null
+  }
+  private readonly forced: ForcedProfile | null
   private readonly events = new Emitter<DeviceEvents>()
   private readonly assembler = new FrameAssembler('packet')
   private readonly userQueue: Job[] = []
@@ -282,7 +380,10 @@ export class HollylandDevice {
   constructor(transport: Transport, options: HollylandDeviceOptions = {}) {
     this.transport = transport
     const info = transport.info
-    this.product = options.product ?? resolveProduct(info?.vendorId ?? 0, info?.productId ?? 0)
+    this.actualProduct = options.product ?? resolveProduct(info?.vendorId ?? 0, info?.productId ?? 0)
+    this.product = options.forceProfile ? forcedProfileRow(options.forceProfile) : this.actualProduct
+    const readOnly = options.readOnly ?? (options.forceProfile ? options.forceProfile.allowWrites !== true : false)
+    this.forced = options.forceProfile ? { profile: ref(this.product), actual: ref(this.actualProduct), readOnly } : null
     this.opts = {
       requestTimeoutMs: options.requestTimeoutMs ?? 500,
       retries: options.retries ?? 2,
@@ -300,9 +401,13 @@ export class HollylandDevice {
       ignoreFirmwareGates: options.ignoreFirmwareGates ?? false,
       enforcePreconditions: options.enforcePreconditions ?? true,
       identityRetryDelayMs: options.identityRetryDelayMs ?? 1000,
+      readOnly,
       now: options.now ?? (() => Date.now()),
     }
-    const unit = (t: Target): UnitInfo => ({ target: t, online: t === Target.RX })
+    const unit = (t: Target): UnitInfo => {
+      const label = unitLabel(this.product, t)
+      return label ? { target: t, online: t === Target.RX, label } : { target: t, online: t === Target.RX }
+    }
     this._state = {
       product: this.product,
       connected: false,
@@ -314,6 +419,8 @@ export class HollylandDevice {
       settings: {},
       features: null,
       featureGates: {},
+      ...(readOnly ? { readOnly: true } : {}),
+      ...(this.forced ? { forcedProfile: this.forced } : {}),
     }
     this.recomputeFeatures(false)
   }
@@ -351,6 +458,16 @@ export class HollylandDevice {
     return this._state.rx
   }
 
+  /** Every command that is not a catalogued read is refused (HollylandDeviceOptions.readOnly / forceProfile). */
+  get readOnly(): boolean {
+    return this.opts.readOnly
+  }
+
+  /** The developer profile in effect, or null. */
+  get forcedProfile(): ForcedProfile | null {
+    return this.forced
+  }
+
   // -------------------------------------------------------------------------- lifecycle
 
   /**
@@ -360,6 +477,13 @@ export class HollylandDevice {
   async connect(): Promise<DeviceState> {
     if (!this.product.family || !this.product.capabilities) {
       throw new UnsupportedError(`${this.product.name} (PID 0x${this.product.productId.toString(16)}) is not supported by this protocol`)
+    }
+    if (this.forced) {
+      // A legacy profile only makes sense on a receiver that speaks `AA DD` (or an unknown Hollyland PID).
+      const a = this.actualProduct
+      if (a.code !== 'unknown' && !isLegacyFamilyCode(familyCodeOf(a))) {
+        throw new UnsupportedError(`the ${displayName(this.product)} profile cannot be forced on ${displayName(a)}: it does not speak the legacy AA DD protocol`)
+      }
     }
     if (!this.transport.isOpen) await this.transport.open()
     this.unsubs.push(
@@ -451,6 +575,7 @@ export class HollylandDevice {
   ): Promise<DecodedFrame | null> {
     if (!this._state.connected) throw new DisconnectedError('not connected')
     const info = COMMANDS[frame.cmd]
+    if (this.opts.readOnly && info?.safety !== 'read') throw new ReadOnlyError(frame.cmd)
     const retrySafe = info ? info.retrySafe : false
     const job: Job = {
       frame,
@@ -475,6 +600,7 @@ export class HollylandDevice {
     if (f && f.direction === 'request') {
       return this.request({ cmd: f.cmd, target: f.target, payload: f.payload }, { timeoutMs: o.timeoutMs })
     }
+    if (this.opts.readOnly) throw new ReadOnlyError(null)
     await this.transport.send(packet)
     this.logTraffic('tx', packet, 'raw')
     return null
@@ -507,11 +633,11 @@ export class HollylandDevice {
    * (getDeviceInitialInfo block @0x10008ac88, resolveDeviceHeaderImageWithPayload: @0x1000bd910).
    * Over USB the PID already does that, so the result is stored but does not change `features`.
    */
-  async getDeviceInfo(): Promise<{ variant: number; cameraRx: boolean; raw: Uint8Array }> {
+  async getDeviceInfo(): Promise<{ variant: number; cameraRx: boolean; mini: boolean; raw: Uint8Array }> {
     const fam = this.requireFamily()
     const f = await this.read(Requests.deviceInfo())
-    const d = parseDeviceInfo(f.payload, fam, f.length & 0xff)
-    this.patchSettings({ rxVariant: d.variant, rxCameraByDeviceInfo: d.cameraRx })
+    const d = parseDeviceInfo(f.payload, fam, f.length & 0xff, this.product.productId)
+    this.patchSettings(this.deviceInfoSettings(fam, d))
     return d
   }
 
@@ -545,10 +671,21 @@ export class HollylandDevice {
     return fam === '6118' ? parseNoiseLevelGet6118(f.payload) : parseNoiseLevelGetM2(f.payload)
   }
 
+  /**
+   * RX volume step (0-based). On a product with a volume wire map (Lark C1) the reply is a wire value
+   * and is mapped back to the button index (A HLDeviceActivity.onEvent cmd 4 → updateVoiceGroupWithIndex);
+   * -1 when no button carries that value.
+   */
   async getVolume(): Promise<number> {
     const v = (await this.read(Requests.volumeGet())).payload[0] ?? 0
-    this.patchSettings({ volume: v })
-    return v
+    const map = this.product.capabilities?.volumeWireValues
+    if (!map) {
+      this.patchSettings({ volume: v })
+      return v
+    }
+    const step = volumeWireToStep(v, map)
+    this.patchSettings({ volume: step, volumeWire: v })
+    return step ?? -1
   }
 
   async getSpeakerPassthrough(): Promise<boolean> {
@@ -625,7 +762,9 @@ export class HollylandDevice {
     const fam = this.requireFamily()
     const max = this.requireFeature('noiseMaxLevel')
     if (level < 1 || level > max) throw new CommandError(`noise level must be 1..${max}`)
-    this.checkPreconditions(fam === '6118' ? ['mic', 'not-all-muted', 'noise-on'] : ['mic', 'noise-on'])
+    // Lark C1 (noiseLevelNeedsNcOn false): no NC-off check (iOS type < 3, see Capabilities); both apps still need a mic.
+    const ncOn = this.product.capabilities?.noiseLevelNeedsNcOn === false ? [] : (['noise-on'] as const)
+    this.checkPreconditions(fam === '6118' ? ['mic', 'not-all-muted', 'noise-on'] : ['mic', ...ncOn])
     return this.write(Requests.noiseLevelSet(level, fam), { noiseLevel: level }, true)
   }
 
@@ -658,13 +797,21 @@ export class HollylandDevice {
     }
   }
 
-  /** RX output volume. Refused while the volume lock is on (HLDeviceActivity / HLDevice6302Activity.onClickBtnGroup; iOS voiceView block @0x1000cfb48). */
+  /**
+   * RX output volume. Refused while the volume lock is on (HLDeviceActivity / HLDevice6302Activity.onClickBtnGroup; iOS voiceView block @0x1000cfb48).
+   * `step` is the 0-based button. Lark C1: sent through the wire map (button 1 → 5, … button 6 → 2,
+   * DeviceCompat.getVoiceLevels(1)) and allowed with no mic online (HLDeviceActivity.isAllowSetVoice).
+   */
   async setVolume(step: number): Promise<SetResult> {
     const fam = this.requireFamily()
     const steps = this.requireFeature('volumeSteps')
-    const frame = Requests.volumeSet(step, steps - 1)
-    this.checkPreconditions(fam === '6118' ? ['mic'] : ['mic', 'not-locked'])
-    return this.write(frame, { volume: step }, true)
+    let frame = Requests.volumeSet(step, steps - 1)
+    const map = this.product.capabilities?.volumeWireValues
+    const wire = map ? volumeStepToWire(step, map) : step
+    if (map) frame = Requests.volumeSet(wire, Math.max(...map))
+    const mic = this.product.capabilities?.volumeNeedsMic === false ? [] : (['mic'] as const)
+    this.checkPreconditions(fam === '6118' ? ['mic'] : [...mic, 'not-locked'])
+    return this.write(frame, map ? { volume: step, volumeWire: wire } : { volume: step }, true)
   }
 
   async setChannelMode(mode: number): Promise<SetResult> {
@@ -993,6 +1140,10 @@ export class HollylandDevice {
     const attempts = 1 + job.retries
     for (let a = 0; a < attempts; a++) {
       const reply = job.expectReply ? this.awaitReply(job) : null
+      // If the reply timer fires while send() is still pending and send() then fails, the caller gets the
+      // transport error; mark the timed-out reply as handled so it is not an unhandled rejection
+      // (same fix as core/engine.ts FamilyDevice.execute). `await reply` below still sees it.
+      reply?.catch(() => undefined)
       try {
         await this.transport.send(packet)
       } catch (e) {
@@ -1151,6 +1302,26 @@ export class HollylandDevice {
       if (this.product.capabilities?.rxBattery && v.rxBattery) {
         units.rx = { ...units.rx, battery: hb.rxCamera.battery, charging: v.flags ? hb.rxCamera.charging : undefined }
       }
+    } else if (hb.family === '6501') {
+      // A larkc1/HLDeviceActivity.onEvent cmd 16: NC (setNoiseLevelStrong) only `if (productId != 1)`,
+      // volume only `if (productId >= 8)`, lock only for isNew6301Camera / 1030 (never this group; the
+      // lock comes from 0x35). Channel mode and auto-off are parsed but their views are hidden; LED and
+      // buttons are not used. I handleHeartbeatEntity: settings only for type >= 3 (@0x1000bc474).
+      // Lark C1 (heartbeatSettings false): link and battery only; NC and volume come from 0x11 / 0x04.
+      const caps = this.product.capabilities
+      if (caps?.heartbeatSettings !== false) {
+        // I -[HL6501Engine handleHeartbeatEntity:] block @0x1000bc2f0: NC level and switch are applied only when
+        // isHeartbeatNoiseLevelValid: (@0x1000bafac, `cmp x2, 4; cset lo`) holds, i.e. body[6] < 4 (call
+        // @0x1000bc4ac, skip `cbz w22` @0x1000bc4c4). An out-of-range byte (0xFF…) would otherwise read as
+        // "NC on" and satisfy the noise-on precondition of NC-level writes on PIDs 11/12/13.
+        if (hb.noiseLevel !== undefined && hb.noiseLevel < 4) {
+          Object.assign(s, { noiseLevel: hb.noiseLevel, noiseEnabled: hb.noiseLevel > 0 })
+        }
+        if (hb.volume !== undefined) {
+          const step = volumeWireToStep(hb.volume, caps?.volumeWireValues)
+          if (step !== undefined) s.volume = step
+        }
+      }
     } else {
       const features = this._state.features
       const m: Settings = {
@@ -1267,10 +1438,21 @@ export class HollylandDevice {
       }
     }
     const features = () => this._state.features ?? caps
-    await run(Requests.deviceInfo(), (f) => {
-      const d = parseDeviceInfo(f.payload, fam, f.length & 0xff)
-      this.patchSettings({ rxVariant: d.variant, rxCameraByDeviceInfo: d.cameraRx })
-    })
+    await run(Requests.deviceInfo(), (f) =>
+      this.patchSettings(this.deviceInfoSettings(fam, parseDeviceInfo(f.payload, fam, f.length & 0xff, this.product.productId))))
+    if (fam === '6501') {
+      // A larkc1/HLDeviceActivity.getDeviceVersion sends 0x11 and 0x04 at start-up for every PID; on the
+      // Lark C1 they are the only source of NC level and volume (the heartbeat carries neither, see above).
+      await run(Requests.noiseLevelGet(), (f) => {
+        const r = parseNoiseLevelGetM2(f.payload)
+        this.patchSettings({ noiseLevel: r.level, noiseEnabled: r.enabled })
+      })
+      await run(Requests.volumeGet(), (f) => {
+        const v = f.payload[0] ?? 0
+        const map = caps.volumeWireValues
+        this.patchSettings(map ? { volume: volumeWireToStep(v, map), volumeWire: v } : { volume: v })
+      })
+    }
     if (caps.speakerPassthrough) await run(Requests.speakerGet(), (f) => this.patchSettings({ speakerPassthrough: parseSpeakerGet(f.payload) }))
     if (caps.micRecognition) await run(Requests.micRecognitionGet(), (f) => this.patchSettings({ micRecognition: parseFlagIsOne(f.payload) }))
     if (caps.smartBattery) await run(Requests.smartBatteryGet(), (f) => this.patchSettings({ smartBattery: parseFlagIsOne(f.payload) }))
@@ -1279,6 +1461,13 @@ export class HollylandDevice {
   }
 
   // ------------------------------------------------------------------------------- state
+
+  /** 0x16 → settings: the camera flag for the A2/M2/M2S, the Lark Mini flag for the 6501 group. */
+  private deviceInfoSettings(fam: Family, d: { variant: number; cameraRx: boolean; mini: boolean }): Settings {
+    return fam === '6501'
+      ? { rxVariant: d.variant, rxCameraByDeviceInfo: false, rxMiniByDeviceInfo: d.mini }
+      : { rxVariant: d.variant, rxCameraByDeviceInfo: d.cameraRx }
+  }
 
   private unit(t: Target): UnitInfo {
     return t === Target.TX1 ? this._state.units.tx1 : t === Target.TX2 ? this._state.units.tx2 : this._state.units.rx

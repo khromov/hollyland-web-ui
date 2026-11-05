@@ -1,6 +1,6 @@
 # Product families: compatibility matrix, implementation plan and library architecture
 
-Status: plan, 2026-11-05. Nothing in here has been run against hardware except where a row says "hardware-tested".
+Status: plan, 2026-11-05; Phase 0/1 status and review fixes in §2.4. Nothing in here has been run against hardware except where a row says "hardware-tested".
 It turns the five family research docs into one decision document:
 
 | Group | Research doc | Products |
@@ -127,9 +127,9 @@ Why the platform columns differ (sources):
 | Framing | Families | Request bytes | Command ID | Address | Checksum | Ack | Status poll |
 |---|---|---|---|---|---|---|---|
 | Legacy | 6118, 6301, 6302, 6501 | `AA DD cmd dst len16 payload`, padded to 64 | 8-bit | `0x40` + unit / reply `0x80` + unit | none | `body[0] == 1` | `0x10`: 1 s (A2, M2S), 3 s (M2, 6501) |
-| ProtocolV2 | 6108 | `05 03 AA DD cmd len16 payload EF`, 64 B, Feature 5 | 8-bit, **different table** | in the payload (unit 0..4) | none | `body[0] == 0` | `0x1F`, 1 s (Android) / 3 s (iOS) |
+| ProtocolV2 | 6108 | `05 03 AA DD cmd len16 payload EF`, 64 B, Feature 5 | 8-bit, **different table** | in the payload (unit 0..4) | none | `body[0] == 0` (A; I: `!= 0xFF`) | `0x1F`, 1 s (Android) / 3 s (iOS) |
 | Moma, 6303 profile | 6303 | `08 AA DD 06 00 00 cnt16 {cmd16 type len16 payload}`, padded 64 / 512 | 16-bit BE | payload unit IDs (TX 1–4, RX 6–9) | none | item `payload[0] == 0` | `0x6000` (30 B), 1.5 s |
-| Moma, 6701 profile | 6701 | `AA DD 06 tgt 07 cnt16 5A FA 00 00 00 {…} 5E FE 00 00 00 XOR`, unpadded | 16-bit BE | target byte (1/2 RX over USB; 2/3/5 over BLE) | XOR | item type 2, `payload[0] == 0` | USB `0x600B` (49 B), 3 s; BLE: pushes, no poll |
+| Moma, 6701 profile | 6701 | `AA DD 06 tgt 07 cnt16 5A FA 00 00 00 {…} 5E FE 00 00 00 XOR`, unpadded | 16-bit BE | target byte (1/2 RX over USB; 2/3/5 over BLE) | XOR | item type 2, `payload[0] == 0` | USB `0x600B` (49 B), 3 s; BLE: pushes (A) plus `0x600B` to target 2 every 3 s (I) |
 | Moma, 6201 profile | 6201 | `AA DD 06 tgt 04 cnt16 {…} XOR`, unpadded, chunked | 16-bit BE | target 0 (USB) / 1 (BLE) | XOR (Android), none (iOS) | `payload[0] == 0` | `0x600B` (31 B), 3 s; VU pushed after `0x6048` |
 
 Payload fields are little-endian in all three Moma profiles (generated `*Serializer` classes,
@@ -155,10 +155,10 @@ Found while cross-reading the family docs; applied in Phase 0 / Phase 1:
 | Family | Decision | Why | Needs a new transport? |
 |---|---|---|---|
 | **6501** (C1, C1 2nd gen, M1 2nd gen, Mini) | **Build now (Phase 1)** | Same wire as the M2 (same Java classes and iOS engine). Four small capability flags. The M2 test is a direct proxy. | No |
-| **6108** LARK A1 | **Build now (Phase 1–2)** | Commands, payloads and the heartbeat agree between Android and iOS. Feature reports are the best chance of full macOS control without the bridge. | **Yes**: `WebHidFeatureTransport` |
+| **6108** LARK A1 | **Build now (Phase 1–2)** | Commands, payloads and the heartbeat agree between Android and iOS (the set ack does not: Android `body[0] == 0`, iOS `!= 0xFF`; the library follows Android, a1-6108.md §3.2). Feature reports are the best chance of full macOS control without the bridge. | **Yes**: `WebHidFeatureTransport` |
 | **6303** LARK M3 | **Build now (Phase 1–2)** | Current flagship. Generated serializers give exact layouts; the iOS ID table confirms every command. Report ID 8 should make macOS readable. Voice profiles reuse `src/lib/dsp`. | Generalized `WebHidTransport` (report ID 8, 512 B) |
 | **6701** LARK MAX 2 | **Build (Phase 2), BLE first** | The BOX's Web Bluetooth path is full duplex on macOS, Windows, ChromeOS and Android. The USB path has the A2's macOS risk and > 64 B reports, so it waits for a descriptor. | **Yes**: `WebBluetoothTransport`; USB needs > 64 B WebHID |
-| **6201** MELO P1 | **Build a subset (Phase 2), BLE first** | Status, device info, More Settings and device-pushed VU meters are simple LE structs. The mixer DSP is large; presets are cloud-shaped blobs. | **Yes**: `WebBluetoothTransport` (write with response) |
+| **6201** MELO P1 | **Build a subset (Phase 2), BLE first** | Status, device info, More Settings and device-pushed VU meters are simple LE structs. The mixer DSP is large; presets are cloud-shaped blobs. | **Yes**: `WebBluetoothTransport` (write with response as Android; iOS writes without response) |
 | 6902 Lark MAX | **Skip** (recognise only) | Android 3.1.0 rejects PID 2; no firmware package; no tester. A C1 profile can be switched on later if a user reports one. | – |
 | OWS / MELO earphones | **Skip** | Direct link only gives battery/version/firmware, all of which the RX heartbeat already carries; SPP needs Web Serial over RFCOMM. | – |
 | MELO P1 Mic / Case (USB) | **Skip** | The app only updates their firmware (case: also battery health). | – |
@@ -196,6 +196,38 @@ Enforced in the engine (`core/engine.ts`) from `ProductInfo.support` and each dr
 - The connect probe and every background poll may only use `read` commands (checked against the catalogue).
 - `sendRaw` from the console stays read-only unless forced, as today.
 - Toggle-type commands are never sent blind (as for the legacy `0x19`).
+- Every catalogued item of a multi-item request is checked on its own (`ProtocolSpec.commandsOf`, Moma batches), so
+  no item can hide a destructive or OTA one, whatever item the batch is ranked by.
+- On an untested product a **forced** `sendRaw` must still be classifiable: bytes that do not parse, and parsed
+  frames whose command is not in the family catalogue, are refused (`DestructiveCommandError`). The catalogues come
+  from Android and miss iOS-only commands (MELO P1 `0x131B`, which re-enumerates the RX: melo-6201.md §5), so an
+  uncatalogued id is not assumed harmless. On a tested product a forced uncatalogued frame is sent, after the
+  catalogued items in it pass the rules above.
+- `LegacyMicDevice.sendRaw` (6118/6301/6302/6501) applies the same rules on top of `HollylandDevice`: the raw OTA data
+  packet (`55` + 63 bytes) and `notify` ids are refused on every product; on an untested product a forced frame must
+  be a catalogued request of the product's own family (so `0x19` NC toggle is refused on a 6501 product). The
+  wrapped `HollylandDevice` (`.legacy`), which the current UI console uses, keeps its looser rules for hardware
+  exploration.
+
+### 2.4 Phase 0/1 status (review of 2026-11-05)
+
+Phase 0 (W0) and Phase 1 (W1–W4) are in the tree. A two-lens review (Android 3.1.0 jadx, iOS `larkSound` binary)
+found and fixed: the forced-`sendRaw` gaps above (engine and legacy adapter), the 6303 padding of a packet of exactly
+64 bytes (Android pads it to 512: `len < 64` → 64, `len < 512` → 512), an unhandled rejection when a reply timed out
+during a failing `send()` (engine and `HollylandDevice`), the 6501 heartbeat NC byte (ignored when ≥ 4, as iOS
+`isHeartbeatNoiseLevelValid:`), the Lark Mini flag (iOS reads `0x16` body[0] only for `lark m1 pro`, PIDs 12/13), the
+MELO P1 BLE chooser filter (prefixes `04 01` / `04 02`; `04 03` is the TWS earphones), and documentation of three
+app disagreements (A1 set ack: Android `body[0] == 0`, iOS `!= 0xFF`; MAX 2 BOX: iOS polls `0x600B` to target 2 every
+3 s over BLE, Android does not; MELO P1 FFE1: Android writes with response, iOS without). Driver status:
+
+| Family | Driver today | Tested on hardware | Next (Phase 2) |
+|---|---|---|---|
+| 6118 / 6301 / 6302 | `HollylandDevice` + `LegacyMicDevice` adapter | A2 tested (fw 3.0.2.008); A2S sibling; M2 / M2S untested (units on hand) | M2 / M2S test (§5.6), then promote `support.hardware` |
+| 6501 | same engine, 6501 rules (W1) | untested (M2 is the proxy) | M2 test step 4 (§5.6) |
+| 6108 | wire layer (codec, catalogue, heartbeat, read-only session, simulator, `WebHidFeatureTransport`); registered driver still a stub | untested | W5: controls, writes, gates; settle the set-ack reading on hardware |
+| 6303 | Moma profile, codec, vectors; driver stub | untested | W6 |
+| 6701 | Moma profiles, codec, vectors, `WebBluetoothTransport`; driver stub | untested | W7: BLE path with pushes **and** the iOS 3 s `0x600B` poll to target 2 |
+| 6201 | Moma profiles, codec, vectors, `WebBluetoothTransport`, corrected chooser filters; driver stub | untested | W8: BLE first; decide write type / chunking from the hardware check |
 
 ---
 
@@ -357,7 +389,7 @@ export interface ProtocolSpec<Req, Msg> {
   commandOf(req: Req): number                     // catalogue lookup for safety and retry rules
   describe(x: Req | Msg, dir: 'tx' | 'rx'): string
   probe(): Req
-  heartbeat?: { request(): Req; intervalMs: number }    // absent for push-only links (MAX 2 BOX)
+  heartbeat?: { request(): Req; intervalMs: number }    // absent for push-only links (MAX 2 BOX on Android; iOS polls 0x600B through it)
   onConnected?(ctx: EngineContext<Req>): Promise<void>  // identity reads, subscriptions (6201 0x6048)
   onMessage(ctx: EngineContext<Req>, msg: Msg, solicited: boolean): void   // status/pushes → units/values
   timing: { replyTimeoutMs: number; probeTimeoutMs: number; interFrameDelayMs: number }
@@ -388,7 +420,7 @@ reports) emits the reply through `onPacket` before `send()` resolves, so the eng
 |---|---|---|---|
 | `WebHidTransport` (generalized, W0) | legacy, 6303, 6701 USB, 6201 USB | `sendReport(frame[0], pad(frame[1..], declaredSize))` for `byte0`/numbered IDs; `sendReport(0, frame)` for `none`; input `[reportId, ...data]` | Read output/input report sizes from `device.collections[].outputReports[].items` instead of the fixed 63 bytes; fall back to 63 for undeclared IDs (the A2 case, keeps today's bytes). M3: report 8, pad to the declared 63 or 511 (m3-6303.md §2.3). Chooser filters and `getGrantedDevices` come from the registry's `links`; for the M3's unconfirmed VID add a "show all HID devices" fallback (`filters: []`), because WebHID filters cannot name a `productId` without a `vendorId`. Frames longer than one report with no report-ID layer (6201/6701 USB) are rejected with a clear error until a descriptor shows how the device wants them [?]. |
 | `WebHidFeatureTransport` (W3) | 6108 | `sendFeatureReport(5, frame[1..64])`, then `receiveFeatureReport(5)`; strip a leading `05` if Chrome includes it; emit | Check the echoed command at offset 4 and retry the GET once on mismatch (stale reply). 3000 ms write / 1000 ms read like Android. Never switches to report 6 (OTA). a1-6108.md §2.3. |
-| `WebBluetoothTransport` (W4) | 6701 BOX, 6201 RX | `requestDevice({ filters, optionalServices: [service] })`, `startNotifications()` on the notify characteristic, writes with `writeValueWithoutResponse` (6701) or `writeValueWithResponse` (6201) | Generic, configured by the family's `LinkSpec`. Chunking: try the whole frame first, fall back to 20-byte chunks [?] (Chrome hides the MTU; Android requests 512). Notifications go to the family assembler, which must reassemble by item count and lengths. `gattserverdisconnected` → disconnect event. Filters: 6701 `services: [0xfee7]` or `serviceData: [{ service: 0xfee7 }]` [?]; 6201 `serviceData: [{ service: 0xbbbb, dataPrefix: [4] }]` [I]. |
+| `WebBluetoothTransport` (W4) | 6701 BOX, 6201 RX | `requestDevice({ filters, optionalServices: [service] })`, `startNotifications()` on the notify characteristic, writes with `writeValueWithoutResponse` (6701) or `writeValueWithResponse` (6201) | Generic, configured by the family's `LinkSpec`. Chunking: try the whole frame first, fall back to 20-byte chunks [?] (Chrome hides the MTU; Android requests 512). Notifications go to the family assembler, which must reassemble by item count and lengths. `gattserverdisconnected` → disconnect event. Filters: 6701 `services: [0xfee7]` or `serviceData: [{ service: 0xfee7 }]` [?]; 6201 `serviceData: [{ service: 0xbbbb, dataPrefix: [4, 1] }]` and `[4, 2]` (productLine 4 + RX deviceId 1/2; `[4]` alone also matched the TWS earphones, deviceId 3; melo-6201.md §1.2). |
 | `BridgeTransport` + `scripts/bridge*.ts` (W0) | legacy, later 6303/6701 | WebSocket relay of interrupt packets | Accept packets up to the endpoint's `wMaxPacketSize` (512 for M3) instead of exactly 64; SUPPORTED list from the registry. A control-transfer channel for the A1 is only needed if Chrome cannot read Feature 5 (a1-6108.md §2.3); deferred. |
 | `MockTransport` | all | unchanged | Already generic: `respond(packet)` + `inject()`. |
 
@@ -399,7 +431,7 @@ I `+[HLCommandFrameBuilder frameWithSource:target:control:commands:…]` @0x1000
 
 | Profile | reportId | target | control | start/end items | checksum | padding | Source |
 |---|---|---|---|---|---|---|---|
-| `MOMA_6303` | `0x08` | `0x00` | `0x00` | no | none | 64, else 512, ≥ 512 as is | m3-6303.md §3.1 |
+| `MOMA_6303` | `0x08` | `0x00` | `0x00` | no | none | `< 64` → 64, `< 512` → 512, else as is (64 B exactly → 512) | m3-6303.md §3.1 |
 | `MOMA_6701_USB` | – | `0x01` mobile / `0x02` camera (iOS sends 0 for mobile [?]) | `0x07` | yes | XOR | none | max2-6701.md §3.1, §9 #5 |
 | `MOMA_6701_BLE` | – | per unit: 2 RX, 3 TX1, 4 TX2, 5 BOX, 10/11 TX3/4 | `0x07` | yes | XOR | none | max2-6701.md §3.1 |
 | `MOMA_6201_USB` | – | `0x00` | `0x04` (iOS `0x00`) | no | XOR (iOS none) | none | melo-6201.md §3.1 |
@@ -453,7 +485,7 @@ package; family research corrections go to that family's doc in `docs/research/f
 | legacy (6501 rows) | heartbeat `0x10`; PID 1 applies link/battery only; PID 11 swaps Mic1/Mic2 **for display only** | NC level needs NC on (11/12/13); PID 1 volume allowed without a mic (Android) | short 6-byte heartbeat (PID 1), 14-byte (others), `0x16` body | 
 | 6108 A1 | `0x1F` heartbeat: tx1..tx4 online/battery/mute, NC on+level, volume, channel, auto-off, LED, EQ, reverb, mic recognition, signal mode; branch on LEN 17 / 22 / 23 as iOS does | mute row needs RX ≥ 1.0.1.3 (inclusive); 4 units when the RX version's 2nd part is 1; NC blocked when all online mics are muted; mic recognition needs both mics in 2-mic mode | SET→GET pairing, ack `0` = OK, 2/4-mic firmware, stale-reply fault |
 | 6303 M3 | `0x6000` (30 B): TX/RX bitmasks, batteries (0xFF = phone RX), mute mask, NC, volume, channel (incl. 4-track), smart mix, LED, recognition, primary/secondary, 4T4R/2T2R, lock, hot shoe, refresh flag | global settings only on the primary RX; 4-track only in 4T4R; camera-only controls by PID; restart-causing: bit depth, 4-track, work mode | multi-RX topology, `isRefreshCanto`, 64/512 padding, unsolicited BT events |
-| 6701 MAX 2 | USB `0x600B` (49 B: batteries incl. RX/BOX/earphones, charging, NC depth, gain, channel, TC, OWS, 4-mic); BLE pushes `0x6000`–`0x6002` + `0x600A` per unit | 4-mic, RX pairing, wireless monitoring need RX ≥ 3.0.0.50; safety track only via the BOX; stereo/safety refused with TC on unless TC mode 3; phone speaker and wireless monitoring restart the RX | USB poll vs BLE push modes, start/end items, XOR, MTU-sized notification chunks |
+| 6701 MAX 2 | USB `0x600B` (49 B: batteries incl. RX/BOX/earphones, charging, NC depth, gain, channel, TC, OWS, 4-mic); BLE pushes `0x6000`–`0x6002` + `0x600A` per unit, and (as iOS does) `0x600B` to target 2 every 3 s through the BOX | 4-mic, RX pairing, wireless monitoring need RX ≥ 3.0.0.50; safety track only via the BOX; stereo/safety refused with TC on unless TC mode 3; phone speaker and wireless monitoring restart the RX | USB poll vs BLE push modes, start/end items, XOR, MTU-sized notification chunks |
 | 6201 MELO P1 | `0x600B` (31 B: RX/box/mic/ear batteries, charging, links, 3.5 mm, NC, gain, remote), `0x600A` per unit (20 B, reversed version bytes), pushed VU `0x11EB` | V2 structures from RX 4.0.0.1; per-mic gain from 3.0.7.9; Pro Tuning USB-only; auto speaker output restarts | VU push timer after `0x6048`, batch replies, XOR on/off by control byte |
 
 ---
@@ -602,10 +634,10 @@ Read-only first, one reversible write last, each step recorded into the diagnost
 | Family | Steps |
 |---|---|
 | 6501 | descriptor; `0x10` heartbeat (length); `0x03` versions RX/TX; `0x15` serials; `0x16` body; reversible write (the group has no LED): volume one step and back |
-| 6108 | list `featureReports` (5 = 63 B? 6 = 159 B?); `0x1F`; `0x0D [00]`; reply bytes 1–3; does `receiveFeatureReport` include the ID byte; toggle LED `0x21` and confirm in the heartbeat |
+| 6108 | list `featureReports` (5 = 63 B? 6 = 159 B?); `0x1F`; `0x0D [00]`; reply bytes 1–3; does `receiveFeatureReport` include the ID byte; toggle LED `0x21` and confirm in the heartbeat; the set-ack byte (Android `0` = OK vs iOS `!= 0xFF`) |
 | 6303 | descriptor (report 8 sizes), VID; `0x6000` (capture source/target/type bytes); `0x600A [6]`; `0x6012 [0]`; whether 63-byte writes are accepted; LED `0x6009` and back |
-| 6701 | BLE: advertised services (FEE7 in UUID list or only service data), notification sizes, pushed item types and cadence; `0x600A [1]`; USB: descriptor, `0x600B`, whether broadcast target 0 works |
-| 6201 | BLE: advertised name, `FFE0` visible, notification fragmentation, long writes; `0x600A [0]`; `0x600B`; whether the reply carries XOR when the request had control `0x00`; LED `0x2000` and back |
+| 6701 | BLE: advertised services (FEE7 in UUID list or only service data), notification sizes, pushed item types and cadence; `0x600B` to target 2 through the BOX (iOS polls it every 3 s); `0x600A [1]`; USB: descriptor, `0x600B`, whether broadcast target 0 works |
+| 6201 | BLE: advertised name and service data (`04 01` / `04 02`), `FFE0` visible, notification fragmentation, long writes vs split writes, write without response; `0x600A [0]`; `0x600B`; whether the reply carries XOR when the request had control `0x00`; LED `0x2000` and back |
 
 ---
 
@@ -618,6 +650,9 @@ Read-only first, one reversible write last, each step recorded into the diagnost
 3. **M3 VID and report sizes:** an undeclared 511-byte input report would truncate voice-profile replies
    (`0x1F04`/`0x1F18`); home and settings traffic fits 64 B.
 4. **Web Bluetooth chunking:** whether the MAX 2 BOX and MELO P1 accept frames split across ATT writes; Chrome cannot
-   request MTU 512 like the Android app.
+   request MTU 512 like the Android app. Neither app uses ATT long writes (Android stays within MTU 512 − 3, iOS cuts at
+   `maximumWriteValueLengthForType:` and writes without response), so the transport's whole-frame-with-response
+   default for frames above the negotiated MTU is a library choice; iOS shows MELO P1 `FFE1` also takes writes without
+   response (melo-6201.md §2.2).
 5. **MAX 2 and MELO P1 USB report layout:** frames longer than one report with `AA` at byte 0 have no clean WebHID
    mapping; the USB paths of both stay behind BLE until a descriptor is seen.
