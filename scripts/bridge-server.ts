@@ -27,7 +27,7 @@ export interface BridgeServerOptions {
   /** Interface to bind; loopback only (default 127.0.0.1). */
   host?: string
   version: string
-  /** Extra exact origins, e.g. https://mic-console.example (normalized by normalizeOrigin). */
+  /** Extra exact origins, e.g. https://hollyland-web-ui.example (normalized by normalizeOrigin). */
   allowOrigins?: readonly string[]
   /** Accept clients that send no Origin header (Node scripts). Browsers always send one. */
   allowNoOrigin?: boolean
@@ -224,7 +224,7 @@ export class BridgeServer {
     if (req.method === 'GET' && path === '/') {
       const d = this.device
       res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' }).end(
-        `Mic Console bridge ${this.opts.version}\n` +
+        `Hollyland Web UI bridge ${this.opts.version}\n` +
           `WebSocket: ${this.url('hid')}${this.opts.iap2 ? `, ${this.url('iap2')}` : ''}\n` +
           `Receiver: ${d ? `${d.productName ?? 'receiver'} (${hex4(d.vendorId)}:${hex4(d.productId)}) captured` : 'none'}\n` +
           `Client: ${this.hasClient('hid') ? 'connected' : 'none'}\n`,

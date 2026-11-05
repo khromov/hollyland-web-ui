@@ -26,7 +26,7 @@ import type { MessageAssembler } from '../../core/types'
 
 /** Feature report id of every A1 command (A UsbHandlerManager.REPORT_ID_NORMAL = 0x0305 → wValue low byte). */
 export const A1_REPORT_ID = 0x05
-/** Feature report id of firmware upload (A UsbHandlerManager.REPORT_ID_UPGRADE = 0x0306). Never sent by Mic Console. */
+/** Feature report id of firmware upload (A UsbHandlerManager.REPORT_ID_UPGRADE = 0x0306). Never sent by Hollyland Web UI. */
 export const A1_OTA_REPORT_ID = 0x06
 /** Report size including the id byte (A UsbHandlerManager.USB_PKT_SIZE_6108_NORMAL = 64). */
 export const A1_REPORT_SIZE = 64
@@ -110,7 +110,7 @@ export interface A1Reply {
   magicOk: boolean
   /** The byte after the payload is 0xEF (requests end with it; unknown for replies). */
   endMarker: boolean
-  /** OTA reply layout (commands 0x1A..0x1E, ProtocolV2.parse special cases). Mic Console never sends those. */
+  /** OTA reply layout (commands 0x1A..0x1E, ProtocolV2.parse special cases). Hollyland Web UI never sends those. */
   ota: boolean
   /** The whole report (64 bytes on the feature link). */
   raw: Uint8Array

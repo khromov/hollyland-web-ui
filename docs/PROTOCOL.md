@@ -763,7 +763,7 @@ One 64-byte zero-padded reply per request (not two), no unsolicited packets duri
 
 ### 11.7 Verified on hardware (LARK A2, firmware 3.0.2.008, macOS, Chrome, 2026-11-05)
 
-The user tested Mic Console on the LARK A2 in two ways:
+The user tested Hollyland Web UI on the LARK A2 in two ways:
 
 - first over WebHID (write-only, §2.4);
 - then through the local bridge (`docs/BRIDGE.md`, root libusb as in §11.6), which shows the heartbeat live.

@@ -338,15 +338,15 @@ describe('how the page tells people to start the bridge', () => {
 
   it('names npx --bridge-only once the package is published, with the clone command next to it', () => {
     expect(bridgeStartHelp('https://khromov.github.io', true)).toEqual({
-      command: 'npx mic-console --bridge-only', where: null, fromClone: 'npm run bridge -- --allow-origin https://khromov.github.io',
+      command: 'npx hollyland-web-ui --bridge-only', where: null, fromClone: 'npm run bridge -- --allow-origin https://khromov.github.io',
     })
     expect(bridgeStartHelp('http://127.0.0.1:47320', true)).toEqual({
-      command: 'npx mic-console --bridge-only', where: null, fromClone: 'npm run bridge',
+      command: 'npx hollyland-web-ui --bridge-only', where: null, fromClone: 'npm run bridge',
     })
     // --bridge-only accepts only the hosted origin: other sites need --allow-origin from a clone.
     expect(bridgeStartHelp('https://mic.example.com', true).command).toBe('npm run bridge -- --allow-origin https://mic.example.com')
     expect(bridgeStartSentence(bridgeStartHelp('https://khromov.github.io', true))).toBe(
-      'Start it in a terminal with "npx mic-console --bridge-only" (from a clone: "npm run bridge -- --allow-origin https://khromov.github.io")',
+      'Start it in a terminal with "npx hollyland-web-ui --bridge-only" (from a clone: "npm run bridge -- --allow-origin https://khromov.github.io")',
     )
   })
 

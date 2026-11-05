@@ -14,6 +14,7 @@
   import Panel from '../../lib/ui/Panel.svelte'
   import Lamp from '../../lib/ui/Lamp.svelte'
   import ConfidenceNote from '../../lib/ui/ConfidenceNote.svelte'
+  import { confidenceNote } from '../../lib/ui/confidence'
   import InputWindow from './InputWindow.svelte'
   import MonitorFader from './MonitorFader.svelte'
   import VoiceEffects from './VoiceEffects.svelte'
@@ -46,11 +47,21 @@
     }
   })
 
+  /** Why the channels are labelled L / R (tooltip on the meter window, never printed). */
+  const modeNote = $derived(
+    sentMode !== null
+      ? `Channel mode ${MODE_NAMES[sentMode] ?? ''}: ${confidenceNote('sent')}`
+      : session.writeOnly && session.phase === 'ready'
+        ? 'Channel mode unknown'
+        : undefined,
+  )
+
   const running = $derived(audio.state === 'running')
   const rate = $derived(audio.sampleRate ? `${Math.round(audio.sampleRate / 100) / 10} kHz` : null)
-  const inputName = $derived(running ? audio.deviceLabel || 'Audio input' : "Receiver's USB audio")
   const fxLatencyMs = (VOICE_FX_LATENCY / 48).toFixed(1)
   const showSelect = $derived(running && audio.inputs.length > 1)
+  /** Monitoring and recording are blocked: the reason, in a few words. */
+  const audioBlock = $derived(audio.meterState === 'paused' ? 'Paused while the bridge runs' : 'Needs live audio')
 
   onDestroy(() => player.unload())
 </script>
@@ -58,10 +69,10 @@
 <div class="audio-page">
   <h1 class="visually-hidden">Audio</h1>
 
-  <Panel title="Input" description={inputName}>
+  <Panel title="Input" description={running ? audio.deviceLabel || 'Audio input' : undefined}>
     {#snippet meta()}
       {#if running}
-        <span class="meta">USB audio <span class="mono">{rate} · {audio.channelCount} ch</span></span>
+        <span class="meta"><span class="mono">{rate} · {audio.channelCount} ch</span></span>
       {/if}
     {/snippet}
     {#snippet aside()}
@@ -87,29 +98,17 @@
       {/if}
     {/snippet}
     <div class="body">
-      <InputWindow {channels} {subs} />
+      <InputWindow {channels} {subs} note={modeNote} />
 
-      {#if sentMode !== null}
-        <ConfidenceNote
-          kind="sent"
-          text="Channel mode last sent: {MODE_NAMES[sentMode] ?? 'unknown'}, not confirmed. Channels are labelled L and R until the receiver confirms it."
-        />
-      {:else if session.writeOnly && session.phase === 'ready'}
-        <ConfidenceNote kind="unknown" text="Channel mode not read, so the channels are labelled L and R." />
-      {/if}
       {#if running && !audio.isHollyland}
-        <p class="warn">
+        <p class="warn" title={showSelect ? undefined : 'Plug in the receiver, then stop and start live audio.'}>
           <Lamp state="hollow" size="sm" />
-          <span
-            ><b>{audio.deviceLabel || 'This input'}</b> doesn't look like the receiver. {showSelect
-              ? 'Choose its input (usually “Wireless Microphone”) next to Input.'
-              : 'Plug in the receiver, then stop and start live audio.'}</span
-          >
+          <span>Not the receiver{showSelect ? ' · choose “Wireless Microphone”' : ''}</span>
         </p>
       {/if}
 
-      <div class="monitor">
-        <span class="m-title">Monitor on this computer</span>
+      <div class="monitor" class:blocked={!running}>
+        <span class="m-title" title="Use headphones to avoid feedback">Monitor</span>
         <MonitorFader
           value={audio.monitor}
           label="Monitor on this computer"
@@ -122,39 +121,33 @@
               class="off">Off</span
             >{/if}</span
         >
-        <div class="m-foot">
-          {#if running}
-            Plays the channels, with effects, on this computer's output. Use headphones to avoid feedback.
-          {:else}
-            <ConfidenceNote
-              kind="disabled"
-              text={audio.meterState === 'paused' ? 'USB audio is paused while the local bridge runs.' : 'Monitoring needs live audio.'}
-            />
-          {/if}
-        </div>
+        {#if !running}
+          <div class="m-foot"><ConfidenceNote kind="disabled" text={audioBlock} /></div>
+        {/if}
       </div>
     </div>
   </Panel>
 
-  <Panel title="Voice effect" description="Runs in this browser, on monitoring and recordings. The mics are not changed.">
+  <Panel title="Voice effect">
     {#snippet meta()}
-      <span class="meta">Adds <span class="mono">{fxLatencyMs} ms</span> of delay</span>
+      <span class="meta" title="Effects run in this browser, on monitoring and recordings. The mics are not changed."
+        >Delay <span class="mono">{fxLatencyMs} ms</span></span
+      >
     {/snippet}
     <div class="body">
       <VoiceEffects {channels} />
     </div>
   </Panel>
 
-  <Panel title="Recorder" description="Saves WAV files in this browser.">
+  <Panel title="Recorder">
     {#snippet meta()}
       <span class="meta"
-        ><span class="mono"
-          >{rate ?? '48 kHz'} · {audio.recordOptions.bitDepth === 32 ? '32-bit float' : `${audio.recordOptions.bitDepth}-bit`}</span
-        ><br />{audio.recordOptions.split ? 'One file per channel' : 'One stereo file'}</span
+        >WAV <span class="mono">{rate ?? '48 kHz'} · {audio.recordOptions.bitDepth === 32 ? '32-bit float' : `${audio.recordOptions.bitDepth}-bit`}</span
+        ></span
       >
     {/snippet}
     <div class="body">
-      <Recorder {channels} channelMode={mode} {names} />
+      <Recorder {channels} channelMode={mode} {names} blockReason={audioBlock} />
     </div>
   </Panel>
 </div>
@@ -198,10 +191,6 @@
   .warn :global(.lamp) {
     margin-top: 3px;
   }
-  .warn b {
-    font-weight: 620;
-    color: var(--ink);
-  }
   .input-ctl {
     display: flex;
     flex-wrap: wrap;
@@ -227,10 +216,10 @@
     outline-offset: 3px;
   }
 
-  /* Monitor: title and note | fader | value */
+  /* Monitor: label (and block reason) | fader | value */
   .monitor {
     display: grid;
-    grid-template-columns: minmax(200px, 300px) minmax(0, 1fr) 72px;
+    grid-template-columns: minmax(160px, 220px) minmax(0, 1fr) 72px;
     grid-template-areas: 'title fader value' 'foot fader value';
     align-items: center;
     column-gap: 24px;
@@ -240,17 +229,20 @@
   }
   .m-title {
     grid-area: title;
-    align-self: end;
+    align-self: center;
     font-size: var(--t-control);
     font-weight: 660;
     line-height: var(--lh-head);
   }
+  .monitor:not(.blocked) {
+    grid-template-areas: 'title fader value';
+  }
+  .blocked .m-title {
+    align-self: end;
+  }
   .m-foot {
     grid-area: foot;
     align-self: start;
-    font-size: 12px;
-    line-height: var(--lh-body);
-    color: var(--ink-3);
   }
   .monitor :global(.fader) {
     grid-area: fader;
@@ -291,6 +283,9 @@
     .monitor {
       grid-template-columns: minmax(0, 1fr) auto;
       grid-template-areas: 'title value' 'fader fader' 'foot foot';
+    }
+    .monitor:not(.blocked) {
+      grid-template-areas: 'title value' 'fader fader';
     }
     .m-title {
       align-self: center;

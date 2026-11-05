@@ -161,7 +161,7 @@
       <div class="plot"><canvas bind:this={canvases[c]}></canvas></div>
       <div class="loud">
         <span class="k">loudest</span>
-        <span class="v mono" bind:this={loudEls[c]}>– –</span>
+        <span class="v mono" bind:this={loudEls[c]}>–</span>
       </div>
     </div>
   {/each}

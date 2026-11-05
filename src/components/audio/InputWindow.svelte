@@ -2,7 +2,8 @@
   /**
    * The Audio page's two-channel meter window: one strip meter per USB channel (labelled by what
    * the channel carries in the current channel mode) sharing one dB scale between the bars, then
-   * the level history of both channels on its own time axis. When there are no levels, the window says why and offers the fix.
+   * the level history of both channels on its own time axis. When there are no levels, the window
+   * shows a short state (an error adds its fix) and the key that starts audio.
    */
   import { audio } from '../../lib/state/audio.svelte'
   import MeterWindow from '../../lib/ui/MeterWindow.svelte'
@@ -14,36 +15,44 @@
     channels: [UsbChannelMeter, UsbChannelMeter]
     /** Second line under each label ("Left · TX1"). */
     subs: [string, string]
+    /** Tooltip / aria-description for the window, e.g. why the channels are labelled L / R. */
+    note?: string
   }
-  let { channels, subs }: Props = $props()
+  let { channels, subs, note }: Props = $props()
 
   let width = $state(0)
   /** Wide enough to line the history up under the bars (label | bar | readouts). */
   const wide = $derived(width === 0 || width >= 720)
   const mstate = $derived(audio.meterState)
 
-  const sentence = $derived.by(() => {
-    switch (mstate) {
-      case 'paused':
-        return "USB audio is paused while the local bridge holds the receiver. Stop the bridge (Ctrl+C in its terminal) to see levels, monitor and record here."
-      case 'starting':
-        return 'Waiting for microphone access…'
-      case 'denied':
-        return 'Microphone access is blocked for this page. Allow it in the site settings next to the address bar, then try again.'
-      case 'nodevice':
-        return audio.error ?? 'No audio input was found. Plug in the receiver, then try again.'
-      case 'error':
-        return audio.meterMessage ?? 'Live levels stopped.'
-      default:
-        return "The receiver is also a USB microphone. Allow microphone access to see each channel's level, monitor, use voice effects and record. Audio stays on this computer."
-    }
-  })
+  /** Short state, and for errors the fix. */
+  const title = $derived(
+    {
+      live: '',
+      idle: 'Live audio off',
+      starting: 'Waiting for microphone access…',
+      denied: 'Microphone blocked',
+      paused: 'Paused while the bridge runs',
+      nodevice: 'No audio input',
+      error: 'Live levels stopped',
+    }[mstate],
+  )
+  const detail = $derived(
+    mstate === 'denied'
+      ? 'Allow it in site settings, then try again.'
+      : mstate === 'nodevice'
+        ? 'Plug in the receiver, then try again.'
+        : mstate === 'error'
+          ? (audio.meterMessage ?? null)
+          : null,
+  )
   const actionLabel = $derived(
     mstate === 'idle' ? 'Show live levels' : mstate === 'denied' || mstate === 'nodevice' || (mstate === 'error' && audio.supported) ? 'Try again' : null,
   )
 </script>
 
-<div class="mc-window iw" class:wide bind:clientWidth={width}>
+<div class="mc-window iw" class:wide bind:clientWidth={width} title={note}>
+  {#if note}<span class="visually-hidden">{note}</span>{/if}
   {#if mstate === 'live'}
     <div class="strips">
       {#each channels as ch, c (c)}
@@ -61,7 +70,7 @@
     <div class="rule" aria-hidden="true"></div>
     <HistoryLanes lanes={channels.map((ch) => ({ label: ch.label, tone: ch.tone }))} seconds={30} {wide} />
   {:else}
-    <div class="state" role="status">
+    <div class="state" role="status" title={mstate === 'paused' ? 'Stop the bridge (Ctrl+C in its terminal) to use audio here.' : undefined}>
       <div class="msg">
         <p class="title">
           <span class="lamp" aria-hidden="true">
@@ -71,19 +80,9 @@
               <Lamp state={mstate === 'denied' || mstate === 'error' || mstate === 'nodevice' ? 'on' : 'hollow'} color="rec" size="sm" />
             {/if}
           </span>
-          {mstate === 'paused'
-            ? 'USB audio paused'
-            : mstate === 'denied'
-              ? 'Microphone access blocked'
-              : mstate === 'nodevice'
-                ? 'No audio input'
-                : mstate === 'error'
-                  ? 'Live levels stopped'
-                  : mstate === 'starting'
-                    ? 'Starting live audio'
-                    : 'Live levels, monitoring and recording'}
+          {title}
         </p>
-        <p class="text">{sentence}</p>
+        {#if detail}<p class="text">{detail}</p>{/if}
       </div>
       {#if actionLabel}
         <button type="button" class="mc-key mc-key--light" onclick={() => audio.start()}>{actionLabel}</button>
@@ -131,9 +130,9 @@
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     column-gap: 14px;
-    row-gap: 14px;
-    padding: 18px 0 6px;
-    min-height: 116px;
+    row-gap: 12px;
+    padding: 12px 0 6px;
+    min-height: 68px;
   }
   .lamp {
     display: inline-grid;
@@ -171,7 +170,7 @@
     }
     .state {
       grid-template-columns: minmax(0, 1fr);
-      padding: 16px 0 6px;
+      padding: 12px 0 6px;
     }
     .state .mc-key {
       justify-self: start;

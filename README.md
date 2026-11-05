@@ -1,16 +1,16 @@
-# Mic Console
+# Hollyland Web UI
 
-Mic Console is a control panel for Hollyland LARK A2, A2S, M2 and M2S wireless microphone receivers. It
+Hollyland Web UI is a control panel for Hollyland LARK A2, A2S, M2 and M2S wireless microphone receivers. It
 runs in the browser. Plug the receiver into a computer by USB to change its settings, see the state of
 each mic, watch levels, record and add voice effects.
 
-> **Unofficial.** Mic Console is an independent project. It is not affiliated with, endorsed by or
+> **Unofficial.** Hollyland Web UI is an independent project. It is not affiliated with, endorsed by or
 > supported by Hollyland. LARK and HollyAudio are trademarks of their owners.
 
 **Ways to run it:**
 
 - Open **<https://khromov.github.io/hollyland-web-ui/>** in Chrome, Edge or Opera on a desktop or laptop.
-- Run **`npx mic-console`**, which starts the web UI and, on macOS, the USB bridge. *Coming soon: the
+- Run **`npx hollyland-web-ui`**, which starts the web UI and, on macOS, the USB bridge. *Coming soon: the
   package isn't on npm yet.*
 - Run it from a clone of this repository (see [Development](#development)).
 
@@ -40,7 +40,7 @@ each mic, watch levels, record and add voice effects.
   - Voice effects (see [Audio](#audio))
 - **Developer console** (turn on in Settings): every packet sent and received, decoded.
 
-Mic 1 is shown in purple and Mic 2 in yellow, the same colours as the LEDs on the transmitters.
+Mic 1 is shown in purple and Mic 2 in yellow. On the LARK A2 these match the transmitters' LEDs when Mic Recognition is on.
 
 ## Supported receivers
 
@@ -60,12 +60,12 @@ receiver firmware. When a feature isn't available, the UI explains why.
   within a second when the connection is live.
 - **Turning noise cancellation on brings back the last level used**, for example Weak.
 - **A mic in the charging case shows as not connected.**
-- **The mute indicator is read-only.** There is no known command to mute an A2 mic, so Mic Console can't
+- **The mute indicator is read-only.** There is no known command to mute an A2 mic, so Hollyland Web UI can't
   change it.
 
 ## Platforms
 
-Mic Console talks to the receiver over **WebHID**. WebHID works in Chromium browsers (Chrome, Edge, Opera,
+Hollyland Web UI talks to the receiver over **WebHID**. WebHID works in Chromium browsers (Chrome, Edge, Opera,
 Brave and others) on desktop and laptop computers. Safari, Firefox and phone browsers don't have it.
 
 | Computer | In the browser | With the local bridge |
@@ -107,7 +107,7 @@ Nothing to install.
 
 On Linux and ChromeOS you get full live control. On macOS and Windows the connection is write-only.
 
-For full control on a Mac with the hosted page, start only the bridge with `npx mic-console --bridge-only`
+For full control on a Mac with the hosted page, start only the bridge with `npx hollyland-web-ui --bridge-only`
 (once the package is on npm). Until then, run it from a clone of this repository, after `npm install`:
 
 ```
@@ -119,22 +119,22 @@ bridge**. Chrome asks whether the site may access apps and services on this devi
 bridge listens on 127.0.0.1. The bridge accepts the hosted page only when it is started for it, as above;
 otherwise it accepts only pages served from this computer.
 
-### 2. `npx mic-console`
+### 2. `npx hollyland-web-ui`
 
 > **Coming soon.** The package is ready but not on npm yet, so these commands don't work today. Until it is
-> published, run Mic Console from a clone (see [Development](#development)) and start the bridge with
+> published, run Hollyland Web UI from a clone (see [Development](#development)) and start the bridge with
 > `npm run bridge`.
 
 This needs [Node.js](https://nodejs.org/) 20 or newer.
 
 ```
-npx mic-console
+npx hollyland-web-ui
 ```
 
 - It serves the web UI on <http://127.0.0.1:47320> (this computer only) and opens it in your browser.
 - **On macOS** it also starts the USB bridge, which asks for your password: only root can take a USB device
   away from macOS. The page connects through the bridge by itself and shows **Connected · bridge**.
-  If you skip the password, Mic Console keeps running in write-only mode.
+  If you skip the password, Hollyland Web UI keeps running in write-only mode.
 - Press **Ctrl+C** to stop. The bridge hands the receiver back and USB audio returns a moment later.
 
 | Option | Meaning |
@@ -148,7 +148,7 @@ npx mic-console
 | `--verbose` | Print every USB packet the bridge relays. |
 | `-v`, `--version` / `-h`, `--help` | Version / help. |
 
-The bridge doesn't run on Windows. There, `npx mic-console` serves the write-only web UI.
+The bridge doesn't run on Windows. There, `npx hollyland-web-ui` serves the write-only web UI.
 
 ### 3. From a clone (development)
 
@@ -196,13 +196,13 @@ model, heartbeat layouts, platform behaviour and what has been verified on hardw
 | `src/lib/audio/`, `src/lib/dsp/` | Web Audio engine, WAV writer, voice-effects worklet and the DSP port |
 | `src/components/`, `src/lib/ui/` | Svelte 5 UI |
 | `scripts/` | Local USB bridge, read-only probe CLI (`node-hid`) |
-| `cli/` | The `npx mic-console` launcher |
+| `cli/` | The `npx hollyland-web-ui` launcher |
 | `docs/` | Protocol specification, bridge, DSP notes and research |
 
 ## Firmware updates
 
 Firmware updates are **not supported** and won't be. A failed update can brick a receiver or a mic, and the
-firmware images come from Hollyland's servers. Use the official HollyAudio app to update. Mic Console shows
+firmware images come from Hollyland's servers. Use the official HollyAudio app to update. Hollyland Web UI shows
 the installed versions on the Device page.
 
 ## Privacy
@@ -250,15 +250,15 @@ Example: <http://localhost:5173/?mock=a2>. The simulator is left out of producti
 (`.github/workflows/pages.yml`).
 
 **The npm package.** `npm pack` builds `cli/dist/` and packs it. To try the package locally, run
-`npx --package=./mic-console-<version>.tgz mic-console`.
+`npx --package=./hollyland-web-ui-<version>.tgz hollyland-web-ui`.
 
 ## Legal
 
-- Mic Console is an independent, unofficial project. It is not affiliated with, endorsed by or supported by
+- Hollyland Web UI is an independent, unofficial project. It is not affiliated with, endorsed by or supported by
   Hollyland.
 - The protocol and DSP behaviour were studied for interoperability. This repository doesn't contain
   Hollyland's apps, libraries or firmware.
-- Mic Console sends the same commands as the official app. Using it is at your own risk.
+- Hollyland Web UI sends the same commands as the official app. Using it is at your own risk.
 - Factory reset and Remove Pairing always ask for confirmation first.
 
 Released under the [MIT License](LICENSE).

@@ -1,7 +1,8 @@
 <script lang="ts">
   /**
    * The faceplate's top strip: wordmark, section tabs, and the link at the right
-   * ("● LARK A2  Live · read & write │ Disconnect ☾").
+   * ("● LARK A2 │ Disconnect ☾"). A state word follows the lamp only when it isn't connected
+   * ("Connecting…", "Connection lost").
    * - ≥ 960 px: everything inline, as drawn.
    * - 600–959 px: glyph, tabs, lamp + device; Disconnect and theme move into the ≡ menu.
    * - < 600 px: 56 px tall, wordmark, lamp + device and the ≡ menu; the tabs move to the bottom bar.
@@ -44,10 +45,10 @@
   {/if}
 
   <div class="device">
-    <div class="devname">
-      <Lamp color={link.lamp.color} state={link.lamp.state} blink={link.lamp.blink} />
+    <div class="devname" title={link.lampLabel}>
+      <Lamp color={link.lamp.color} state={link.lamp.state} blink={link.lamp.blink} label={link.mode ? undefined : link.lampLabel} />
       {#if name}<b class="mono">{name}</b>{/if}
-      <span class="mode" class:solo={!name}>{link.mode}</span>
+      {#if link.mode}<span class="mode" class:solo={!name}>{link.mode}</span>{/if}
     </div>
     <span class="visually-hidden" aria-live="polite" aria-atomic="true">{link.announcement}</span>
     <div class="wide-only">
@@ -177,8 +178,8 @@
       right: 12px;
     }
   }
-  /* Below 1100 px the link words would be cut mid-word ("Live · read & w…"): the lamp and the
-     device name stay, and the status line under the page says the rest. */
+  /* Below 1100 px the state word next to a device name gives way: the lamp colour and the status
+     line under the page say it. */
   @media (max-width: 1099px) {
     .mode:not(.solo) {
       display: none;

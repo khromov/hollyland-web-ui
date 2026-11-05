@@ -1,4 +1,4 @@
-// Static file server for the prebuilt Mic Console web UI (cli/dist/web), used by `npx mic-console`.
+// Static file server for the prebuilt Hollyland Web UI (cli/dist/web), used by `npx hollyland-web-ui`.
 //
 //  - node:http only, bound by the caller to 127.0.0.1
 //  - GET and HEAD; files only (no directory listings, no dotfiles, nothing outside the root,

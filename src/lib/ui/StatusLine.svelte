@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * The persistent link status: "● WebHID · two-way   last reply 0.4 s   RX 3.0.2.008 · TX1 …".
+   * The persistent link status: "● Connected   Last reply 0.4 s   RX 3.0.2.008 · TX1 …".
    * Words are Archivo; measured values and hardware IDs are mono.
    * - variant 'line': the desktop 36 px line at the bottom (rule above)
    * - variant 'band': the phone 32 px band under the header (rule below)
@@ -11,7 +11,7 @@
   import Lamp from './Lamp.svelte'
 
   export interface StatusItem {
-    /** Words, e.g. "WebHID · two-way" or "last reply". */
+    /** Words, e.g. "Connected" or "Last reply". */
     label?: string
     /** A measured value or ID, e.g. "0.4 s", "3.0.2.008". */
     value?: string
@@ -20,7 +20,7 @@
 
   interface Props {
     items: StatusItem[]
-    /** Right-aligned text or content, e.g. "Independent project · not affiliated with Hollyland". */
+    /** Right-aligned text or content, e.g. "Unofficial · not affiliated with Hollyland". */
     end?: string | Snippet
     variant?: 'line' | 'band'
     label?: string

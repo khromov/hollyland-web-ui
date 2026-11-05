@@ -2,14 +2,16 @@
   /**
    * A slide switch: 62×30 track, 22 px knob with grip lines, and the legend (ON / OFF) printed
    * inside the track opposite the knob, so state never depends on colour. role="switch".
-   * - checked null: unknown. Dashed track, no knob, "– –". It is a readout, not operable;
+   * - checked null: unknown. Dashed track, no knob, "–". It is a readout, not operable;
    *   for a write-only setting that can be sent blind use SendPair ("Off | On") instead.
    * - confidence 'sent': the position is what this browser last sent (outline + hatch).
+   *   Sent and unknown say so in the tooltip ("Last sent 17:42 · not confirmed", "Unknown").
    * - disabled or blocked: flat track.
    * The target is 44 px tall; the visual track is 30 px.
    */
   import type { Confidence } from './types'
   import { getFieldContext } from './field'
+  import { confidenceNote } from './confidence'
 
   interface Props {
     checked: boolean | null
@@ -17,6 +19,8 @@
     disabled?: boolean
     pending?: boolean
     confidence?: Confidence
+    /** When a 'sent' value was sent, for the tooltip. */
+    sentAt?: number | Date | null
     /** Printed legends; keep them to three characters. */
     legends?: { on: string; off: string }
     id?: string
@@ -29,6 +33,7 @@
     disabled = false,
     pending = false,
     confidence = 'solid',
+    sentAt = null,
     legends = { on: 'ON', off: 'OFF' },
     id,
     onchange,
@@ -37,6 +42,7 @@
   const field = getFieldContext()
   const unknown = $derived(checked === null || confidence === 'unknown')
   const blocked = $derived(field?.blocked ?? false)
+  const note = $derived(unknown ? 'Unknown' : confidenceNote(confidence, sentAt))
 </script>
 
 <button
@@ -49,7 +55,8 @@
   class:unknown
   class:flat={disabled || blocked}
   aria-checked={checked === true}
-  aria-label={unknown ? `${label}, not read` : label}
+  aria-label={unknown ? `${label}, unknown` : label}
+  title={note}
   aria-busy={pending || undefined}
   aria-describedby={field?.describedBy}
   aria-disabled={blocked || unknown || undefined}
@@ -61,7 +68,7 @@
 >
   <span class="track" aria-hidden="true">
     {#if unknown}
-      <span class="tx">– –</span>
+      <span class="tx">–</span>
     {:else}
       <span class="tx">{checked ? legends.on : legends.off}</span>
       <span class="knob">{#if pending}<span class="mc-spinner"></span>{/if}</span>
@@ -171,7 +178,7 @@
     border-color: var(--ink);
   }
 
-  /* Unknown: dashed, no knob, "– –". */
+  /* Unknown: dashed, no knob, "–". */
   .unknown {
     cursor: default;
   }

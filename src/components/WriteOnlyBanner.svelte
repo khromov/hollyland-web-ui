@@ -1,27 +1,16 @@
 <script lang="ts">
   /**
-   * The send-only band under the header (write-only link: the OS drops the receiver's replies).
-   * A dark window with "→ SEND-ONLY LINK", never a yellow banner (yellow is Mic 2). It says what
-   * still works, shows the confidence marks the controls use, and offers the local bridge with its
-   * cost: full control, but the receiver's USB audio pauses while the bridge runs. The bridge
-   * doesn't run on Windows, so it isn't offered there.
-   * On wide screens it is two short lines (legend + sentence, the marks) beside the keys, so the
-   * receiver strip stays on screen on a laptop.
+   * Status strip under the header. Rendered by App only while the current connection can't read
+   * replies (macOS/Windows HID), so it never appears on Linux/ChromeOS or through the bridge.
+   *
+   * One thin line ("Status unavailable on macOS" + "Why?"); the bridge and "Forget remembered
+   * values" live in the expandable details, so the strip costs ~36 px on every screen size.
    */
-  import { ArrowRight } from '@lucide/svelte'
+  import { ChevronDown, Info } from '@lucide/svelte'
   import Key from '../lib/ui/Key.svelte'
-  import Band from './shell/Band.svelte'
-  import { session } from '../lib/state/session.svelte'
   import { bridgeStartHelp } from '../lib/protocol'
   import { PLATFORM_NAME, platform } from './shell/link.svelte'
-  import { sentClock } from './overview/sent.svelte'
-  import { sentTimes } from './settings/sent.svelte'
-
-  function forget() {
-    session.forgetSent()
-    sentClock.clear()
-    sentTimes.clear()
-  }
+  import { FORGET_LABEL, FORGET_TIP, forgetRemembered } from './settings/sent.svelte'
 
   interface Props {
     /** Connect through the local bridge (App's connectBridge). */
@@ -30,85 +19,101 @@
   let { onbridge }: Props = $props()
 
   const startHelp = bridgeStartHelp()
-  const os = platform === 'other' ? 'This system' : PLATFORM_NAME[platform]
+  const message = platform === 'other' ? 'Status unavailable' : `Status unavailable on ${PLATFORM_NAME[platform]}`
   const pausesAudio = platform !== 'linux' && platform !== 'chromeos'
   /** The bridge needs libusb with root (macOS, Linux); Windows can't run it (docs/BRIDGE.md). */
   const bridgeRuns = platform !== 'windows'
   let open = $state(false)
-  const uid = Math.random().toString(36).slice(2, 8)
-  const moreId = `wo-more-${uid}`
-  const costId = `wo-cost-${uid}`
+  const detailsId = `wo-details-${Math.random().toString(36).slice(2, 8)}`
 </script>
 
-{#snippet details()}
-  <div class="details" id={moreId}>
-    {#if bridgeRuns}
-      <p>
-        Full live control works in Chrome on Linux and ChromeOS. Here, run the local bridge{startHelp.where
-          ? ` ${startHelp.where}`
-          : ' in a terminal'}. It asks for your computer password; wait until it prints “captured”.
-      </p>
-      <code class="cmd">{startHelp.command}</code>
-      {#if startHelp.fromClone}<p>From a clone of the project: <code>{startHelp.fromClone}</code></p>{/if}
-      <p>
-        {pausesAudio
-          ? 'While the bridge runs, the receiver’s USB audio pauses: no live levels or recording until you stop it with Ctrl+C.'
-          : 'On Linux the bridge only takes the control link, so USB audio keeps working.'}
-      </p>
-    {:else}
-      <p>The local bridge doesn’t run on Windows. Chrome on Linux or ChromeOS gives full control.</p>
-    {/if}
-    <p class="forget">
-      <span>This browser remembers what it last sent to each receiver model.</span>
-      <Key variant="quiet" size="sm" onclick={forget}>Forget sent values</Key>
-    </p>
+<div class="mc-window strip" role="status">
+  <div class="line">
+    <Info class="arrow" size={15} strokeWidth={2} aria-hidden="true" />
+    <span class="msg">{message}</span>
+    <button type="button" class="why" aria-expanded={open} aria-controls={detailsId} onclick={() => (open = !open)}>
+      {open ? 'Less' : 'Why?'}
+      <ChevronDown size={14} strokeWidth={2} aria-hidden="true" class={open ? 'flip' : ''} />
+    </button>
   </div>
-{/snippet}
 
-<Band
-  legend="Send-only link"
-  lead="{os} drops the receiver’s replies: changes still reach {session.displayName ||
-    'it'}, but battery, mute and settings can’t be read back."
-  more={open ? details : undefined}
->
-  {#snippet mark()}<ArrowRight size={18} strokeWidth={1.75} />{/snippet}
-  <p class="marks">
-    <span class="m"><span class="mc-swatch mc-swatch--sent" aria-hidden="true"></span>Last sent, not confirmed</span>
-    <span class="m"><span class="mc-swatch mc-swatch--unknown" aria-hidden="true"></span>Not read</span>
-    {#if onbridge && bridgeRuns && pausesAudio}
-      <span class="cost" id={costId}>The local bridge gives full control, but USB audio pauses while it runs.</span>
-    {/if}
-  </p>
-  {#snippet actions()}
-    {#if onbridge && bridgeRuns}
-      <Key variant="light" aria-describedby={pausesAudio ? costId : undefined} onclick={onbridge}>Connect through local bridge</Key>
-    {/if}
-    <Key variant="quiet" aria-expanded={open} aria-controls={moreId} onclick={() => (open = !open)}>{open ? 'Less' : 'Why?'}</Key>
-  {/snippet}
-</Band>
+  {#if open}
+    <div class="details" id={detailsId}>
+      <p>Settings still apply; battery, mute and values can’t be read.</p>
+      {#if bridgeRuns}
+        <p>Full status: run the local bridge{pausesAudio ? ' (pauses USB audio)' : ''}.</p>
+        <code class="cmd">{startHelp.command}</code>
+        {#if onbridge}
+          <div><Key variant="light" size="sm" onclick={onbridge}>Connect through local bridge</Key></div>
+        {/if}
+      {/if}
+      <div><Key variant="quiet" size="sm" title={FORGET_TIP} onclick={forgetRemembered}>{FORGET_LABEL}</Key></div>
+    </div>
+  {/if}
+</div>
 
 <style>
-  .marks {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 4px 16px;
-    font-size: 12px;
-    line-height: 1.4;
+  .strip {
+    background: var(--window);
     color: var(--w-ink);
+    border-radius: var(--r-key);
+    font-size: 13px;
+    line-height: 1.35;
   }
-  .m {
-    display: inline-flex;
+  .line {
+    display: flex;
     align-items: center;
     gap: 8px;
+    min-height: 36px;
+    padding: 0 6px 0 12px;
   }
-  .cost {
-    color: #c9c8c3;
+  .line :global(.arrow) {
+    flex: none;
+  }
+  .msg {
+    flex: 1;
+    min-width: 0;
+    color: var(--w-ink-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .why {
+    position: relative;
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    height: 28px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: var(--r-cap);
+    background: transparent;
+    color: var(--w-ink);
+    font: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  /* 44 px hit area without growing the strip. */
+  .why::after {
+    content: '';
+    position: absolute;
+    inset: -8px -2px;
+  }
+  .why:hover {
+    background: color-mix(in srgb, var(--w-ink) 10%, transparent);
+  }
+  .why :global(.flip) {
+    transform: rotate(180deg);
   }
   .details {
     display: grid;
     justify-items: start;
     gap: 8px;
+    padding: 4px 14px 14px 35px;
+    color: var(--w-ink-2);
+    max-width: 90ch;
   }
   .cmd {
     padding: 6px 10px;
@@ -116,12 +121,11 @@
     background: #232327;
     color: var(--w-ink);
     font-size: 13px;
-    word-break: break-all;
+    overflow-wrap: anywhere;
   }
-  .forget {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 4px 10px;
+  @media (max-width: 599px) {
+    .details {
+      padding-left: 14px;
+    }
   }
 </style>

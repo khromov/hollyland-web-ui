@@ -125,7 +125,7 @@ class AudioStore {
       this.recording = false
       this.recordStartedAt = null
       this.stopTimer()
-      toasts.warning('The audio input was disconnected. The recording up to that point was saved below.')
+      toasts.warning('Audio input lost. Take saved.')
     }
     if (typeof navigator !== 'undefined' && navigator.mediaDevices) {
       navigator.mediaDevices.addEventListener?.('devicechange', () => void this.refreshInputs())
@@ -182,7 +182,7 @@ class AudioStore {
   /** Sentence for meterState 'error' (and the other states where the engine said more). */
   get meterMessage(): string | undefined {
     if (this.state === 'running' || this.pausedByBridge) return undefined
-    if (!this.supported) return "This browser can't capture audio inputs, so there are no live levels here."
+    if (!this.supported) return "This browser can't capture audio"
     if (this.state === 'error' && this.error && this.meterState === 'error') return this.error
     return undefined
   }
@@ -277,7 +277,7 @@ class AudioStore {
     const opts = { ...this.recordOptions }
     this.stopTimer()
     const stamp = this.recordStartedAt ?? new Date()
-    const base = `mic-console-${stamp.toISOString().slice(0, 19).replace(/[:T]/g, '-')}`
+    const base = `hollyland-web-ui-${stamp.toISOString().slice(0, 19).replace(/[:T]/g, '-')}`
     const files = await this.engine.stopRecording(base)
     this.recording = false
     this.recordStartedAt = null

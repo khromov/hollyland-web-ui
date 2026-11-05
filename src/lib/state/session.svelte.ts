@@ -47,8 +47,8 @@ export type SettingKey =
 export type BlockReason = 'mic-disconnected' | 'all-muted' | null
 
 export const BLOCK_TEXT: Record<Exclude<BlockReason, null>, string> = {
-  'mic-disconnected': 'Mic not connected, current function not available',
-  'all-muted': 'Mic is currently muted. Noise cancellation settings are unavailable.',
+  'mic-disconnected': 'No mic connected',
+  'all-muted': 'Mics are muted',
 }
 
 export interface ConnectError {
@@ -71,8 +71,10 @@ const RESTART_NO_DROP_MS = 8_000
 /** A firmware-gated feature the model has but the connected receiver doesn't offer (yet). */
 export interface GateInfo {
   state: Exclude<FeatureGateState, 'ok'>
-  /** Short explanation for the UI. */
+  /** Block reason for the UI (a few words). */
   text: string
+  /** The versions involved, for a tooltip. */
+  detail?: string
 }
 
 function storageGet<T>(key: string): T | null {
@@ -94,11 +96,10 @@ function storageSet(key: string, value: unknown) {
 function describeError(e: unknown): ConnectError {
   const err = e as { name?: string; message?: string }
   const msg = err?.message ?? String(e)
-  if (err?.name === 'NotFoundError') return { title: 'No receiver selected', detail: 'The device list closed without a choice.' }
-  if (err?.name === 'SecurityError')
-    return { title: 'The browser blocked the request', detail: 'WebHID needs a secure page (https or localhost) and a click.' }
+  if (err?.name === 'NotFoundError') return { title: 'No receiver selected' }
+  if (err?.name === 'SecurityError') return { title: 'The browser blocked the request', detail: 'Open the page over https, then retry.' }
   if (/open|NotAllowed|busy|InvalidState/i.test(msg))
-    return { title: "Couldn't open the receiver", detail: `Another tab or app may be using it. Close it and retry. (${msg})` }
+    return { title: "Couldn't open the receiver", detail: 'Close other tabs or apps using it, then retry.' }
   if (/not supported/i.test(msg)) return { title: 'This device is not supported', detail: msg }
   return { title: 'Something went wrong', detail: msg }
 }
@@ -188,14 +189,14 @@ class Session {
       const v = this.units?.rx.version
       return {
         state: g,
-        text: `Needs receiver firmware newer than ${ref ?? 'the installed one'}${v ? ` (this one runs ${v})` : ''}. Update it with the official HollyAudio app.`,
+        text: 'Needs newer receiver firmware',
+        detail: `Needs firmware newer than ${ref ?? 'the installed one'}${v ? ` (installed: ${v})` : ''}. Update it in the HollyAudio app.`,
       }
     }
     return {
       state: g,
-      text: this.writeOnly
-        ? `Not available here: it needs receiver firmware newer than ${ref ?? 'a minimum version'}, and this system can't read the firmware version.`
-        : 'Checking the receiver firmware…',
+      text: this.writeOnly ? "Can't check receiver firmware" : 'Checking firmware…',
+      detail: this.writeOnly ? `Needs firmware newer than ${ref ?? 'a minimum version'}.` : undefined,
     }
   }
   get connected(): boolean {
@@ -212,7 +213,7 @@ class Session {
   get settings(): Settings {
     const base = this.state?.settings ?? {}
     // Write-only: the library patches its own state with every blind write. Values the user
-    // asked to forget stay hidden until they are sent again, so "Forget sent values" really
+    // asked to forget stay hidden until they are sent again, so "Forget remembered values" really
     // sets those controls back to "Not read".
     if (this.writeOnly && this.forgotten.size) {
       const kept = { ...base } as Record<string, unknown>
@@ -298,7 +299,7 @@ class Session {
         t = null
       }
       if (!t) {
-        toasts.info('Receiver not found. Plug it back in; the page reconnects automatically.')
+        toasts.info('Receiver not found. Plug it back in.')
         return
       }
       await this.attach(t, 'lost')
@@ -312,7 +313,7 @@ class Session {
     if (this.phase === 'connecting') return
     this.error = null
     this.phase = 'connecting'
-    this.step = kind === 'webhid' ? 'Waiting for the device chooser…' : 'Connecting…'
+    this.step = kind === 'webhid' ? 'Choose the receiver…' : 'Connecting…'
     this.factory = factory
     this.transportKind = kind
     try {
@@ -320,7 +321,7 @@ class Session {
       if (!t) {
         this.phase = 'idle'
         this.step = null
-        this.error = { title: 'No receiver selected', detail: 'The device list closed without a choice.' }
+        this.error = { title: 'No receiver selected' }
         return
       }
       await this.attach(t)
@@ -663,7 +664,7 @@ class Session {
     try {
       const r = await dev.removePairing(tx, { confirm: true })
       if (!r.ok) throw new Error('The receiver rejected the request.')
-      toasts.success(r.confirmed ? 'Deleted' : 'Sent. The pairing should now be removed.')
+      toasts.success(r.confirmed ? 'Deleted' : 'Removal sent')
       return true
     } catch (e) {
       toasts.error(`Operation failed. ${(e as Error).message}`)
@@ -678,7 +679,7 @@ class Session {
       const r = await dev.factoryReset({ confirm: true })
       if (!r.ok) throw new Error('The receiver rejected the request.')
       this.forgetSent()
-      toasts.success(r.confirmed ? 'Reset successful' : 'Reset sent.')
+      toasts.success(r.confirmed ? 'Reset successful' : 'Reset sent')
       // Re-sync after the receiver settles (official app waits 1 s).
       setTimeout(() => {
         if (this.dev === dev && this.live) {
@@ -696,7 +697,7 @@ class Session {
   /** Raw frame from the developer console. Returns an error message or null. */
   async sendRaw(bytes: Uint8Array): Promise<string | null> {
     const dev = this.dev
-    if (!dev) return 'Not connected.'
+    if (!dev) return 'Not connected'
     const packet = new Uint8Array(64)
     packet.set(bytes.subarray(0, 64))
     try {

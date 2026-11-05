@@ -1,4 +1,4 @@
-# Mic Console redesign: art-director review
+# Hollyland Web UI redesign: art-director review
 
 I reviewed the three directions: A "Instrument", B "Editorial calm" and C "Device-first / The Bench".
 
@@ -323,7 +323,7 @@ A is the only direction that looks like it belongs to audio hardware, its contro
 - Header and status line, trimmed.
 - The phone layout order.
 - Audio page structure: meter window, recorder with take timeline, takes table.
-- The Connect "two USB links" schematic, fixed.
+- The Connect "two USB links" schematic, fixed. (Later dropped: the Connect page is now one column of steps, see spec.md "Connect screen".)
 - The solid / hatched / dashed confidence vocabulary.
 
 **Take from B (Editorial):**
@@ -343,7 +343,7 @@ A is the only direction that looks like it belongs to audio hardware, its contro
   - "Current step unknown. Last sent: 6."
   - "--% Not readable" batteries and hollow lamps.
 - The Audio profile matrix with 1/2 cells filled in the channel colour.
-- The Connect step copy "Switch on both mics. Mic 1 lights purple, Mic 2 lights yellow."
+- The Connect step copy "Switch on both mics. Mic 1 lights purple, Mic 2 lights yellow." (Later dropped from the page: the LED colours only hold for the LARK A2 with Mic Recognition on.)
 
 **Drop:**
 - From A: the 10 s history on Overview, the left rail captions, the specular LED dots, the fake Chrome chooser, and the detent fader.
@@ -405,7 +405,7 @@ A is the only direction that looks like it belongs to audio hardware, its contro
    - External speaker passthrough restarts the receiver: confirm first, then the header lamp and status line show "Restarting · reconnecting".
 10. **Fix the Connect page and ship both themes with an accessibility pass.**
     - **Connect page:**
-      - Keep the two-links schematic, but make it state-true: no "USB audio available now" before plug-in.
+      - Keep the two-links schematic, but make it state-true: no "USB audio available now" before plug-in. (Later dropped as redundant.)
       - Describe Chrome's chooser in words instead of faking it.
       - Say "macOS: send only; Windows: unverified".
       - List A2, M2 and M2S.

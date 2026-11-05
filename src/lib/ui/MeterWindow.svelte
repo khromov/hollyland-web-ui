@@ -8,8 +8,8 @@
    * never re-renders per frame. Drawing pauses while the document is hidden. Under reduced
    * motion the meter updates at 10 Hz with no decay trail, and lamps never blink.
    *
-   * The window is never empty without a sentence: `state` other than 'live' shows why, inside
-   * the window, with the action that fixes it where there is one (first run: "Show live levels").
+   * `state` other than 'live' shows a short state inside the window (an error says its fix), with
+   * the key that fixes it where there is one (first run: only the "Show live levels" key).
    *
    * Variants:
    *   channel  Overview: the level history (optional) across the full width on top, its own time
@@ -52,7 +52,7 @@
     muted?: boolean
     /** No window chrome (to stack strips inside one .mc-window). */
     bare?: boolean
-    /** Channel variant: what the channel carries, above the bar ("USB L" + "channel mode not read"). */
+    /** Channel variant: what the channel carries, above the bar ("USB L"). */
     tag?: string
     caption?: string
     /** Strip variant: print the dB scale under the bar (stacked strips share one scale). */
@@ -119,25 +119,25 @@
 
   /** A secondary window says only that it waits, and offers no key of its own. */
   const secondary = $derived(!primary && (mstate === 'idle' || mstate === 'denied' || mstate === 'error'))
+  /** A short state, or an error with its fix. First run says nothing: the key says it. */
   const sentence = $derived(
-    (secondary && mstate === 'idle' ? 'Waiting for live levels.' : null) ??
+    (secondary && mstate === 'idle' ? 'No live levels' : null) ??
       message ??
       {
         live: '',
-        idle: "Live levels come from the receiver's USB audio. Chrome asks for microphone access once.",
+        idle: '',
         starting: 'Waiting for microphone access…',
-        denied:
-          'Microphone access is blocked for this page. Allow it in the site settings next to the address bar, then try again.',
-        paused: 'USB audio paused while the local bridge runs.',
-        nodevice: 'No USB audio from the receiver. Plug it in, or choose its input on the Audio page.',
-        error: 'Live levels stopped.',
+        denied: 'Microphone blocked. Allow it in site settings.',
+        paused: 'Paused while the bridge runs',
+        nodevice: 'No receiver audio input',
+        error: 'Live levels stopped',
       }[mstate],
   )
   const actionLabel = $derived(
     secondary ? null : mstate === 'idle' ? 'Show live levels' : mstate === 'denied' || mstate === 'error' ? 'Try again' : null,
   )
 
-  const ariaText = $derived(live ? liveAria || `${label}, no level yet` : `${label}: ${sentence}`)
+  const ariaText = $derived(live ? liveAria || `${label}, no level yet` : `${label}: ${sentence || 'no live levels'}`)
 
   type RGB = [number, number, number]
   function parse(s: string, fallback: RGB): RGB {
@@ -156,12 +156,12 @@
     `rgb(${Math.round(a[0] * t + b[0] * (1 - t))} ${Math.round(a[1] * t + b[1] * (1 - t))} ${Math.round(a[2] * t + b[2] * (1 - t))})`
 
   function setText(db: number, peak: number, max: number | null) {
-    const t = live ? formatDb(db) : '– –'
+    const t = live ? formatDb(db) : '–'
     const dot = t.indexOf('.')
     if (intEl) intEl.textContent = dot >= 0 ? t.slice(0, dot) : t
     if (decEl) decEl.textContent = dot >= 0 ? t.slice(dot) : ''
-    if (peakEl) peakEl.textContent = live ? formatDb(peak) : '– –'
-    if (maxEl) maxEl.textContent = live && max !== null ? formatDb(max) : '– –'
+    if (peakEl) peakEl.textContent = live ? formatDb(peak) : '–'
+    if (maxEl) maxEl.textContent = live && max !== null ? formatDb(max) : '–'
   }
 
   onMount(() => {
@@ -394,7 +394,7 @@
   class:history={showHistory}
   class:labelled={gridLabels}
   class:offline={!live}
-  class:inflow={!live && variant !== 'channel'}
+  class:inflow={!live}
   class:clipped
   class:noscale={!scale}
 >
@@ -421,7 +421,7 @@
       <div class="hist-head">
         {#if gridLabels}<span class="gut"></span>{/if}
         <span class="mono">−{history} s</span>
-        {#if !narrow}<span class="loud">loudest <b class="mono" bind:this={maxEl}>– –</b></span>{/if}
+        {#if !narrow}<span class="loud">loudest <b class="mono" bind:this={maxEl}>–</b></span>{/if}
         <span class="now mono">now</span>
       </div>
       <div class="hist">
@@ -474,11 +474,11 @@
     {#if variant === 'strip'}
       <span class="cell" aria-hidden="true">
         <span class="k">RMS</span>
-        <span class="v mono"><span bind:this={intEl}>– –</span><small bind:this={decEl}></small></span>
+        <span class="v mono"><span bind:this={intEl}>–</span><small bind:this={decEl}></small></span>
       </span>
       <span class="cell" aria-hidden="true">
         <span class="k">Peak</span>
-        <span class="v mono" bind:this={peakEl}>– –</span>
+        <span class="v mono" bind:this={peakEl}>–</span>
       </span>
       {@render clipKey()}
     {:else}
@@ -486,18 +486,20 @@
       <!-- One cluster beside the bar row: nothing floats in an empty column. -->
       <div class="readout" aria-hidden="true">
         {#if variant === 'channel'}<span class="k">RMS dBFS</span>{/if}
-        <span class="big mono"><span bind:this={intEl}>– –</span><small bind:this={decEl}></small></span>
-        <span class="k">peak <b class="mono" bind:this={peakEl}>– –</b></span>
+        <span class="big mono"><span bind:this={intEl}>–</span><small bind:this={decEl}></small></span>
+        <span class="k">peak <b class="mono" bind:this={peakEl}>–</b></span>
       </div>
     {/if}
   </div>
 
   {#if !live}
     <div class="overlay" class:row={variant !== 'channel' || narrow} class:quiet={secondary}>
-      <p>
-        {#if mstate === 'starting'}<span class="mc-spinner" aria-hidden="true"></span>{/if}
-        {sentence}
-      </p>
+      {#if sentence}
+        <p>
+          {#if mstate === 'starting'}<span class="mc-spinner" aria-hidden="true"></span>{/if}
+          {sentence}
+        </p>
+      {/if}
       {#if action && !secondary}
         {@render action()}
       {:else if actionLabel && onstart}
@@ -973,6 +975,10 @@
   }
   .inflow .stack,
   .inflow .col {
+    display: none;
+  }
+  /* Channel windows collapse to their one-line state when there are no levels (no empty black box). */
+  .v-channel.inflow > :not(.overlay, .visually-hidden) {
     display: none;
   }
   .v-strip.inflow {

@@ -129,8 +129,9 @@
     if (!session.live || !u) return null
     return (u.tx1.online ? 1 : 0) + (u.tx2.online ? 1 : 0)
   })
+  /** "2 of 2 online"; nothing when the status can't be read. */
   const txSummary = $derived(
-    session.writeOnly ? "Mic status can't be read here" : onlineCount === null ? 'Reading status…' : `${onlineCount} of 2 online`,
+    session.writeOnly ? undefined : onlineCount === null ? 'Reading…' : `${onlineCount} of 2 online`,
   )
 
   // ---------------------------------------- "Mic 1 Connected" / "Mic 1 Disconnected" toasts
@@ -153,9 +154,10 @@
   })
 </script>
 
+<!-- The levels come from an input that isn't the receiver: name it, link to the fix. -->
 {#snippet foreignNote()}
-  These levels come from “{audio.deviceLabel || 'an audio input'}”, which doesn't look like the receiver. Pick
-  the receiver's input on the <a href="#/audio">Audio</a> page.
+  <span title="Levels from “{audio.deviceLabel || 'an audio input'}”, not the receiver">Wrong input</span> ·
+  <a href="#/audio">Change</a>
 {/snippet}
 
 <div
@@ -173,10 +175,7 @@
   <!-- Phones start with the channels (no heading); elsewhere the rail or an inline heading names the row. -->
   <Panel title="Transmitters" description={txSummary} {rail} fill={fillWindows} hideTitle={phone} class="tx-panel">
     {#snippet meta()}
-      {#if rail}
-        <p class="rail-note">Levels come from the receiver's USB audio in this browser.</p>
-        {#if foreignInput}<p class="rail-note warn">{@render foreignNote()}</p>{/if}
-      {/if}
+      {#if rail && foreignInput}<p class="rail-note warn">{@render foreignNote()}</p>{/if}
     {/snippet}
     {#snippet aside()}
       {#if !rail && !phone && foreignInput}<span class="aside-note">{@render foreignNote()}</span>{/if}
@@ -192,10 +191,7 @@
     </div>
   </Panel>
 
-  <Panel title="Receiver" description={phone ? undefined : 'These settings apply to both mics.'} {rail} class="rx-panel">
-    {#snippet aside()}
-      {#if phone}Applies to both mics{/if}
-    {/snippet}
+  <Panel title="Receiver" {rail} class="rx-panel">
     {#snippet meta()}
       {#if showCameraRx}<CameraRxRow />{/if}
     {/snippet}

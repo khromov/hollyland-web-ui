@@ -38,6 +38,7 @@
   import Switch from '../../lib/ui/Switch.svelte'
   import Tag from '../../lib/ui/Tag.svelte'
   import ValueHead from '../../lib/ui/ValueHead.svelte'
+  import WriteOnlyBanner from '../WriteOnlyBanner.svelte'
   import Blocked from './Blocked.svelte'
   import { simSignal } from './sim'
 
@@ -137,7 +138,7 @@
   <header class="top">
     <div class="brand">
       <BrandGlyph />
-      <span class="wordmark">Mic Console</span>
+      <span class="wordmark">Hollyland Web UI</span>
       <span class="sub">Instrument · style guide</span>
     </div>
     <div class="theme">
@@ -179,11 +180,11 @@
         <div class="ty"><span class="k">Channel name · 26 · 660 · wdth 108</span><span class="t-channel">Mic 1</span></div>
         <div class="ty"><span class="k">Section · 15 · 680 · wdth 108</span><span class="t-section">Receiver</span></div>
         <div class="ty"><span class="k">Control title · 15 · 660</span><span class="t-control">Noise cancellation</span></div>
-        <div class="ty"><span class="k">Body · 14 / 13</span><span class="t-body">Reduces steady background noise such as fans and traffic.</span></div>
-        <div class="ty"><span class="k">Footnote · 12 · ink-3</span><span class="t-foot">The button on either mic also switches this on or off.</span></div>
+        <div class="ty"><span class="k">Body · 14 / 13</span><span class="t-body">Status unavailable on macOS</span></div>
+        <div class="ty"><span class="k">Footnote · 12 · ink-3</span><span class="t-foot">Turn on the light first</span></div>
         <div class="ty"><span class="k">Value at module head · Mono 24</span><ValueHead value={6} total={6} /></div>
         <div class="ty"><span class="k">Legend · Mono 12</span><span class="mc-legend">3.0.2.008 · 48 kHz · TX1</span></div>
-        <div class="ty"><span class="k">Lamp legends (the only uppercase)</span><span class="mc-lamp-legend">Clip · Rec · Send-only link</span></div>
+        <div class="ty"><span class="k">Lamp legends (the only uppercase)</span><span class="mc-lamp-legend">Clip · Rec</span></div>
       </div>
     </Panel>
 
@@ -206,7 +207,7 @@
             <ConfidenceNote kind="sent" at={sentAt} />
           </div>
           <div class="conf-col">
-            <span class="k">Unknown · not read</span>
+            <span class="k">Unknown · never read or sent</span>
             <Key confidence="unknown">– –</Key>
             <SlideSwitch checked={null} label="Unknown switch" />
             <BatteryCells percent={null} label="Unknown" />
@@ -217,7 +218,7 @@
             <Key disabled>Bright</Key>
             <SlideSwitch checked={false} disabled label="Disabled switch" />
             <Key disabled selected>Balance</Key>
-            <ConfidenceNote kind="disabled" text="Switch on to choose a tone" />
+            <ConfidenceNote kind="disabled" text="Turn on Bel canto first" />
           </div>
           <div class="conf-col">
             <span class="k">Keyboard focus</span>
@@ -290,17 +291,15 @@
           <span class="k">Unknown (nothing chosen, still sendable)</span>
           <KeyGroup options={NC} value={null} label="Noise cancellation level, unknown" />
           <ConfidenceNote kind="unknown" />
-          <span class="k">Write-only noise cancellation: Off can't be sent blind</span>
-          <KeyGroup options={NC_WO} value="medium" confidence="sent" label="Noise cancellation, write-only" />
-          <ConfidenceNote kind="disabled" text="Turning noise cancellation off needs a live connection." />
+          <span class="k">Status unavailable: Off can't be sent (tooltip says so)</span>
+          <KeyGroup options={NC_WO} value="medium" confidence="sent" {sentAt} label="Noise cancellation, sent" />
           <span class="k">Disabled with reason</span>
           <KeyGroup options={TONES} value="balance" disabled label="Bel canto tone" />
-          <ConfidenceNote kind="disabled" text="Switch on to choose a tone." />
+          <ConfidenceNote kind="disabled" text="Turn on Bel canto first" />
         </div>
         <div class="stack">
           <span class="k">Channel mode · tall keys with routing glyphs</span>
           <KeyGroup options={MODES} value={mode} label="Channel mode" onchange={(v) => (mode = v)} />
-          <p class="t-foot"><b>{MODES.find((m) => m.value === mode)?.label}</b> · Mic 1 left, Mic 2 right. SafeTr adds a safety copy 6 dB lower.</p>
           <span class="k">Channel mode · sent</span>
           <KeyGroup options={MODES} value="stereo" confidence="sent" label="Channel mode, sent" />
           <span class="k">Channel mode · pending</span>
@@ -322,7 +321,7 @@
     </Panel>
 
     <!-- ───────────── Switches ───────────── -->
-    <Panel title="Switches" description="ON / OFF printed in the track. Write-only settings become Off | On send pairs.">
+    <Panel title="Switches" description="ON / OFF printed in the track. Settings that can't be read back become Off | On pairs.">
       <div class="pad grid-2">
         <div class="stack">
           <span class="k">Slide switch</span>
@@ -337,7 +336,7 @@
             <SlideSwitch checked={false} disabled label="Disabled off" />
           </div>
           <span class="k">Blocked</span>
-          <Blocked reason="Recognition needs the light on.">
+          <Blocked reason="Turn on the light first">
             <SlideSwitch checked={false} label="Mic recognition" />
           </Blocked>
         </div>
@@ -347,10 +346,10 @@
           <ConfidenceNote kind="sent" at={sentAt} />
           <span class="k">Send pair · nothing sent yet</span>
           <SendPair value={null} label="Bel canto" />
-          <ConfidenceNote kind="unknown" text="Not read · choose a value to send it" />
+          <ConfidenceNote kind="unknown" />
           <span class="k">Send pair · disabled</span>
           <SendPair value={false} disabled label="Mic recognition" />
-          <ConfidenceNote kind="disabled" text="Recognition needs the light on." />
+          <ConfidenceNote kind="disabled" text="Turn on the light first" />
         </div>
       </div>
     </Panel>
@@ -369,7 +368,7 @@
         <div class="stack">
           <div class="fhead"><span class="t-control">Sent, not confirmed</span><ValueHead value={5} total={6} confidence="sent" /></div>
           <Fader steps={6} value={4} confidence="sent" label="Receiver volume, sent" flanks="always" />
-          <ConfidenceNote kind="sent" at={sentAt} text="Unknown · last sent 5" />
+          <ConfidenceNote kind="sent" at={sentAt} />
           <div class="fhead"><span class="t-control">Unknown</span><ValueHead value={null} total={6} /></div>
           <Fader steps={6} value={null} label="Receiver volume, unknown" />
           <ConfidenceNote kind="unknown" />
@@ -426,7 +425,7 @@
           {/each}
         </DisplayWindow>
         <div class="labels">
-          {#each [[0, 'Mono'], [1, 'Stereo'], [2, 'SafeTr'], [null, 'Unknown / write-only']] as [md, name] (name)}
+          {#each [[0, 'Mono'], [1, 'Stereo'], [2, 'SafeTr'], [null, 'Unknown']] as [md, name] (name)}
             <div class="lab">
               <span class="k">{name}</span>
               {#each usbChannelMeters(md as number | null) as m (m.side)}
@@ -461,7 +460,7 @@
             <Tag>TX1</Tag><Tag>TX2</Tag><Tag>RX</Tag>
             <Chip tone="success">Connected</Chip>
             <Chip>Offline</Chip>
-            <Chip unknown>Not read</Chip>
+            <Chip unknown>Unknown</Chip>
             <Chip tone="danger">Lost</Chip>
             <Chip tone="warning">Unavailable</Chip>
           </div>
@@ -469,7 +468,7 @@
           <div class="wrap center">
             <span class="mute" role="status"><Lamp color="rec" state="off" /> Unmuted</span>
             <span class="mute" role="status"><Lamp color="rec" /> Muted</span>
-            <span class="mute" role="status"><Lamp state="hollow" /> <span class="mc-dash">– –</span> Not read</span>
+            <span class="mute" role="status" title="Unknown"><Lamp state="hollow" /> <span class="mc-dash">–</span></span>
           </div>
         </div>
         <div class="stack">
@@ -481,83 +480,67 @@
           <span class="k">Legacy Battery (sm)</span>
           <Battery percent={45} size="sm" />
           <span class="k">Brand</span>
-          <div class="wrap center"><BrandGlyph /><span class="wordmark">Mic Console</span><span class="sub">Unofficial</span></div>
+          <div class="wrap center"><BrandGlyph /><span class="wordmark">Hollyland Web UI</span><span class="sub">Unofficial</span></div>
         </div>
       </div>
     </Panel>
 
     <!-- ───────────── Layout ───────────── -->
-    <Panel title="Receiver" description="Modules divided by hairlines, value at the head. Applies to both mics.">
+    <Panel title="Receiver" description="Modules divided by hairlines: label, value and control only.">
       <Modules columns="repeat(auto-fit, minmax(min(100%, 230px), 1fr))">
-        <Module title="Noise cancellation" description="Reduces steady background noise such as fans and traffic.">
+        <Module title="Noise cancellation" description="The button on either mic toggles this">
           {#snippet head()}<SlideSwitch checked={true} label="Noise cancellation" />{/snippet}
           <KeyGroup options={NC} value={nc} label="Noise cancellation level" onchange={(v) => (nc = v)} />
-          {#snippet foot()}The button on either mic also switches this on or off.{/snippet}
         </Module>
-        <Module title="Receiver volume" description="Output level to the camera or computer." value={vol + 1} total={6}>
+        <Module title="Receiver volume" value={vol + 1} total={6}>
           <Fader steps={6} value={vol} label="Receiver volume" onchange={(v) => (vol = v)} />
-          {#snippet foot()}Lower it if the camera's input clips.{/snippet}
         </Module>
-        <Module title="Channel mode" description="How the two mics reach the output.">
+        <Module title="Channel mode">
           <KeyGroup options={MODES} value={mode} label="Channel mode" onchange={(v) => (mode = v)} />
-          {#snippet foot()}<b>Stereo</b> · Mic 1 left, Mic 2 right.{/snippet}
         </Module>
-        <Module title="Bel canto" description="On-receiver voice tone preset.">
+        <Module title="Bel canto">
           {#snippet head()}<SlideSwitch checked={belcanto} label="Bel canto" onchange={(v) => (belcanto = v)} />{/snippet}
           <KeyGroup options={TONES} value="balance" disabled={!belcanto} label="Bel canto tone" />
-          {#snippet foot()}{belcanto ? 'Three tones, applied on the receiver.' : 'Switch on to choose a tone.'}{/snippet}
         </Module>
-        <Module title="Indicator light" description="Status LEDs on both mics.">
+        <Module title="Indicator light">
           {#snippet head()}<SlideSwitch checked={led} label="Indicator light" onchange={(v) => (led = v)} />{/snippet}
-          <Module title="Mic recognition" nested pad="none">
+          <Module title="Mic recognition" description="Lights each mic in its own colour" nested pad="none">
             {#snippet head()}<SlideSwitch checked={led && recog} disabled={!led} label="Mic recognition" onchange={(v) => (recog = v)} />{/snippet}
-            <div class="ledpair">
-              <span><Lamp color="mic1" size="sm" state={led && recog ? 'on' : 'off'} /> Mic 1 glows purple</span>
-              <span><Lamp color="mic2" size="sm" state={led && recog ? 'on' : 'off'} /> Mic 2 glows yellow</span>
-            </div>
+            {#if !led}
+              <ConfidenceNote kind="disabled" text="Turn on the light first" />
+            {:else if recog}
+              <div class="ledpair">
+                <span><Lamp color="mic1" size="sm" /> Mic 1 Purple</span>
+                <span><Lamp color="mic2" size="sm" /> Mic 2 Yellow</span>
+              </div>
+            {/if}
           </Module>
-          {#snippet foot()}Recognition needs the light on.{/snippet}
         </Module>
       </Modules>
     </Panel>
 
-    <Panel title="Write-only receiver" description="Send-only link: what each control becomes when nothing can be read back." rail={false}>
-      {#snippet aside()}Applies to both mics{/snippet}
+    <Panel title="Status unavailable" description="Replies can't be read: one thin strip, and each control shows what was last sent (hatched) or nothing (dashed). The words are in the controls' tooltips." rail={false}>
       <div class="pad-b">
-        <Banner tone="sendonly">
-          macOS drops the receiver's replies. Settings still reach it, but battery, mute and current settings can't be
-          read, so controls show what this browser last sent. The local bridge gives full control, but it pauses the
-          receiver's USB audio (and these meters) while it runs.
-          {#snippet actions()}
-            <Button variant="light">Connect through local bridge</Button>
-            <Button variant="ghost">Why?</Button>
-            <Button variant="ghost">Forget sent values</Button>
-          {/snippet}
-        </Banner>
+        <WriteOnlyBanner />
       </div>
       <Modules columns="repeat(auto-fit, minmax(min(100%, 230px), 1fr))">
-        <Module title="Noise cancellation" description="Levels can be sent; turning it off can't.">
-          <KeyGroup options={NC_WO} value="medium" confidence="sent" label="Noise cancellation, write-only" />
-          {#snippet foot()}<ConfidenceNote kind="disabled" text="Turning noise cancellation off needs a live connection." />{/snippet}
+        <Module title="Noise cancellation" description="Can't be switched off here">
+          <KeyGroup options={NC_WO} value="medium" confidence="sent" {sentAt} label="Noise cancellation level" />
         </Module>
-        <Module title="Receiver volume" value={5} total={6} confidence="sent">
-          <Fader steps={6} value={4} confidence="sent" label="Receiver volume, sent" />
-          {#snippet foot()}<ConfidenceNote kind="sent" at={sentAt} text="Unknown · last sent 5" />{/snippet}
+        <Module title="Receiver volume" value={5} total={6} confidence="sent" {sentAt}>
+          <Fader steps={6} value={4} confidence="sent" {sentAt} label="Receiver volume" />
         </Module>
         <Module title="Channel mode">
-          <KeyGroup options={MODES} value="stereo" confidence="sent" label="Channel mode, sent" />
-          {#snippet foot()}<ConfidenceNote kind="sent" at={sentAt} />{/snippet}
+          <KeyGroup options={MODES} value="stereo" confidence="sent" {sentAt} label="Channel mode" />
         </Module>
         <Module title="Bel canto">
           {#snippet head()}<SendPair value={null} label="Bel canto" />{/snippet}
-          {#snippet foot()}<ConfidenceNote kind="unknown" />{/snippet}
         </Module>
         <Module title="Indicator light">
-          {#snippet head()}<SendPair value={true} label="Indicator light" />{/snippet}
+          {#snippet head()}<SendPair value={true} {sentAt} label="Indicator light" />{/snippet}
           <Module title="Mic recognition" nested pad="none">
             {#snippet head()}<SendPair value={null} label="Mic recognition" />{/snippet}
           </Module>
-          {#snippet foot()}<ConfidenceNote kind="sent" at={sentAt} />{/snippet}
         </Module>
       </Modules>
     </Panel>
@@ -568,34 +551,37 @@
         <div class="frame">
           <StatusLine
             items={[
-              { lamp: { color: 'live' }, label: 'WebHID · two-way' },
-              { label: 'last reply', value: '0.4 s' },
-              { label: 'RX', value: '3.0.2.008' },
-              { label: 'TX1', value: '3.0.2.008' },
-              { label: 'TX2', value: '3.0.2.008' },
+              { lamp: { color: 'live' }, label: 'Connected' },
+              { label: 'Last reply', value: '0.4 s ago' },
+              { label: 'Firmware', value: 'RX 3.0.2.008 · TX1 3.0.2.008 · TX2 3.0.2.008' },
             ]}
-            end="Independent project · not affiliated with Hollyland"
+            end="Unofficial · not affiliated with Hollyland"
           />
         </div>
-        <span class="k">Phone band, send-only, restarting</span>
+        <span class="k">Status unavailable (hollow lamp; the strip under the header says why)</span>
         <div class="frame">
-          <StatusLine variant="band" items={[{ lamp: { state: 'hollow' }, label: 'Send-only' }, { label: 'RX', value: '3.0.2.008' }]} />
+          <StatusLine items={[{ lamp: { state: 'hollow' }, label: 'Connected' }]} end="Unofficial · not affiliated with Hollyland" />
         </div>
+        <span class="k">Connection lost (the band says it; the line keeps the last reply)</span>
         <div class="frame">
-          <StatusLine items={[{ lamp: { color: 'live', blink: true }, label: 'Restarting · reconnecting' }]} />
+          <StatusLine items={[{ lamp: { color: 'rec' }, label: 'Last reply', value: '4.2 s ago' }]} end="Unofficial · not affiliated with Hollyland" />
+        </div>
+        <span class="k">Phone band (live connections only)</span>
+        <div class="frame">
+          <StatusLine variant="band" items={[{ label: 'Last reply', value: '0.4 s' }]} end="RX 3.0.2.008" />
         </div>
       </div>
     </Panel>
 
     <Panel title="Notices" description="Dark windows with a lamp. Never a yellow banner: yellow means Mic 2.">
       <div class="pad stack">
-        <Banner tone="danger" title="Connection to the receiver was lost">
-          Last update 17:42:08. Values below are frozen. Plug the receiver back in; the page reconnects automatically.
+        <Banner tone="danger" title="Connection lost">
+          Plug the receiver back in.
           {#snippet actions()}<Button variant="light" size="sm">Reconnect</Button>{/snippet}
         </Banner>
-        <Banner tone="warning" title="Not a secure context">WebHID needs https:// or localhost.</Banner>
-        <Banner tone="success" title="Bridge connected">Full read and write. USB audio is paused while it runs.</Banner>
-        <Banner tone="info">This doesn't look like the receiver's audio input. Pick it below.</Banner>
+        <Banner tone="warning" title="Needs https:// or localhost" />
+        <Banner tone="danger" title="Bridge not reachable">Start the bridge, then retry.</Banner>
+        <Banner tone="info">Pick the receiver's audio input</Banner>
         <span class="k">Dialogs and toasts</span>
         <div class="wrap">
           <Button onclick={() => (dialogOpen = true)}>Open dialog</Button>
@@ -613,13 +599,13 @@
     <Panel title="Rows and spec sheet" description="List rows: title and description left, control right, rules between.">
       <div class="pad grid-2">
         <div>
-          <SettingRow label="Smart battery life" description="Lowers transmit power when the mics are close.">
+          <SettingRow label="Smart battery life">
             {#snippet control()}<Switch checked={true} label="Smart battery life" />{/snippet}
           </SettingRow>
-          <SettingRow label="Mic auto power-off" description="Shut down after 15 minutes of inactivity.">
+          <SettingRow label="Mic auto power-off">
             {#snippet control()}<Switch checked={false} label="Mic auto power-off" />{/snippet}
           </SettingRow>
-          <SettingRow label="Mic recognition" disabledReason="Recognition needs the light on.">
+          <SettingRow label="Mic recognition" disabledReason="Turn on the light first">
             {#snippet control()}<Switch checked={false} disabled label="Mic recognition" />{/snippet}
           </SettingRow>
           <SettingRow label="Theme" stacked>
@@ -635,7 +621,7 @@
           <KeyValue label="Serial" value="A2RX93001F7F3A" mono masked copyable />
           <KeyValue label="USB ID" value="3547:0411" mono copyable />
           <KeyValue label="Mic 2 firmware" value={null} mono />
-          <KeyValue label="Connection" value="WebHID · two-way" />
+          <KeyValue label="Connection" value="USB" />
         </dl>
       </div>
     </Panel>
@@ -901,10 +887,6 @@
     font-size: 12px;
     color: var(--ink-3);
   }
-  .t-foot b {
-    color: var(--ink-2);
-  }
-
   .conf {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));

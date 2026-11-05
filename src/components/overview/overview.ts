@@ -2,6 +2,7 @@
  * Pure helpers for the Overview page: labels and rules from docs/research/features.md §4, §12, §16.
  */
 import type { Family } from '../../lib/protocol'
+import type { BlockReason } from '../../lib/state/session.svelte'
 import type { KeyOption, SegmentOption } from '../../lib/ui/types'
 import { toasts } from '../../lib/ui/toast.svelte'
 
@@ -34,13 +35,6 @@ export const CHANNEL_MODE_HINT: Record<number, string> = {
   2: 'Safety track: second channel recorded 6 dB lower',
 }
 
-/** Footnote of the Channel mode module, for the mode in effect (or last sent). */
-export const CHANNEL_MODE_FOOT: Record<number, string> = {
-  0: 'both mics mixed, on both channels.',
-  1: 'Mic 1 left, Mic 2 right.',
-  2: 'both mics mixed on the left, a safety copy 6 dB lower on the right.',
-}
-
 const MODE_GLYPH = { 0: 'mono', 1: 'stereo', 2: 'safetr' } as const
 
 /** Channel-mode keys with their routing glyphs, for the modes this receiver offers. */
@@ -66,7 +60,16 @@ export const PRESET_OPTIONS: SegmentOption<number>[] = [
   { value: 2, label: 'Balance' },
 ]
 
-export const VOLUME_LOCKED_TEXT = 'Volume adjustment locked, please unlock first'
+/** Block reasons, short: said in place while blocked and in the toast when the control is touched. */
+export const BLOCK_SHORT: Record<Exclude<BlockReason, null>, string> = {
+  'mic-disconnected': 'No mic connected',
+  'all-muted': 'Mics are muted',
+}
+export const VOLUME_LOCKED_TEXT = 'Volume is locked'
+export const LIGHT_OFF_TEXT = 'Turn on the light first'
+/** A firmware-gated feature this receiver doesn't offer (the full reason goes in the tooltip). */
+export const GATE_SHORT = 'Needs newer firmware'
+
 
 /** Label of the noise control in the official app, per family (M2S "NC", M2 "NC Level"). */
 export function noiseLabel(family: Family | null): string {
@@ -100,29 +103,12 @@ export function micOutput(mic: 0 | 1, mode: number | null | undefined): { side: 
 }
 
 /**
- * What the meter window of a USB channel says it carries when that isn't simply one mic
- * (the window label itself is "Mix · L", "Main", "Safety −6 dB" or "L").
+ * Caption above a meter window whose USB channel isn't simply one mic ("Mix · L", "Main",
+ * "Safety −6 dB", "USB L" while the channel mode is unknown); null in Stereo (the mic's colour says it).
  */
-export function meterCaption(
-  mode: number | null | undefined,
-  side: 'L' | 'R',
-  writeOnly: boolean,
-  /** Write-only: the mode last sent from this browser (labels stay neutral until it is confirmed). */
-  sentMode: number | null = null,
-): string | null {
-  switch (mode) {
-    case 1:
-      return null
-    case 0:
-      return 'both mics, mixed'
-    case 2:
-      return side === 'L' ? 'both mics' : 'both mics, 6 dB lower'
-    default:
-      if (!writeOnly) return 'as the receiver sends it'
-      return sentMode !== null && CHANNEL_MODE_LABEL[sentMode]
-        ? `channel mode last sent: ${CHANNEL_MODE_LABEL[sentMode]}`
-        : 'channel mode not read'
-  }
+export function meterCaption(usb: { label: string; tone: string }): string | null {
+  if (usb.tone !== 'neutral') return null
+  return usb.label.length <= 2 ? `USB ${usb.label}` : usb.label
 }
 
 /**

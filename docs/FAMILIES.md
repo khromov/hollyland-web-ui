@@ -84,14 +84,14 @@ Units that are **never connected directly** and are reached through a receiver: 
 RXs (IDs 6–9), the M3 hot-shoe accessory (ID 10, firmware only) and the Bluetooth earphones paired to an M3 RX, the
 MELO P1 remote control, and MAX 2 / MELO P1 earphone controls (volume, pairing, monitor), which are RX commands.
 
-### 1.2 Browser path per platform, expected read/write, status in Mic Console
+### 1.2 Browser path per platform, expected read/write, status in Hollyland Web UI
 
 Legend: **✅** verified on hardware · **F** full read/write expected · **F?** full expected if an unverified descriptor
 detail holds · **W** write-only (the OS drops replies) · **?** unknown until the HID descriptor is captured ·
 **⚑** behind a Chrome flag (Web Bluetooth on Linux) · **✗** no browser path · **+B** the local root-libusb bridge
 (`docs/BRIDGE.md`) gives full read/write for interrupt-pipe USB devices on macOS/Windows/Linux.
 
-| # | Product | Chrome macOS | Windows | Linux | ChromeOS | Android | Full read/write expected | Mic Console today | Confidence |
+| # | Product | Chrome macOS | Windows | Linux | ChromeOS | Android | Full read/write expected | Hollyland Web UI today | Confidence |
 |---|---|---|---|---|---|---|---|---|---|
 | 1 | LARK A2 | W ✅, +B ✅ | ? (W expected), +B | F (udev rule) | F | ✗ | Linux, ChromeOS, bridge | **Supported, hardware-tested** (fw 3.0.2.008) | high (live captures, PROTOCOL.md §11) |
 | 2 | LARK A2S | W (as A2), +B | ?, +B | F | F | ✗ | as A2 | Supported, untested variant | high |
@@ -496,7 +496,7 @@ package; family research corrections go to that family's doc in `docs/research/f
 
 - **Connect screen:** one key per available link. "Connect over USB" (WebHID) and "Connect over Bluetooth"
   (Web Bluetooth, MAX 2 charging case and MELO P1). On Android Chrome only the Bluetooth key appears, so the app is no
-  longer "unsupported" there. The "How it connects" schematic gains the Bluetooth link.
+  longer "unsupported" there. The steps and the "Receiver not in the list?" section gain the Bluetooth case.
 - **Generic control renderer:** controls the bespoke modules don't cover are rendered from `ControlSpec`
   (`switch` → slide switch, `choice` → key row, `steps` → detent fader, `range` → slider with unit, `action` → key with
   confirm). This is what makes untested families usable without hand-built pages; bespoke modules stay for the mic

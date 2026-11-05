@@ -5,7 +5,9 @@
    *
    * The meter measures a USB channel, not the mic: purple / yellow and the mic's name only in
    * Stereo (L = Mic 1, R = Mic 2). Mono, SafeTr and an unconfirmed mode (write-only) get a neutral
-   * meter with a caption saying what the channel carries.
+   * meter labelled with the channel ("Mix · L", "Main", "USB L").
+   *
+   * A value that can't be read shows "–" (tooltip "Unknown"), never words.
    */
   import { tick } from 'svelte'
   import { Pencil } from '@lucide/svelte'
@@ -14,11 +16,12 @@
   import BatteryCells from '../../lib/ui/BatteryCells.svelte'
   import MeterWindow from '../../lib/ui/MeterWindow.svelte'
   import { usbChannelMeters } from '../../lib/ui/meters'
+  import { confidenceNote } from '../../lib/ui/confidence'
   import type { MeterState } from '../../lib/ui/types'
   import { session } from '../../lib/state/session.svelte'
   import { audio } from '../../lib/state/audio.svelte'
   import { prefs } from '../../lib/state/prefs.svelte'
-  import { CHANNEL_MODE_LABEL, meterCaption, micOutput } from './overview'
+  import { meterCaption, micOutput } from './overview'
   import { sentClock } from './sent.svelte'
 
   interface Props {
@@ -58,14 +61,20 @@
   /** What the USB channel carries is only known once the mode is read back. */
   const meterMode = $derived(session.usbChannelMode)
   const usb = $derived(usbChannelMeters(meterMode, [prefs.micLabel(0), prefs.micLabel(1)])[index])
-  const side = $derived(usb.side)
-  const caption = $derived(meterCaption(meterMode, side, session.writeOnly, session.writeOnly ? mode : null))
-  const tag = $derived(usb.label.length <= 2 ? `USB ${usb.label}` : usb.label)
+  const caption = $derived(meterCaption(usb))
   const sourceChannel = $derived(audio.channelCount === 1 ? 0 : index)
   const read = () => audio.readChannel(sourceChannel)
   const output = $derived(hasModes ? micOutput(index, mode) : null)
-  const outputConfidence = $derived(session.writeOnly ? (mode === null ? 'unknown' : 'sent') : 'solid')
-  const outputSentAt = $derived(session.writeOnly ? sentClock.time('channelMode') : null)
+  const outputSent = $derived(session.writeOnly && mode !== null)
+  const sentTip = $derived(confidenceNote('sent', sentClock.at('channelMode')))
+
+  // ------------------------------------------------------------------ stats
+  /** Still waiting for the first status reply (live). */
+  const reading = $derived(!statusKnown && !session.writeOnly)
+  const batteryKnown = $derived(online && battery > 0)
+  const muteKnown = $derived(online && flagsKnown)
+  /** Why a value shows "–" (tooltip and accessible name). */
+  const unknownWhy = $derived(statusKnown && !online ? 'Offline' : 'Unknown')
 
   // ------------------------------------------------------------------ fit
   let width = $state(0)
@@ -138,18 +147,25 @@
     <span class="tag"><Tag title="{defaultName}, transmitter {index + 1}">TX{index + 1}</Tag></span>
     <span class="link">
       {#if session.writeOnly}
-        <Lamp color="neutral" size="sm" state="hollow" /><span class="lt">Not read</span>
+        <span class="v" title="Unknown"
+          ><Lamp color="neutral" size="sm" state="hollow" /><span class="mc-dash" aria-hidden="true">–</span><span
+            class="visually-hidden">Status unknown</span
+          ></span
+        >
       {:else if !statusKnown}
         <Lamp color="neutral" size="sm" state="hollow" /><span class="lt">Reading…</span>
       {:else if online}
         <Lamp color="live" size="sm" state="on" /><span class="lt">Online</span>
       {:else}
-        <Lamp color="neutral" size="sm" state="off" /><span class="lt">Offline</span>
+        <!-- A mic docked in the charging case also reports offline (seen on a LARK A2). -->
+        <span class="v" title="Take the mic out of the case, switch it on, or check its pairing"
+          ><Lamp color="neutral" size="sm" state="off" /><span class="lt">Offline</span></span
+        >
       {/if}
     </span>
   </div>
 
-  <div class="win" class:fill class:crowded bind:clientHeight={winH}>
+  <div class="win" class:fill={fill && meter.state === 'live'} class:crowded bind:clientHeight={winH}>
     {#key history}
       <MeterWindow
         {read}
@@ -157,7 +173,6 @@
         tone={usb.tone}
         variant="channel"
         {history}
-        {tag}
         caption={caption ?? undefined}
         state={meter.state}
         message={meter.message}
@@ -168,64 +183,54 @@
     {/key}
   </div>
 
-  {#if statusKnown && !online}
-    <!-- A mic docked in the charging case also reports offline (seen on a LARK A2). -->
-    <p class="offline-note">Not connected. Take the mic out of the case, turn it on, or check its pairing.</p>
-  {:else}
-    <dl class="stats" class:two={!output && !(session.writeOnly && hasModes)}>
-      <div class="stat">
-        <dt>Battery</dt>
-        <dd>
-          {#if session.writeOnly}
-            <BatteryCells percent={null} label="{name} battery" unknownText="Not readable" />
-          {:else if !statusKnown}
-            <span class="dim">Reading…</span>
-          {:else if battery > 0}
-            <BatteryCells percent={battery} {charging} chargingText={chargingWords} label="{name} battery" />
-          {:else}
-            <BatteryCells percent={null} label="{name} battery" unknownText="Not reported" />
-          {/if}
-        </dd>
-      </div>
-      <div class="stat">
-        <dt>Mute</dt>
-        <dd>
-          <span class="mute" role="status" aria-label="{name}: {session.writeOnly ? 'mute not read' : !flagsKnown ? 'mute not reported' : muted ? 'muted' : 'unmuted'}">
-            {#if session.writeOnly}
-              <span class="v"><Lamp color="neutral" size="sm" state="hollow" /><span class="mc-dash">– –</span></span><span class="dim">Not read</span>
-            {:else if !statusKnown}
-              <span class="dim">Reading…</span>
-            {:else if !flagsKnown}
-              <span class="dim">Not reported</span>
-            {:else if muted}
+  <dl class="stats" class:two={!output && !(session.writeOnly && hasModes)}>
+    <div class="stat">
+      <dt>Battery</dt>
+      <dd>
+        {#if reading}
+          <span class="dim">Reading…</span>
+        {:else if batteryKnown}
+          <BatteryCells percent={battery} {charging} chargingText={chargingWords} label="{name} battery" />
+        {:else}
+          <BatteryCells percent={null} label="{name} battery" />
+        {/if}
+      </dd>
+    </div>
+    <div class="stat">
+      <dt>Mute</dt>
+      <dd title={muteKnown || reading ? undefined : unknownWhy}>
+        {#if reading}
+          <span class="dim">Reading…</span>
+        {:else if muteKnown}
+          <span class="mute" role="status" aria-label="{name}: {muted ? 'muted' : 'unmuted'}">
+            {#if muted}
               <Lamp color="rec" size="sm" state="on" /><b class="muted">Muted</b>
             {:else}
               <span>Unmuted</span>
             {/if}
           </span>
+        {:else}
+          <span class="mc-dash" aria-hidden="true">–</span><span class="visually-hidden">{name} mute: {unknownWhy}</span>
+        {/if}
+      </dd>
+    </div>
+    {#if output || (session.writeOnly && hasModes)}
+      <div class="stat">
+        <dt>Output</dt>
+        <dd title={!output ? unknownWhy : outputSent ? sentTip : undefined}>
+          {#if !output}
+            <span class="mc-dash" aria-hidden="true">–</span><span class="visually-hidden">{name} output: {unknownWhy}</span>
+          {:else}
+            <span class="v">
+              {#if outputSent}<span class="mc-swatch mc-swatch--sent" aria-hidden="true"></span>{/if}<span class="side">{output.side}</span>
+            </span>
+            <span class="dim">{output.text}</span>
+            {#if outputSent}<span class="visually-hidden">{sentTip}</span>{/if}
+          {/if}
         </dd>
       </div>
-      {#if output || (session.writeOnly && hasModes)}
-        <div class="stat">
-          <dt>Output</dt>
-          <dd>
-            {#if !output}
-              <span class="mc-dash" aria-hidden="true">– –</span><span class="dim">Not read</span>
-            {:else}
-              <span class="v">
-                {#if outputConfidence === 'sent'}<span
-                    class="mc-swatch mc-swatch--sent"
-                    title="Channel mode last sent{outputSentAt ? ` at ${outputSentAt}` : ''}, not confirmed"
-                  ></span>{/if}<span class="side">{output.side}</span>
-              </span>
-              <span class="dim">{outputConfidence === 'sent' ? `${CHANNEL_MODE_LABEL[mode ?? 1]} last sent` : output.text}</span>
-            {/if}
-          </dd>
-        </div>
-      {/if}
-    </dl>
-  {/if}
-
+    {/if}
+  </dl>
 </article>
 
 <style>
@@ -387,12 +392,6 @@
     font: 500 14px/1 var(--f-mono);
     font-stretch: var(--mono-stretch);
     white-space: nowrap;
-  }
-  .offline-note {
-    font-size: 13px;
-    line-height: var(--lh-body);
-    color: var(--ink-2);
-    min-height: 44px;
   }
 
   @media (max-width: 599px) {

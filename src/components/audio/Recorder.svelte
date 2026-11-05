@@ -22,8 +22,10 @@
     /** Channel mode read from the receiver (null: not known). */
     channelMode: number | null
     names: [string, string]
+    /** Why there is no live audio, in a few words ("Needs live audio"). */
+    blockReason?: string
   }
-  let { channels, channelMode, names }: Props = $props()
+  let { channels, channelMode, names, blockReason = 'Needs live audio' }: Props = $props()
 
   let width = $state(0)
   const stacked = $derived(width > 0 && width < 980)
@@ -31,13 +33,7 @@
 
   const live = $derived(audio.state === 'running')
   const recording = $derived(audio.recording)
-  const reason = $derived(
-    !audio.supported
-      ? "This browser can't capture audio inputs."
-      : audio.meterState === 'paused'
-        ? 'USB audio is paused while the local bridge runs.'
-        : 'Recording needs live audio: start it in the Input window above.',
-  )
+  const reason = $derived(!audio.supported ? "Browser can't capture audio" : blockReason)
 
   const opts = $derived(audio.recordOptions)
   const bytesPerMin = $derived(
@@ -144,7 +140,7 @@
           {#if recording}
             <span class="mono">{fmtSize(audio.recordBytes)}</span>
           {:else}
-            <span class="mono">{fmtSize(bytesPerMin)}</span> per minute
+            <span class="mono">{fmtSize(bytesPerMin)}/min</span>
           {/if}
         </span>
       </div>
@@ -167,9 +163,6 @@
           disabled={recording}
           onchange={(v) => audio.setRecordOptions({ processed: v === 'fx' })}
         />
-        {#if opts.processed && !audio.fxEnabled && !recording}
-          <p class="hint">Voice effect is off, so this records the raw sound.</p>
-        {/if}
       </div>
       <div class="opt">
         <span class="ol">Files</span>
@@ -201,7 +194,7 @@
         />
       </div>
       {#if recording}
-        <ConfidenceNote kind="disabled" text="Source and format are locked while recording." />
+        <ConfidenceNote kind="disabled" text="Locked while recording" />
       {/if}
     </div>
   </div>
@@ -210,8 +203,7 @@
     {#if audio.interruptedTake}
       {@const t = audio.interruptedTake}
       <Banner tone="danger" title="Recording interrupted">
-        The audio input disappeared after <span class="mono">{fmtLength(t.files[0]?.durationSec ?? 0)}</span>. Take {t.number}
-        up to that point is saved below.
+        Input lost at <span class="mono">{fmtLength(t.files[0]?.durationSec ?? 0)}</span>. Take {t.number} saved below.
         {#snippet actions()}
           <button type="button" class="mc-key mc-key--sm mc-key--light" onclick={() => audio.dismissInterruption()}>Dismiss</button>
         {/snippet}
@@ -267,6 +259,7 @@
                       href={f.url}
                       download={f.name}
                       onclick={() => audio.markSaved(t.id, i)}
+                      title={t.saved[i] ? 'Saved' : 'Unsaved takes are lost when this tab closes'}
                       aria-label="Save take {t.number}{t.files.length > 1 ? `, ${sideOf(t, i)} channel` : ''} ({f.name}){t.saved[i] ? ', saved' : ''}"
                     >
                       {#if t.saved[i]}<Check size={16} aria-hidden="true" />{:else}<Download size={16} aria-hidden="true" />{/if}
@@ -294,11 +287,6 @@
         </tbody>
       </table>
     {/if}
-    <p class="keep">
-      Takes stay in this tab until you save them. Reloading or closing the page discards them{audio.hasUnsaved
-        ? ', so the browser asks first while one is unsaved'
-        : ''}.
-    </p>
   </div>
 </div>
 
@@ -449,21 +437,11 @@
     font-weight: 600;
     color: var(--ink-2);
   }
-  .hint {
-    font-size: 12px;
-    line-height: 1.4;
-    color: var(--ink-3);
-  }
 
   .right {
     display: grid;
     gap: 16px;
     min-width: 0;
-  }
-  .keep {
-    font-size: 12px;
-    line-height: 1.45;
-    color: var(--ink-3);
   }
 
   /* ---------- takes table ---------- */

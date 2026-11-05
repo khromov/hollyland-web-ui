@@ -232,7 +232,7 @@ There is no handshake or authentication. Android (`HLDeviceActivity`) does the f
      parsed but their views are hidden. iOS types 4/5/6 (≥ 3) apply noise, volume and lock, but the NC level and
      switch only when `-[HL6501Engine isHeartbeatNoiseLevelValid:]` holds (@0x1000bafac: `cmp x2, 4; cset lo`, i.e.
      body[6] < 4; called @0x1000bc4ac, `setNoiseLevel:` / `setNoiseSwitch:` skipped by `cbz w22` @0x1000bc4c4).
-     Mic Console follows iOS: an out-of-range byte is ignored instead of reading as "NC on" (device.ts, added
+     Hollyland Web UI follows iOS: an out-of-range byte is ignored instead of reading as "NC on" (device.ts, added
      2026-11-05 in the Phase 0/1 review). The same iOS check covers the M2 (type 3) and M2S (type 7); the library
      leaves those families unchanged until the M2 hardware test.
    - **PID 11 / type 4:** TX1 and TX2 battery/online are swapped for display (§7.2).

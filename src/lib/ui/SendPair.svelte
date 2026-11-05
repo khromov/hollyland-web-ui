@@ -15,11 +15,13 @@
     label: string
     disabled?: boolean
     pending?: boolean
+    /** When `value` was sent, for the tooltip. */
+    sentAt?: number | Date | null
     legends?: { on: string; off: string }
     onchange?: (value: boolean) => void
   }
 
-  let { value, label, disabled = false, pending = false, legends = { on: 'On', off: 'Off' }, onchange }: Props =
+  let { value, label, disabled = false, pending = false, sentAt = null, legends = { on: 'On', off: 'Off' }, onchange }: Props =
     $props()
 
   let target: 'on' | 'off' | null = $state(null)
@@ -36,6 +38,7 @@
     {label}
     {disabled}
     confidence={value === null ? 'unknown' : 'sent'}
+    {sentAt}
     pendingValue={pending ? target : null}
     onchange={(v) => {
       target = v

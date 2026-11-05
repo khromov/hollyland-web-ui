@@ -19,7 +19,7 @@ It holds 26 screens and 5 flows. Section 5 lists them.
 | Topic | Decision |
 |---|---|
 | Direction | **"Quiet Console"**: calm graphite surfaces, channel strips as the main object, meters as the only "lit" elements, one interactive accent and two channel accents. Dark first, with a full light theme. |
-| Branding | Original. Working name *Mic Console* (placeholder). No Hollyland logos, product renders, colours or icon artwork. Product names appear only as plain text to name compatible devices, with an "independent project" disclaimer. |
+| Branding | Original. Name: *Hollyland Web UI*, marked as unofficial. No Hollyland logos, product renders, colours or icon artwork. Product names appear only as plain text to name compatible devices, with an "independent project" disclaimer. |
 | Layout | Desktop: header, RX bar, TX1 and TX2 strips side by side, and a right inspector panel. Mobile: sticky status bar, stacked cards, bottom sheets for settings and a bottom tab bar. |
 | Settings UI | Rendered from a settings schema (type, range, options, capability flag), so A2 and M2 differences need no new screens. |
 | Writes | Every control has an idle, pending, confirmed or failed lifecycle. Optimistic updates roll back on NACK or timeout. |
@@ -214,7 +214,7 @@ indicator, `[on ]` a switch and `###` a battery or signal glyph.
 
 ```
 +--------------------------------------------------------------------------------------------+
-| (o) Mic Console   unofficial                                       Help    Theme    About  |
+| (o) Hollyland Web UI   unofficial                                  Help    Theme    About  |
 +--------------------------------------------------------------------------------------------+
 |                                                                                            |
 |   +-------------------------------------------+   +------------------------------------+   |
@@ -265,7 +265,7 @@ indicator, `[on ]` a switch and `###` a battery or signal glyph.
 
 ```
 +--------------------------------------+
-| (o) Mic Console                 Help |
+| (o) Hollyland Web UI            Help |
 +--------------------------------------+
 |                                      |
 |  (!) This browser can't connect      |
@@ -287,7 +287,7 @@ indicator, `[on ]` a switch and `###` a battery or signal glyph.
 
 ```
 +----------------------------------------------------------------------------------------------------+
-| (o) Mic Console  Overview  Device  Presets  Console    (*) M2 receiver . connected  [Lock] [..] [x]|
+| (o) Hollyland Web UI  Overview  Device  Presets  Console  (*) M2 receiver connected [Lock] [..] [x]|
 +----------------------------------------------------------------------------------------------------+
 | RECEIVER  Output Stereo | Monitor 8/15 | Power USB | TX1 linked  TX2 linked | FW 1.2.3  Settings > |
 +---------------------------------+---------------------------------+--------------------------------+
@@ -688,7 +688,7 @@ to sky blue to stay clear of purple, and warning moved from amber to orange to k
 
 ```css
 /* ============================================================
-   Mic Console design tokens. Dark is the default theme.
+   Hollyland Web UI design tokens. Dark is the default theme.
    ============================================================ */
 :root {
   color-scheme: dark;
@@ -1110,6 +1110,6 @@ references matter, capture RØDE Central, RØDE Capture, DJI Mimo and Focusrite 
 6. **Factory reset scope:** does it clear pairing, and can RX and TX be reset separately?
 7. **Concurrency:** can the official app and this page hold the device at the same time? This affects
    the "Busy" error copy.
-8. **Product name and disclaimer wording** for the third-party app (placeholder: "Mic Console").
+8. **Product name and disclaimer wording** for the third-party app (decided: "Hollyland Web UI").
 9. **Mobile reality:** WebHID is unavailable on phones today. Should the mobile layout be a full
    priority or a "good enough" tier, alongside a strong demo mode and unsupported screen?

@@ -49,7 +49,7 @@ export interface A1OtaVector {
   source: string
 }
 
-/** ⚠ Documented only: Mic Console has no builder for these and must refuse them everywhere. */
+/** ⚠ Documented only: Hollyland Web UI has no builder for these and must refuse them everywhere. */
 export const A1_OTA_VECTORS: readonly A1OtaVector[] = [
   { n: 19, name: 'OTA: RX enter upgrade (Feature 6)', hex: '06 03 00 00 00 1A', cmd: 0x1a, source: 'a1-6108.md §3.3, §3.6; A UsbMessengerV2.sendRxUpgrade' },
   {

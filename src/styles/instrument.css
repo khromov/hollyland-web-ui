@@ -5,9 +5,9 @@
    Confidence vocabulary (one meaning per look):
      solid      read back from the receiver ........ ink-filled key / lit switch / numbers
      sent       sent from this browser, unconfirmed  2 px ink outline on the edge + 135° hatch
-                                                     + "Last sent 17:42 · not confirmed"
-     unknown    never read, never sent ............. 1.5 px dashed outline, "– –", hollow lamp
-                                                     + "Not read"
+                                                     (tooltip "Last sent 17:42 · not confirmed")
+     unknown    never read, never sent ............. 1.5 px dashed outline, "–", hollow lamp
+                                                     (tooltip "Unknown")
      disabled   can't be used right now ............ flat recessed face, no shadow, ink-3 label
                                                      + an inline reason (never dashed; the note
                                                      has no swatch, the flat key carries the look)
@@ -264,7 +264,7 @@
   font-variant-numeric: tabular-nums slashed-zero;
 }
 
-/* Lamp legends are the only uppercase text: CLIP, REC, SEND-ONLY LINK. */
+/* Lamp legends are the only uppercase text: CLIP, REC. */
 .mc-lamp-legend {
   font: 600 var(--t-legend) / 1 var(--f-mono);
   font-stretch: var(--mono-stretch);

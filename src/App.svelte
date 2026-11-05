@@ -17,7 +17,7 @@
   import { session } from './lib/state/session.svelte'
   import { router } from './lib/state/router.svelte'
   import { prefs } from './lib/state/prefs.svelte'
-  import { BridgeError, BridgeTransport, isWebHidSupported, pageContext, resolveBridgeUrl } from './lib/protocol'
+  import { BridgeError, BridgeTransport, bridgeStartSentence, isWebHidSupported, pageContext, resolveBridgeUrl } from './lib/protocol'
   import { link } from './components/shell/link.svelte'
   import { theme } from './components/shell/theme.svelte'
 
@@ -47,8 +47,8 @@
     showConnect ? 'Connect' : (tabs.find((t) => t.route === router.route)?.label ?? ''),
   )
 
-  // Optional local USB bridge (docs/BRIDGE.md): full read/write where the OS drops replies.
-  // `?bridge=<port>` points the page at a bridge started with --port. `npx mic-console` opens the
+  // Optional local USB bridge (docs/BRIDGE.md): full status where the browser can't read the receiver.
+  // `?bridge=<port>` points the page at a bridge started with --port. `npx hollyland-web-ui` opens the
   // page with `?bridge=auto` (or `?bridge=<port>&auto=1`): connect through the bridge on load.
   const query = new URLSearchParams(location.search)
   const bridgeParam = query.get('bridge')
@@ -102,12 +102,15 @@
       const e = failure.error
       session.error = {
         title: e.title,
-        // Opened by `npx mic-console` (a page on this computer), which starts and stops the bridge itself.
-        // The hosted page with ?bridge=auto needs `npx mic-console --bridge-only`, which e.message names.
+        // Opened by `npx hollyland-web-ui` (a page on this computer), which starts and stops the bridge itself.
+        // Otherwise the Connect page prints the start command right above the error, so the
+        // detail only says what to do, not the command again.
         detail:
-          autoBridge && e.kind === 'not-running' && pageContext() === 'loopback'
-            ? `No bridge answered at ${bridgeUrl}. It runs while "npx mic-console" runs in your terminal: start it again there, then press Connect through local bridge.`
-            : e.message,
+          e.kind === 'not-running'
+            ? autoBridge && pageContext() === 'loopback'
+              ? `Run "npx hollyland-web-ui" again in your terminal.`
+              : 'Start the bridge, then retry.'
+            : e.message.replace(` ${bridgeStartSentence()}.`, ' Start it, then retry.'),
       }
     }
   }

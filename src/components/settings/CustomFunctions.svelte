@@ -4,7 +4,9 @@
    * Up to two functions can be assigned to hardware buttons. Each assignment is a slot write
    * [slot, function, keyOperation, tx1Color, tx2Color] (cmd 0x37), sent as soon as a click type
    * is chosen, as in the official app. One module per function: its switch at the head, the
-   * buttons it can go on as key rows (one key per click type) when it is on.
+   * buttons it can go on as key rows (one key per click type) when it is on. Labels, values and
+   * controls only: what a function does is its title's tooltip; how much is known about an
+   * assignment is the control's own tooltip ("Last sent 17:42 · not confirmed", "Unknown").
    */
   import { session } from '../../lib/state/session.svelte'
   import { prefs } from '../../lib/state/prefs.svelte'
@@ -34,8 +36,8 @@
   import { reportResult } from './feedback'
   import { sentTimes } from './sent.svelte'
 
-  const NOT_CONNECTED = 'Mic1 and Mic2 are not connected; the current function cannot be configured.'
-  const UP_TO_TWO = 'Supports up to two customizable buttons.'
+  const NOT_CONNECTED = 'Connect both mics first'
+  const UP_TO_TWO = 'Up to two functions'
 
   type Fn = FunctionDef & { buttons: ButtonId[] }
 
@@ -112,16 +114,6 @@
         hint: other ? `Used by ${other}` : undefined,
       }
     })
-  }
-
-  function takenNotes(f: Fn): string[] {
-    const current = currentKeyOp(f.func)
-    return f.buttons.flatMap((bid) =>
-      BUTTONS[bid].clicks.flatMap((c) => {
-        const other = current === c.keyOp ? null : takenBy(f.func, c.keyOp)
-        return other ? [`${CLICK_LABEL[c.click]} on the ${BUTTONS[bid].label} is used by ${other}.`] : []
-      }),
-    )
   }
 
   /** True when the key operation is one of the keys shown for this function. */
@@ -207,29 +199,22 @@
     reportResult(await session.setCustomButton(slot, func, keyOp, next))
   }
 
-  const sentNote = $derived(sentTimes.at.buttons ? undefined : 'Last sent from this browser · not confirmed')
+  /** When an assignment was sent from this browser (write-only tooltip). */
+  const sentAt = $derived(writeOnly ? (sentTimes.at.buttons ?? null) : null)
 </script>
 
-<Panel title="Custom Functions" description="Give the receiver and mic buttons an extra job. Up to two at a time; each choice is sent right away.">
-  {#if blocked}
-    <div class="lead"><ConfidenceNote kind="disabled" text={NOT_CONNECTED} /></div>
-  {:else if !known}
-    <div class="lead">
-      <ConfidenceNote
-        kind="unknown"
-        text={writeOnly
-          ? "Not read: this system can't read the current assignments. Choices sent from this browser are remembered here."
-          : "Not read: the receiver hasn't reported the current assignments yet."}
-      />
-    </div>
-  {/if}
+<Panel title="Custom Functions">
+  <!-- The block reason sits with the title (rail on desktop), so the module heads keep the rail's baseline. -->
+  {#snippet meta()}
+    {#if blocked}<ConfidenceNote kind="disabled" text={NOT_CONNECTED} />{/if}
+  {/snippet}
 
   <div class="mods" aria-busy={busy || undefined}>
     <Modules min="280px">
       {#each fns as f (f.func)}
         {@const on = slotOf(f.func) !== null}
         {@const current = currentKeyOp(f.func)}
-        {@const notes = on ? takenNotes(f) : []}
+        {@const sent = writeOnly && known && !(on && deviceSlotOf(f.func) === null)}
         <Module title={f.label} description={f.description}>
           {#snippet head()}
             {#if known || on}
@@ -238,7 +223,8 @@
                 label={f.label}
                 disabled={busy || blocked}
                 pending={writing?.func === f.func && writing.keyOp === 0}
-                confidence={writeOnly && known && !(on && deviceSlotOf(f.func) === null) ? 'sent' : 'solid'}
+                confidence={sent ? 'sent' : 'solid'}
+                {sentAt}
                 onchange={(v) => toggle(f, v)}
               />
             {:else}
@@ -258,6 +244,7 @@
                     label="{f.label}: {BUTTONS[bid].label}"
                     size="sm"
                     {confidence}
+                    {sentAt}
                     disabled={busy || blocked}
                     pendingValue={writing?.func === f.func ? writing.keyOp : null}
                     onchange={(v) => choose(f, v)}
@@ -269,22 +256,17 @@
 
           {#snippet foot()}
             {#if on && current === 0}
-              <p class="state pending"><span class="mc-swatch mc-swatch--unknown" aria-hidden="true"></span>Pending Setup: choose a button and click</p>
-            {:else if on && writeOnly}
-              <ConfidenceNote kind="sent" at={sentTimes.at.buttons} text={sentNote} />
+              <p class="state pending"><span class="mc-swatch mc-swatch--unknown" aria-hidden="true"></span>Pending Setup</p>
             {:else if on && !shownKeyOp(f, current)}
               <!-- Assigned to a button this receiver variant doesn't list (e.g. set from the other RX). -->
               <p class="state">Assigned to {keyOpLabel(current) ?? 'another button'}</p>
             {/if}
-            {#each notes as n (n)}
-              <ConfidenceNote kind="disabled" text={n} />
-            {/each}
           {/snippet}
         </Module>
       {/each}
 
       {#if identifyOn}
-        <Module title="Light colours" description="Mic Recognition lights each mic in its own colour. The two mics always use different colours.">
+        <Module title="Light colours" description="The two mics always use different colours">
           <div class="colors" style="--mic1: #9d6bff; --mic2: #ffcc1a">
             {#each TXS as tx (tx)}
               {@const value = tx === 1 ? known1 : known2}
@@ -298,7 +280,8 @@
                   {value}
                   label="TX {tx} light colour"
                   size="sm"
-                  {confidence}
+                  confidence={value === null ? 'unknown' : confidence}
+                  {sentAt}
                   disabled={busy || blocked}
                   onchange={(v) => pickColor(tx, v)}
                 >
@@ -309,13 +292,6 @@
               </div>
             {/each}
           </div>
-          {#snippet foot()}
-            {#if known1 === null}
-              <ConfidenceNote kind="unknown" text="Not read. Choosing one sets both mics." />
-            {:else if writeOnly}
-              <ConfidenceNote kind="sent" at={sentTimes.at.buttons} text={sentNote} />
-            {/if}
-          {/snippet}
         </Module>
       {/if}
     </Modules>
@@ -323,9 +299,8 @@
 
   {#each foreign as x (x.slot)}
     <div class="foreign">
-      <span>
+      <span title="Not offered for this receiver">
         Slot <span class="mono">{x.slot}</span>: {functionLabel(x.func)}{keyOpLabel(x.keyOp) ? `, ${keyOpLabel(x.keyOp)}` : ''}
-        (not offered for this receiver)
       </span>
       <Key size="sm" variant="quiet" disabled={busy || blocked} onclick={() => clearForeign(x.slot)}>Clear</Key>
     </div>
@@ -333,9 +308,6 @@
 </Panel>
 
 <style>
-  .lead {
-    padding: 4px 0 12px;
-  }
   .mods {
     min-width: 0;
   }
@@ -409,9 +381,6 @@
     color: var(--ink-2);
   }
   @media (min-width: 1280px) {
-    .lead {
-      padding: 20px var(--module-pad) 0;
-    }
     .foreign {
       padding-inline: var(--module-pad);
     }

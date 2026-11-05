@@ -6,6 +6,7 @@
    * - "Same profile on both channels" (audio.fxLinked); unlinked, two keys choose which channel the
    *   bank edits, and lamps on the keys show which channel uses which profile. "No effect on …"
    *   sets the channel being edited back to the raw sound.
+   * Each profile's description is its key's tooltip; nothing is printed under the bank.
    */
   import { audio } from '../../lib/state/audio.svelte'
   import { VOICE_PRESETS, findPreset } from '../../lib/audio/voicefx'
@@ -13,7 +14,6 @@
   import SlideSwitch from '../../lib/ui/SlideSwitch.svelte'
   import Lamp from '../../lib/ui/Lamp.svelte'
   import Banner from '../../lib/ui/Banner.svelte'
-  import ConfidenceNote from '../../lib/ui/ConfidenceNote.svelte'
   import type { UsbChannelMeter } from '../../lib/ui/meters'
   import type { KeyOption, LampColor } from '../../lib/ui/types'
   import { curvePath } from './toneCurve'
@@ -41,9 +41,7 @@
 
 <div class="fx" bind:clientWidth={width}>
   {#if audio.fxError}
-    <Banner tone="warning" title="Voice effects are unavailable">
-      {audio.fxError} Levels, monitoring and raw recording still work.
-    </Banner>
+    <Banner tone="warning" title="Voice effects unavailable">{audio.fxError}</Banner>
   {/if}
 
   <div class="bar">
@@ -84,7 +82,7 @@
         {/each}
       </div>
     {/if}
-    <div class="master">
+    <div class="master" title="Picking a profile also switches it on">
       <span class="lbl" aria-hidden="true">Effect</span>
       <SlideSwitch
         checked={audio.fxEnabled}
@@ -128,23 +126,13 @@
     </KeyGroup>
   </div>
 
-  <div class="foot">
-    {#if unavailable}
-      <ConfidenceNote kind="disabled" text="Voice effects could not start in this browser." />
-    {:else if current}
-      <p><b>{current.name}</b>{linked ? '' : ` on ${channels[editing].label}`}: {current.description}</p>
-      {#if !linked}
-        <button type="button" class="mc-key mc-key--sm" onclick={() => audio.setFx(editing, null)}
-          >No effect on {channels[editing].label}</button
-        >
-      {/if}
-    {:else}
-      <p>
-        {linked ? 'Effect off: monitoring and recordings carry the raw sound.' : `${channels[editing].label} has no profile.`}
-        Pick a profile to switch it on.
-      </p>
-    {/if}
-  </div>
+  {#if !unavailable && !linked && current}
+    <div class="foot">
+      <button type="button" class="mc-key mc-key--sm" onclick={() => audio.setFx(editing, null)}
+        >No effect on {channels[editing].label}</button
+      >
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -255,16 +243,6 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 8px 16px;
-  }
-  .foot p {
-    font-size: 13px;
-    line-height: var(--lh-body);
-    color: var(--ink-2);
-    max-width: 80ch;
-  }
-  .foot b {
-    font-weight: 620;
-    color: var(--ink);
   }
   @media (max-width: 599px) {
     .bar {

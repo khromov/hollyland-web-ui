@@ -1,12 +1,11 @@
 /**
- * What the shell says about the link to the receiver: the header lamp and words, the status
- * line, and the platform truth on the Connect page. Everything is derived from `session`, so the
- * header, status line and bands never disagree.
+ * What the shell says about the link to the receiver: the header lamp and state word, the status
+ * line and the footer disclaimer. Everything is derived from `session`, so the header, status line
+ * and bands never disagree.
  */
 import type { LampColor, LampState } from '../../lib/ui/types'
 import type { StatusItem } from '../../lib/ui/StatusLine.svelte'
 import { session } from '../../lib/state/session.svelte'
-import { isWebHidSupported } from '../../lib/protocol'
 
 export type Platform = 'mac' | 'windows' | 'linux' | 'chromeos' | 'android' | 'ios' | 'other'
 
@@ -67,7 +66,7 @@ export function formatAge(ms: number): string {
   return `${Math.round(s / 60)} min`
 }
 
-export const DISCLAIMER = 'Independent project · not affiliated with Hollyland'
+export const DISCLAIMER = 'Unofficial · not affiliated with Hollyland'
 
 export interface LampSpec {
   color: LampColor
@@ -90,13 +89,6 @@ class Link {
   get audioHeldByBridge(): boolean {
     return this.viaBridge && this.connected && platform !== 'linux' && platform !== 'chromeos'
   }
-  get webHid(): boolean {
-    return isWebHidSupported()
-  }
-  /** Replies are not known yet (just connected, still probing). */
-  get probing(): boolean {
-    return session.phase === 'ready' && !session.live && !session.writeOnly
-  }
 
   /** The header lamp next to the device name. */
   get lamp(): LampSpec {
@@ -113,13 +105,12 @@ class Link {
     }
   }
 
-  /** The words after the device name in the header ("Live · read & write"). */
-  get mode(): string {
+  /** The link in a word: the header lamp's tooltip and accessible name. */
+  get lampLabel(): string {
     switch (session.phase) {
       case 'unsupported':
-        return 'No WebHID'
       case 'idle':
-        return 'No receiver'
+        return 'Not connected'
       case 'connecting':
         return 'Connecting…'
       case 'restarting':
@@ -127,10 +118,17 @@ class Link {
       case 'lost':
         return 'Connection lost'
       case 'ready':
-        if (session.writeOnly) return 'Send only'
-        if (session.live) return 'Live · read & write'
-        return 'Checking the link…'
+        return 'Connected'
     }
+  }
+
+  /**
+   * The state word printed after the header lamp ("Not connected", "Connecting…"). Empty while
+   * connected (the lamp and the device name say it) and while the link is lost (the band under
+   * the header says it).
+   */
+  get mode(): string {
+    return session.phase === 'ready' || session.phase === 'lost' ? '' : this.lampLabel
   }
 
   /** One sentence for the polite live region in the header (announced when the link changes). */
@@ -138,8 +136,8 @@ class Link {
     const name = session.displayName
     switch (session.phase) {
       case 'ready':
-        if (session.writeOnly) return `${name} connected. Send only: settings can be sent, nothing can be read back.`
-        if (session.live) return `${name} connected. Live, read and write.`
+        if (session.writeOnly) return `${name} connected. Status unavailable.`
+        if (session.live) return `${name} connected.`
         return ''
       case 'lost':
         return 'Connection to the receiver was lost.'
@@ -162,45 +160,34 @@ class Link {
     return parts.length ? parts.join(' · ') : null
   }
 
-  /** Items of the desktop status line; `wide` adds the firmware versions (≥ 960 px). */
+  /**
+   * Items of the desktop status line: "● Connected  Last reply 0.4 s ago  Firmware RX … · TX1 …".
+   * `wide` adds the firmware versions (≥ 960 px). Without a session it is empty (the header
+   * already says "Not connected" / "Connecting…"), and a lost link keeps only the time of the
+   * last reply (the band says "Connection lost").
+   */
   statusItems(nowMs: number, wide = true): StatusItem[] {
-    const kind = this.viaBridge ? 'Local bridge' : 'WebHID'
     const age = session.lastUpdate ? formatAge(nowMs - session.lastUpdate) : null
     switch (session.phase) {
       case 'unsupported':
-      case 'idle': {
-        const items: StatusItem[] = [
-          { lamp: { state: 'hollow' }, label: 'Not connected' },
-          { label: this.webHid ? 'WebHID available' : 'WebHID not available in this browser' },
-        ]
-        if (typeof window !== 'undefined' && !window.isSecureContext) items.push({ label: 'Not a secure context' })
-        return items
-      }
+      case 'idle':
       case 'connecting':
-        return [
-          { lamp: { state: 'on', blink: true }, label: `${kind} · connecting` },
-          ...(session.step ? [{ label: session.step }] : []),
-        ]
       case 'restarting':
-        return [{ lamp: { state: 'on', blink: true }, label: 'Restarting · reconnecting' }]
+        return []
       case 'lost':
         return [
-          { lamp: { color: 'rec', state: 'on' }, label: 'Connection lost' },
-          ...(age ? [{ label: 'Last reply', value: `${age} ago` }] : []),
-          { label: 'Reconnects when the receiver is back' },
+          age
+            ? { lamp: { color: 'rec', state: 'on' }, label: 'Last reply', value: `${age} ago` }
+            : { lamp: { color: 'rec', state: 'on' }, label: 'Connection lost' },
         ]
       case 'ready': {
-        if (session.writeOnly)
-          return [
-            { lamp: { state: 'hollow' }, label: `${kind} · send only` },
-            { label: `${PLATFORM_NAME[platform]} drops the receiver’s replies` },
-          ]
-        if (!session.live) return [{ lamp: { state: 'hollow' }, label: `${kind} · checking replies` }]
+        // Status unavailable (or not known yet): a hollow lamp; the strip under the header says why.
+        if (!session.live) return [{ lamp: { state: 'hollow' }, label: 'Connected' }]
         const fw = this.firmware
         return [
-          { lamp: { state: 'on' }, label: `${kind} · two-way` },
+          { lamp: { state: 'on' }, label: this.viaBridge ? 'Connected · bridge' : 'Connected' },
           ...(age ? [{ label: 'Last reply', value: `${age} ago` }] : []),
-          ...(this.audioHeldByBridge ? [{ label: 'USB audio paused while the bridge runs' }] : []),
+          ...(this.audioHeldByBridge ? [{ label: 'USB audio paused' }] : []),
           ...(fw && wide ? [{ label: 'Firmware', value: fw }] : []),
         ]
       }
@@ -209,7 +196,6 @@ class Link {
 
   /** Right-hand end of the status line. */
   get statusEnd(): string {
-    if (!this.connected) return `${DISCLAIMER} · LARK is a trademark of its owner`
     return DISCLAIMER
   }
 }

@@ -1,6 +1,7 @@
 /**
  * Overview write helpers: the "Setup successful" toast of the official app (live links only) and,
- * on a write-only link, when each setting was last sent ("Last sent 17:42 · not confirmed").
+ * on a write-only link, when each setting was last sent (the controls' tooltip, "Last sent 17:42 ·
+ * not confirmed").
  *
  * The session already remembers the values sent blind; it doesn't keep the time, so the Overview
  * keeps it here per receiver model (localStorage). Values sent from other pages show without a time.
@@ -23,10 +24,15 @@ class SentClock {
     this.version++
   }
 
-  /** Forget every time (with "Forget sent values"). */
+  /** Forget every time (with "Forget remembered values"). */
   clear() {
     saveSentAt(session.product?.productId, {})
     this.version++
+  }
+
+  /** When the value was last sent (ms epoch), for a control's tooltip; null when not known. */
+  at(key: string): number | null {
+    return this.map[key] ?? null
   }
 
   /** "17:42", "yesterday 17:42" or "3 Nov 17:42"; null when the time isn't known. */

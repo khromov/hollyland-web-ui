@@ -10,15 +10,17 @@
   import { audio } from '../../lib/state/audio.svelte'
   import Panel from '../../lib/ui/Panel.svelte'
   import Modules from '../../lib/ui/Modules.svelte'
-  import Module from '../../lib/ui/Module.svelte'
-  import ConfidenceNote from '../../lib/ui/ConfidenceNote.svelte'
   import Dialog from '../../lib/ui/Dialog.svelte'
+  import { uid } from '../../lib/ui/field'
   import Button from '../../lib/ui/Button.svelte'
   import BoolSetting from './BoolSetting.svelte'
   import CustomFunctions from './CustomFunctions.svelte'
   import AppPrefs from './AppPrefs.svelte'
   import { reportResult } from './feedback'
   import { sentTimes } from './sent.svelte'
+  import { GATE_SHORT } from '../overview/overview'
+
+  const speakerDescId = uid('speaker-desc')
 
   const caps = $derived(session.caps)
   const is6118 = $derived(session.product?.family === '6118')
@@ -75,15 +77,9 @@
 <div class="settings">
   <h1 class="visually-hidden">Settings</h1>
 
-  <Panel
-    title="Feature Settings"
-    description={session.displayName
-      ? `Stored on the ${session.displayName} receiver. They apply to the whole kit.`
-      : 'Stored on the receiver. They apply to the whole kit.'}
-    meta={session.product?.family === '6301' ? m2Note : undefined}
-  >
+  <Panel title="Feature Settings">
     {#if featureCount === 0}
-      <p class="empty">This receiver has no extra settings here. Its controls are on the Overview page.</p>
+      <p class="empty">No extra settings</p>
     {:else}
       <div class="mods">
         <!-- One or two modules keep a third of the row each instead of stretching across it. -->
@@ -95,7 +91,6 @@
           {#if showSmartBattery}
             <BoolSetting
               title="Smart battery life"
-              description="A power-saving option of the receiver. The official app doesn't describe it further."
               value={s.smartBattery}
               pending={!!session.pending.smartBattery}
               disabled={!ready}
@@ -109,7 +104,7 @@
             {#if is6118}
               <BoolSetting
                 title="Mic auto power-off"
-                description="Shut down after 15 minutes of inactivity"
+                hint="Shut down after 15 minutes of inactivity"
                 value={s.autoPowerOff}
                 pending={!!session.pending.autoPowerOff}
                 disabled={!ready}
@@ -120,7 +115,7 @@
             {:else}
               <BoolSetting
                 title="Schedule power off"
-                description="RX and MIC will automatically power off when not paired."
+                hint="RX and MIC will automatically power off when not paired."
                 value={s.autoPowerOff}
                 choice={{ on: '15min', off: 'Never' }}
                 pending={!!session.pending.autoPowerOff}
@@ -135,13 +130,12 @@
           {#if showSpeaker}
             <BoolSetting
               title={speakerLabel}
-              description="Lets the phone or computer keep playing sound through its own speaker while the receiver is plugged in."
+              hint="Changing it restarts the receiver"
               value={s.speakerPassthrough}
               pending={session.speakerPending}
               disabled={!ready}
               {writeOnly}
               sentAt={sentTimes.at.speakerPassthrough}
-              note="Changing it restarts the receiver."
               onchange={askSpeaker}
             />
           {/if}
@@ -153,36 +147,26 @@
   {#if caps?.customButtons}
     <CustomFunctions />
   {:else if customGate}
-    <Panel title="Custom Functions" description="Extra jobs for the receiver and mic buttons.">
-      <div class="mods">
-        <Modules min="250px">
-          <Module title="Custom Functions">
-            {#snippet foot()}<ConfidenceNote kind="disabled" text={customGate} />{/snippet}
-          </Module>
-        </Modules>
-      </div>
+    <Panel title="Custom Functions">
+      <p class="empty" title={customGate}>{GATE_SHORT}<span class="visually-hidden">: {customGate}</span></p>
     </Panel>
   {/if}
 
   <AppPrefs />
 </div>
 
-{#snippet m2Note()}The Lark M2 receiver has no channel-mode or auto power-off setting.{/snippet}
-
-<Dialog open={speakerTarget !== null} title="Restart the receiver?" onclose={() => (speakerTarget = null)}>
+<Dialog
+  open={speakerTarget !== null}
+  title="Restart the receiver?"
+  onclose={() => (speakerTarget = null)}
+  describedby="{speakerDescId}-what {speakerDescId}-effect"
+>
   {#snippet icon()}<RotateCcw size={20} />{/snippet}
-  <p>
-    {speakerLabel}: <strong>{speakerTarget ? 'On' : 'Off'}</strong>.
-  </p>
-  <p>The receiver will restart to apply this. Audio from the receiver stops for a few seconds.</p>
+  <p id="{speakerDescId}-what">{speakerLabel}: <strong>{speakerTarget ? 'On' : 'Off'}</strong></p>
   {#if audio.recording}
-    <p class="dlg-warn">
-      A recording is running. Stop it on the Audio page first: the receiver's audio input disappears during the
-      restart, and the recording may be lost.
-    </p>
-  {/if}
-  {#if writeOnly}
-    <p class="dlg-note">This system can't confirm the change. The page reconnects when the receiver comes back.</p>
+    <p class="dlg-warn" id="{speakerDescId}-effect">A recording is running and may be lost.</p>
+  {:else}
+    <p id="{speakerDescId}-effect">Audio stops for a few seconds.</p>
   {/if}
   {#snippet actions()}
     <!-- svelte-ignore a11y_autofocus -->
@@ -207,10 +191,6 @@
   .dlg-warn {
     color: var(--ink);
     font-weight: 600;
-  }
-  .dlg-note {
-    font-size: var(--t-body-sm);
-    color: var(--ink-3);
   }
   strong {
     color: var(--ink);

@@ -3,8 +3,9 @@
    * Full-screen blocker while the receiver restarts to apply "External speaker without
    * unplugging" / "Phone Speaker" (features.md §5, §16.1). The page behind it is inert
    * (App.svelte), focus moves into the panel, and state changes are announced once each.
-   * The header lamp blinks and the status line reads "Restarting · reconnecting" meanwhile; under
-   * reduced motion nothing blinks and the words carry the state.
+   * The header lamp blinks and the status line reads "Restarting" meanwhile; under reduced motion
+   * nothing blinks and the words carry the state. The countdown sits in the readout; a restart the
+   * receiver didn't confirm (status unavailable) says so in a tooltip and in the dialog's description.
    */
   import { onMount } from 'svelte'
   import Key from '../lib/ui/Key.svelte'
@@ -13,7 +14,7 @@
   interface Props {
     /** Seconds until restart; 0 or null once the restart has been sent. */
     seconds: number | null
-    /** The receiver confirmed the setting (false: sent blind on a write-only system). */
+    /** The receiver confirmed the setting (false: sent where its status can't be read). */
     confirmed: boolean
     /** The receiver is taking longer than usual to come back. */
     slow?: boolean
@@ -26,30 +27,10 @@
   onMount(() => box.focus())
 
   const counting = $derived(!!seconds && seconds > 0)
-  const unit = $derived(seconds === 1 ? 'second' : 'seconds')
-  const title = $derived(
-    counting
-      ? confirmed
-        ? `Settings successful. The device will restart in ${seconds} seconds.` // official wording, verbatim
-        : `Sent. The receiver will be restarted in ${seconds} ${unit}.`
-      : confirmed
-        ? 'Restarting the receiver…'
-        : 'Restart sent. Waiting for the receiver…',
-  )
-  const desc = $derived(
-    confirmed
-      ? 'Keep the receiver plugged in. This page reconnects automatically when it comes back.'
-      : "This system can't confirm the setting or the restart. Keep the receiver plugged in; this page reconnects when it comes back.",
-  )
+  const unconfirmed = 'Not confirmed by the receiver'
   // Announced once per stage, not on every countdown tick.
   const announce = $derived(
-    slow
-      ? "The receiver hasn't come back yet. You can stop waiting; the page still reconnects when it's plugged in."
-      : counting
-        ? confirmed
-          ? 'Settings successful. The receiver restarts in a few seconds.'
-          : 'Sent. The receiver will be restarted in a few seconds.'
-        : 'Restarting the receiver.',
+    slow ? "The receiver hasn't come back yet." : counting ? 'The receiver restarts in a few seconds.' : 'Restarting the receiver.',
   )
 </script>
 
@@ -60,28 +41,29 @@
     role="alertdialog"
     aria-modal="true"
     aria-labelledby="restart-title"
-    aria-describedby="restart-desc"
+    aria-describedby={confirmed ? 'restart-desc' : 'restart-desc restart-note'}
     tabindex="-1"
   >
     <header>
       <Lamp color="live" state="on" blink />
-      <h2 id="restart-title">{title}</h2>
+      <h2 id="restart-title">Restarting the receiver</h2>
     </header>
     <div class="body">
-      <div class="mc-window readout" aria-hidden="true">
+      <div class="mc-window readout" aria-hidden="true" title={confirmed ? undefined : unconfirmed}>
         {#if counting}
           <span class="label">Restart in</span>
           <span class="num mono">{seconds}<small>s</small></span>
         {:else}
           <span class="label">Restarting</span>
-          <span class="num mono wait">– –</span>
+          <span class="num mono wait">–</span>
         {/if}
       </div>
-      <p id="restart-desc">{desc}</p>
+      <p id="restart-desc">Keep the receiver plugged in.</p>
+      {#if !confirmed}<p id="restart-note" class="visually-hidden">{unconfirmed}.</p>{/if}
       <p class="visually-hidden" aria-live="polite" aria-atomic="true">{announce}</p>
       {#if slow}
         <div class="slow">
-          <p>This is taking longer than usual. If the receiver doesn't come back, unplug it and plug it in again.</p>
+          <p>Taking too long? Re-plug the receiver.</p>
           <Key onclick={() => onstop?.()}>Stop waiting</Key>
         </div>
       {/if}

@@ -1,20 +1,20 @@
 # Local USB bridge
 
 The bridge is an optional helper that runs on your own computer. On macOS the browser can only send
-settings to the receiver. The bridge gives Mic Console full read **and** write access.
+settings to the receiver. The bridge gives Hollyland Web UI full read **and** write access.
 
 The quickest way to start it is with Node.js 20 or newer:
 
 ```
-npx mic-console
+npx hollyland-web-ui
 ```
 
-That serves Mic Console on <http://127.0.0.1:47320>, starts the bridge (it asks for your password), opens the
-page and connects. You don't need to clone anything. From a clone of this repository, run
+That serves Hollyland Web UI on <http://127.0.0.1:47320>, starts the bridge (it asks for your password),
+opens the page and connects. You don't need to clone anything. From a clone of this repository, run
 `npm run bridge` instead and press **Connect through local bridge**.
 
-> **Coming soon.** The `mic-console` package isn't on npm yet, so the `npx` commands on this page don't work
-> today. Until it is published, use a clone of this repository and `npm run bridge`
+> **Coming soon.** The `hollyland-web-ui` package isn't on npm yet, so the `npx` commands on this page don't
+> work today. Until it is published, use a clone of this repository and `npm run bridge`
 > ([below](#from-a-clone-npm-run-bridge)).
 
 **While the bridge runs, the receiver's USB audio is paused.** See [below](#usb-audio-pauses-while-it-runs).
@@ -32,8 +32,8 @@ A root libusb capture on macOS (2026-11-05, LARK A2) got exactly one `BB DD …`
 request on interface 0. The bridge uses that path:
 
 ```
-Mic Console page  ──ws://127.0.0.1:47321/hid──▶  bridge (root, libusb)  ──interrupt OUT 0x03──▶  receiver
-                  ◀── binary 64-byte packets ──                         ◀── interrupt IN 0x82 ───
+Hollyland Web UI page  ──ws://127.0.0.1:47321/hid──▶  bridge (root, libusb)  ──interrupt OUT 0x03──▶  receiver
+                       ◀── binary 64-byte packets ──                         ◀── interrupt IN 0x82 ───
 ```
 
 It relays packets byte for byte and doesn't interpret them. The protocol logic stays in the page
@@ -46,20 +46,20 @@ It was checked on a LARK A2 with macOS and Chrome on 2026-11-05:
 - **Changes made on the hardware showed up on the next heartbeat (1 s):** a press of the mic button and
   docking a mic. See [PROTOCOL.md §11.7](PROTOCOL.md).
 
-## With npx (`npx mic-console`)
+## With npx (`npx hollyland-web-ui`)
 
 *Coming soon: the package isn't on npm yet.*
 
-The `mic-console` npm package contains the built web UI, a bundled copy of the bridge and a small launcher
-(`cli/mic-console.mjs`).
+The `hollyland-web-ui` npm package contains the built web UI, a bundled copy of the bridge and a small
+launcher (`cli/hollyland-web-ui.mjs`).
 
 ```
-npx mic-console
+npx hollyland-web-ui
 ```
 
 1. **It serves the UI.** The web UI runs on `http://127.0.0.1:47320`, reachable only from this computer.
 2. **It starts the bridge, on macOS.** The bridge is started through `sudo`, which asks for the password you
-   log in with: "Password for <you> (Mic Console needs it to start the USB bridge)".
+   log in with: "Password for <you> (Hollyland Web UI needs it to start the USB bridge)".
    - It runs under the same Node binary as npx (absolute path), so nvm, fnm and Volta installs work.
    - If you're already root, no sudo is needed.
 3. **It waits until the bridge answers.** Only then does it open the browser, so the browser doesn't take
@@ -69,8 +69,8 @@ npx mic-console
 5. **Ctrl+C stops everything.** It prints "Stopping the USB bridge…", the bridge hands the receiver back to
    macOS, and USB audio returns a second or two later.
 
-When the bridge can't start, Mic Console keeps serving the UI in write-only mode and says why. That covers
-a declined or wrong password, no terminal to ask in, or the port being taken by another program.
+When the bridge can't start, Hollyland Web UI keeps serving the UI in write-only mode and says why. That
+covers a declined or wrong password, no terminal to ask in, or the port being taken by another program.
 If a bridge is already running on the port (for example `npm run bridge` in another terminal), the launcher
 uses it and leaves it running when you stop.
 
@@ -87,10 +87,10 @@ uses it and leaves it running when you stop.
 
 ## Hosted page (GitHub Pages)
 
-The hosted Mic Console at <https://khromov.github.io/hollyland-web-ui/> can use the bridge too:
+The hosted Hollyland Web UI at <https://khromov.github.io/hollyland-web-ui/> can use the bridge too:
 
 ```
-npx mic-console --bridge-only
+npx hollyland-web-ui --bridge-only
 ```
 
 Until the package is on npm, start it from a clone of this repository (after `npm install`):
@@ -104,7 +104,7 @@ Then open the address it prints, <https://khromov.github.io/hollyland-web-ui/?br
 
 - **Origin.** The bridge accepts the hosted page only when it is started for it: `--bridge-only` passes
   `--allow-origin https://khromov.github.io` to the bridge, and from a clone you add it yourself. A plain
-  `npx mic-console` or `npm run bridge` accepts only pages served from this computer. See
+  `npx hollyland-web-ui` or `npm run bridge` accepts only pages served from this computer. See
   [Security model](#security-model).
 - **Chrome's local network permission.** Chrome treats a public https page that connects to `127.0.0.1` as
   local network access. The first time, it asks whether the site may access apps and devices on your local
@@ -114,12 +114,12 @@ Then open the address it prints, <https://khromov.github.io/hollyland-web-ui/?br
   allow local network access, or reset the permission and reload.
 - **Mixed content.** `ws://127.0.0.1` from an https page is allowed, because browsers treat loopback as
   secure.
-- **No permission prompt with npx.** Pages served by `npx mic-console` or `npm run dev` are on loopback
+- **No permission prompt with npx.** Pages served by `npx hollyland-web-ui` or `npm run dev` are on loopback
   themselves, so Chrome doesn't ask.
 
 ## From a clone (`npm run bridge`)
 
-From the Mic Console project folder (after `npm install`):
+From the Hollyland Web UI project folder (after `npm install`):
 
 ```
 npm run bridge
@@ -131,7 +131,7 @@ npm run bridge
   That avoids `sudo: node: command not found` with nvm, fnm or Volta.
 - **What it prints.** The WebSocket URL, which pages it accepts, and `captured LARK A2 …` once it holds the
   receiver. If the receiver isn't plugged in yet, it waits for it.
-- **Connect from the page.** In Mic Console (e.g. `npm run dev`), press **Connect through local bridge**.
+- **Connect from the page.** In Hollyland Web UI (e.g. `npm run dev`), press **Connect through local bridge**.
   - The button is on the connect screen.
   - It is also in the "Connection lost" banner, which appears when the bridge takes the receiver away from a
     write-only session.
@@ -149,7 +149,7 @@ Options (pass them after `--`):
 | `--iap2-interface <n>` | Interface number for `--iap2` (default 7). |
 | `--pid <n>` | Only capture this USB product ID (decimal or `0x…`). |
 | `--verbose` | Print every packet in hex. |
-| `--embedded` | Short banner and log lines marked `bridge` (used by `npx mic-console`). |
+| `--embedded` | Short banner and log lines marked `bridge` (used by `npx hollyland-web-ui`). |
 | `--help` | Show the options. |
 
 Example: `npm run bridge -- --port 47400 --verbose`, then open `http://localhost:5173/?bridge=47400`.
@@ -187,7 +187,7 @@ won't work while you're connected through the bridge. On macOS the Audio card th
 2. Change and check settings.
 3. Press Ctrl+C. Audio comes back a second or two later.
 
-If you mainly want audio, use `npx mic-console --no-bridge` (or the hosted page) and accept write-only control.
+If you mainly want audio, use `npx hollyland-web-ui --no-bridge` (or the hosted page) and accept write-only control.
 
 **On Linux** the bridge only detaches the HID driver from interface 0, so audio keeps working. Linux doesn't
 need the bridge anyway.
@@ -200,12 +200,12 @@ deliberately narrow:
 - **Loopback only.** It binds to `127.0.0.1`. Other computers on the network can't reach it.
 - **Origin allow list.** WebSocket upgrades are accepted only from these pages:
   - pages served at `http(s)://localhost[:port]`, `http(s)://127.0.0.1[:port]` or `http(s)://[::1][:port]`;
-  - exact origins passed with `--allow-origin`. `npx mic-console --bridge-only` passes the hosted Mic
-    Console's origin, `https://khromov.github.io`; no other launch accepts it.
+  - exact origins passed with `--allow-origin`. `npx hollyland-web-ui --bridge-only` passes the origin of
+    the hosted Hollyland Web UI, `https://khromov.github.io`; no other launch accepts it.
 
-  Other websites you visit can't use it. A refused page is closed with code 4003 so Mic Console can show what
-  to do, and nothing it sends is ever read.
-- **The hosted origin covers more than Mic Console.** An origin is a whole host. `https://khromov.github.io`
+  Other websites you visit can't use it. A refused page is closed with code 4003 so Hollyland Web UI can show
+  what to do, and nothing it sends is ever read.
+- **The hosted origin covers more than Hollyland Web UI.** An origin is a whole host. `https://khromov.github.io`
   covers every GitHub Pages site of that account, not only `/hollyland-web-ui/`, and the bridge relays every
   command, factory reset included. That is why it is accepted only in `--bridge-only` mode (or with an
   explicit `--allow-origin`), never by default.
@@ -218,8 +218,8 @@ deliberately narrow:
 - **Fixed packet size.** On `/hid` only binary messages of exactly 64 bytes reach the receiver. Anything else
   gets a JSON `error` reply and is dropped.
 - **Nothing else.** It doesn't serve files or proxy anything, and it keeps no state on disk. It answers a
-  plain `GET /` with a one-line banner (`Mic Console bridge …`), which `npx mic-console` uses to see whether a
-  bridge is already running.
+  plain `GET /` with a one-line banner (`Hollyland Web UI bridge …`), which `npx hollyland-web-ui` uses to
+  see whether a bridge is already running.
 
 Only add `--allow-origin` for a deployment you trust. Any page on that origin gets full control of the
 receiver while the bridge runs.
@@ -258,7 +258,7 @@ Close codes:
 - **Runs** in browsers and in Node 22+ (it uses `globalThis.WebSocket`). For Node clients, start the bridge
   with `--allow-no-origin`.
 
-**After `unplugged`** the socket stays open. Mic Console shows "Connection lost" and reattaches automatically
+**After `unplugged`** the socket stays open. Hollyland Web UI shows "Connection lost" and reattaches automatically
 on `replugged`. That also covers the restart after "External speaker without unplugging".
 
 ## iAP2 relay (`--iap2`, experimental)
@@ -280,19 +280,19 @@ unaffected.
 
 The page names the command that fits where it is served from. On a page from this computer that is
 `npm run bridge` (in the project folder); on the hosted page it is `npm run bridge -- --allow-origin
-https://khromov.github.io` from a clone. Once the package is on npm, both say `npx mic-console --bridge-only`
+https://khromov.github.io` from a clone. Once the package is on npm, both say `npx hollyland-web-ui --bridge-only`
 (`NPM_PACKAGE_PUBLISHED` in `src/lib/protocol/bridge.ts`).
 
 ### Starting the bridge
 
 | Symptom | Fix |
 | --- | --- |
-| `npx mic-console` says the bridge didn't start after the password prompt | sudo gave up after three wrong passwords. Mic Console keeps running write-only and opens the plain page; run it again to retry. (Ctrl+C at the prompt stops Mic Console altogether.) |
-| "sudo can only ask for your password in a terminal" | Run `npx mic-console` in a terminal window, not from a script or an IDE task without a TTY. |
-| "The bridge needs root" | From a clone, run `npm run bridge`, not `node scripts/bridge.ts` or `npx tsx …`. With the package, use `npx mic-console`. |
-| `sudo: node: command not found` / `sudo: npm: command not found` | Use `npm run bridge` without `sudo`; it passes the full Node path to sudo. `npx mic-console` does the same. |
-| "Could not load the "usb" package" | From a clone: `npm install`. With the package: `npx --yes mic-console@latest`. |
-| "Port 47320 … already in use" (`npx mic-console`) | Mic Console is already running in another terminal. Stop it, or use `--port <n>`. |
+| `npx hollyland-web-ui` says the bridge didn't start after the password prompt | sudo gave up after three wrong passwords. Hollyland Web UI keeps running write-only and opens the plain page; run it again to retry. (Ctrl+C at the prompt stops Hollyland Web UI altogether.) |
+| "sudo can only ask for your password in a terminal" | Run `npx hollyland-web-ui` in a terminal window, not from a script or an IDE task without a TTY. |
+| "The bridge needs root" | From a clone, run `npm run bridge`, not `node scripts/bridge.ts` or `npx tsx …`. With the package, use `npx hollyland-web-ui`. |
+| `sudo: node: command not found` / `sudo: npm: command not found` | Use `npm run bridge` without `sudo`; it passes the full Node path to sudo. `npx hollyland-web-ui` does the same. |
+| "Could not load the "usb" package" | From a clone: `npm install`. With the package: `npx --yes hollyland-web-ui@latest`. |
+| "Port 47320 … already in use" (`npx hollyland-web-ui`) | Hollyland Web UI is already running in another terminal. Stop it, or use `--port <n>`. |
 | "port 47321 is in use by another program" | Something other than the bridge holds that port. Use `--bridge-port <n>` (or `--port <n>` with `npm run bridge`, then open the page with `?bridge=<n>`). |
 | "Port 47321 … already in use" (`npm run bridge`) | Another bridge is running (stop it), or pick `--port <n>` and open the page with `?bridge=<n>`. |
 | Windows: "The bridge does not run on Windows" | Expected. Windows can't detach its HID driver from one interface without replacing the driver (e.g. with WinUSB through Zadig), and that would break the receiver's normal use. Use write-only mode, or Chrome on Linux/ChromeOS. |
@@ -303,8 +303,8 @@ https://khromov.github.io` from a clone. Once the package is on npm, both say `n
 | --- | --- |
 | "Browser didn't allow the bridge" on the **hosted** page | Chrome's local network permission is blocked for the site. Allow it in the site settings and reload ([details](#hosted-page-github-pages)). |
 | "Bridge not reachable" otherwise | The bridge isn't running, or it uses another port. Open the page with `?bridge=<port>`. |
-| "Waiting for the local bridge…" then a timeout (`?bridge=auto`) | The bridge didn't come up within 20 s. Check the terminal (password prompt, error), keep `npx mic-console` running, then press **Connect through local bridge**. |
-| "Bridge refused this page" | The bridge wasn't started for this page. For the hosted page use `npx mic-console --bridge-only` (or `npm run bridge -- --allow-origin https://khromov.github.io`); for another site, `npm run bridge -- --allow-origin <origin shown in the message>`. |
+| "Waiting for the local bridge…" then a timeout (`?bridge=auto`) | The bridge didn't come up within 20 s. Check the terminal (password prompt, error), keep `npx hollyland-web-ui` running, then press **Connect through local bridge**. |
+| "Bridge refused this page" | The bridge wasn't started for this page. For the hosted page use `npx hollyland-web-ui --bridge-only` (or `npm run bridge -- --allow-origin https://khromov.github.io`); for another site, `npm run bridge -- --allow-origin <origin shown in the message>`. |
 | "Bridge already in use" | Another tab is connected. Disconnect there or close it, then retry. |
 | "No receiver on the bridge" / bridge says "waiting for a receiver" | Plug the receiver in (data cable), or unplug and re-plug it. With an unusual PID use `--pid`. |
 | "could not capture the receiver: … in use by another program" | Quit other tools that opened the receiver (another bridge, a probe script), then re-plug. |
@@ -328,7 +328,7 @@ https://khromov.github.io` from a clone. Once the package is on npm, both say `n
 - `scripts/bridge-server.ts`: WebSocket relay, Origin and Host checks, the one-client rule. It has no USB code
   and is unit-tested.
 - `scripts/bridge-launch.mjs`: `npm run bridge`, re-launch under sudo with the current Node and tsx.
-- `cli/mic-console.mjs`, `cli/lib/`: the `npx mic-console` launcher and its loopback static server.
+- `cli/hollyland-web-ui.mjs`, `cli/lib/`: the `npx hollyland-web-ui` launcher and its loopback static server.
   - `npm run build:cli` (run by `npm pack`) builds the UI into `cli/dist/web`.
   - It also bundles the bridge into `cli/dist/bridge.mjs`.
 - `src/lib/protocol/bridge.ts`: `BridgeTransport`, `BridgeError`, wire types.

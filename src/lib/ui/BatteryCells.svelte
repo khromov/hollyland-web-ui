@@ -1,8 +1,8 @@
 <script lang="ts">
   /**
    * Battery as a 10-cell gauge plus the percentage in mono. Ink only: low is said in words.
-   * percent null: an empty gauge with a dashed outline, "– –" and "Not readable" (write-only, or
-   * not reported). Dashed means unknown; the hatch is kept for "last sent", so it isn't used here.
+   * percent null: an empty gauge with a dashed outline and "–" (write-only, or not reported);
+   * `unknownText` adds a word after it. Dashed means unknown; the hatch is kept for "last sent", so it isn't used here.
    * The words wrap under the gauge when the column is narrow.
    */
   import { Zap } from '@lucide/svelte'
@@ -14,7 +14,7 @@
     /** Accessible name prefix, e.g. "Mic 1 battery". */
     label?: string
     showText?: boolean
-    /** Words after "– –" when unknown. */
+    /** A word after "–" when unknown (none by default). */
     unknownText?: string
     /** Show "Charging" next to the bolt (the bolt alone on narrow layouts). */
     chargingText?: boolean
@@ -25,7 +25,7 @@
     charging = false,
     label = 'Battery',
     showText = true,
-    unknownText = 'Not readable',
+    unknownText = '',
     chargingText = true,
   }: Props = $props()
 
@@ -34,11 +34,11 @@
   const filled = $derived(known ? Math.max(level > 0 ? 1 : 0, Math.round(level / 10)) : 0)
   const low = $derived(known && !charging && level <= 10)
   const aria = $derived(
-    known ? `${label} ${level} percent${charging ? ', charging' : low ? ', low' : ''}` : `${label}: ${unknownText.toLowerCase()}`,
+    known ? `${label} ${level} percent${charging ? ', charging' : low ? ', low' : ''}` : `${label}: ${unknownText ? unknownText.toLowerCase() : 'unknown'}`,
   )
 </script>
 
-<span class="battery" class:unknown={!known} role="img" aria-label={aria}>
+<span class="battery" class:unknown={!known} role="img" aria-label={aria} title={known ? undefined : 'Unknown'}>
   <span class="gauge">
     <span class="cells" aria-hidden="true">
       {#each Array.from({ length: 10 }, (_, i) => i) as i (i)}
@@ -49,7 +49,7 @@
       {#if known}
         <span class="num" aria-hidden="true">{level}<small>%</small></span>
       {:else}
-        <span class="mc-dash" aria-hidden="true">– –</span>
+        <span class="mc-dash" aria-hidden="true">–</span>
       {/if}
     {/if}
   </span>

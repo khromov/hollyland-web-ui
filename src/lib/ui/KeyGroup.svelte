@@ -7,12 +7,15 @@
    * - solid: inverted, pressed in (read back from the receiver)
    * - sent: 2 px ink outline over a hatch (last sent from this browser, not confirmed)
    * - unknown: nothing is chosen (value={null}): every key is dashed, still operable
+   * Sent and unknown say so in the group's tooltip, which is also its accessible description
+   * ("Last sent 17:42 · not confirmed", "Unknown"), never in a caption under the keys.
    * Disabled (or blocked through a Blockable / SettingRow field) keys go flat; put the reason
    * next to the group (ConfidenceNote kind="disabled" or the row's disabledReason).
    */
   import type { Snippet } from 'svelte'
   import type { Confidence, KeyOption } from './types'
   import { getFieldContext } from './field'
+  import { confidenceNote } from './confidence'
   import RoutingGlyph from './RoutingGlyph.svelte'
 
   interface Props {
@@ -21,6 +24,8 @@
     label: string
     disabled?: boolean
     confidence?: Confidence
+    /** When a 'sent' value was sent, for the tooltip. */
+    sentAt?: number | Date | null
     /** Value being written: a spinner shows in that key. */
     pendingValue?: T | null
     size?: 'sm' | 'md' | 'lg' | 'tall'
@@ -38,6 +43,7 @@
     label,
     disabled = false,
     confidence = 'solid',
+    sentAt = null,
     pendingValue = null,
     size = 'md',
     columns,
@@ -55,6 +61,10 @@
   // Four keys in a narrow module go 2 × 2 rather than truncating their legends.
   const cols = $derived(columns ?? (options.length === 4 && width > 0 && width < 272 ? 2 : options.length))
   const tall = $derived(size === 'tall' || options.some((o) => o.glyph))
+  /** Unknown when nothing is chosen while the value isn't read back. */
+  const note = $derived(
+    confidence === 'unknown' || (confidence === 'sent' && selectedIndex < 0) ? 'Unknown' : confidenceNote(confidence, sentAt),
+  )
 
   function choose(i: number) {
     const o = options[i]
@@ -88,6 +98,7 @@
   aria-label={label}
   aria-describedby={field?.describedBy}
   aria-disabled={disabled || blocked || undefined}
+  title={note}
   style="--cols: {cols}"
 >
   {#each options as o, i (o.value)}

@@ -1,7 +1,9 @@
 <script lang="ts">
   /**
-   * One module of the faceplate: a title with its value or control at the head (right),
-   * an optional one-line description, the control, and a footnote pinned to the bottom.
+   * One module of the faceplate: a title with its value or control at the head (right), the
+   * control, and a footnote pinned to the bottom (block reasons only).
+   * `description` is never printed: it becomes the title's tooltip (and so its accessible
+   * description). Label + value + control, no helper sentences.
    * Put modules in <Modules> for the hairline-divided strip.
    * - value / total: prints "6/6" at the head (ValueHead), with `confidence`
    * - head: any control at the head instead (e.g. a SlideSwitch)
@@ -18,6 +20,8 @@
     value?: number | string | null
     total?: number | string
     confidence?: Confidence
+    /** When a 'sent' value was sent, for the value's tooltip. */
+    sentAt?: number | Date | null
     head?: Snippet
     foot?: Snippet
     nested?: boolean
@@ -34,6 +38,7 @@
     value,
     total,
     confidence = 'solid',
+    sentAt = null,
     head,
     foot,
     nested = false,
@@ -47,14 +52,13 @@
 
 <section class="module pad-{pad} {klass}" class:nested aria-labelledby={headingId}>
   <div class="mod-head">
-    <svelte:element this={`h${level}`} id={headingId} class="title">{title}</svelte:element>
+    <svelte:element this={`h${level}`} id={headingId} class="title" title={description}>{title}</svelte:element>
     {#if head}
       <div class="head-ctl">{@render head()}</div>
     {:else if value !== undefined}
-      <ValueHead {value} {total} {confidence} />
+      <ValueHead {value} {total} {confidence} {sentAt} />
     {/if}
   </div>
-  {#if description}<p class="desc">{description}</p>{/if}
   {#if children}<div class="content">{@render children()}</div>{/if}
   {#if foot}<div class="foot">{@render foot()}</div>{/if}
 </section>
@@ -76,16 +80,18 @@
     padding: 0;
   }
   .nested {
-    margin-left: 6px;
-    padding: 0 0 0 16px;
+    padding: 0 0 0 12px;
     border-left: 1px solid var(--rule);
     gap: 6px;
   }
+  /* Title left, value or control right. When both don't fit on one line the control drops
+     under the title instead of breaking the title mid-phrase or overflowing the module. */
   .mod-head {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: 10px;
+    gap: 6px 10px;
     min-height: var(--hit);
   }
   .title {
@@ -98,15 +104,14 @@
   .nested .title {
     font-size: 14px;
   }
+  /* Right-aligned on its own line too, so head controls keep one right edge down a column. */
+  .mod-head > :not(.title) {
+    margin-left: auto;
+  }
   .head-ctl {
     display: flex;
     align-items: center;
     flex: none;
-  }
-  .desc {
-    font-size: 13px;
-    line-height: var(--lh-body);
-    color: var(--ink-2);
   }
   .content {
     display: grid;

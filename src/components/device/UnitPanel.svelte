@@ -2,7 +2,7 @@
   /**
    * One unit (RX, Mic 1, Mic 2) of "Device Information" as a module of the spec sheet: SN
    * (masked until revealed) and Firmware Version in mono, plus the battery where it is reported.
-   * A value that can't be read shows "– –".
+   * A value that can't be read shows "–".
    */
   import KeyValue from '../../lib/ui/KeyValue.svelte'
   import BatteryCells from '../../lib/ui/BatteryCells.svelte'

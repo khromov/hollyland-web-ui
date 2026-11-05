@@ -205,7 +205,7 @@ export const A1_COMMANDS: CommandCatalogue = {
   [A1Cmd.REFRESH_RX]: {
     name: 'REFRESH_RX', safety: 'destructive', retrySafe: false,
     source: `${PV2}.HID_REFRESH_RX; ${PRO}/ProRefreshRx; ${MSG}.setRefreshRx; blemic/setting/ModeSwitchActivity.startRefreshRx; I event 15`,
-    description: 'Part of the wireless 2↔4-mic switch (after the TX re-flash). Never used by Mic Console.',
+    description: 'Part of the wireless 2↔4-mic switch (after the TX re-flash). Never used by Hollyland Web UI.',
   },
   [A1Cmd.RX_INTO_PAIR]: {
     name: 'RX_INTO_PAIR', safety: 'destructive', retrySafe: false,

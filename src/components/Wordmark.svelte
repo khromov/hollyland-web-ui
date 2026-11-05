@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * "▮▮ Mic Console  Unofficial": the 26 px window glyph (a purple and a yellow bar), the name in
+   * "▮▮ Hollyland Web UI  Unofficial": the 26 px window glyph (a purple and a yellow bar), the name in
    * expanded Archivo, and the "Unofficial" note. Links home.
    * - compact: name only (no "Unofficial"), e.g. in a crowded header
    * - glyphOnly: the glyph alone (the name stays as the link's accessible name)
@@ -15,10 +15,10 @@
   let { compact = false, glyphOnly = false, size = 'md' }: Props = $props()
 </script>
 
-<a class="wordmark {size}" href="#/overview" aria-label="Mic Console, unofficial. Home">
+<a class="wordmark {size}" href="#/overview" aria-label="Hollyland Web UI, unofficial. Home">
   <BrandGlyph size={size === 'sm' ? 24 : 26} />
   {#if !glyphOnly}
-    <span class="name">Mic Console</span>
+    <span class="name">Hollyland Web UI</span>
     {#if !compact}<span class="tag">Unofficial</span>{/if}
   {/if}
 </a>

@@ -1,4 +1,4 @@
-// Command-line options of `npx mic-console` (cli/mic-console.mjs).
+// Command-line options of `npx hollyland-web-ui` (cli/hollyland-web-ui.mjs).
 
 export const DEFAULT_PORT = 47320
 export const DEFAULT_BRIDGE_PORT = 47321
@@ -110,10 +110,10 @@ export function parseOptions(argv, platform = process.platform) {
 }
 
 export function helpText(version) {
-  return `Mic Console ${version}: control Hollyland LARK A2 / A2S / M2 / M2S wireless mics from your browser.
+  return `Hollyland Web UI ${version}: control Hollyland LARK A2 / A2S / M2 / M2S wireless mics from your browser.
 Unofficial; not affiliated with Hollyland.
 
-Usage: npx mic-console [options]
+Usage: npx hollyland-web-ui [options]
 
 Serves the web UI on http://127.0.0.1:${DEFAULT_PORT} (this computer only) and opens it in your
 browser. On macOS it also starts the local USB bridge, which asks for your password: macOS only

@@ -13,11 +13,13 @@
   import Button from '../../lib/ui/Button.svelte'
   import Key from '../../lib/ui/Key.svelte'
   import Dialog from '../../lib/ui/Dialog.svelte'
-  import ConfidenceNote from '../../lib/ui/ConfidenceNote.svelte'
+  import { uid } from '../../lib/ui/field'
   import UnitPanel from './UnitPanel.svelte'
   import PairedDevices from './PairedDevices.svelte'
   import AboutCard from './AboutCard.svelte'
   import { serialText, versionText } from './identity'
+
+  const resetDescId = uid('reset-desc')
 
   const live = $derived(session.live)
   const writeOnly = $derived(session.writeOnly)
@@ -31,9 +33,15 @@
 
   const connection = $derived.by(() => {
     const kind = session.transportKind
-    const via = kind === 'webhid' ? 'WebHID' : kind === 'bridge' ? 'Local bridge' : kind === 'mock' ? 'Simulator' : (kind ?? null)
-    if (!via) return null
-    return `${via} · ${writeOnly ? 'send only' : live ? 'two-way' : 'connecting'}`
+    if (!kind) return null
+    const VIA: Record<string, string> = {
+      webhid: 'USB',
+      'webhid-feature': 'USB',
+      bridge: 'Local bridge',
+      'web-bluetooth': 'Bluetooth',
+      mock: 'Simulator',
+    }
+    return VIA[kind] ?? kind
   })
   const usbId = $derived(
     product
@@ -122,13 +130,13 @@
 <div class="device">
   <h1 class="visually-hidden">Device</h1>
 
-  <Panel title="Device Information" description="Model, serial numbers and firmware of the connected kit.">
+  <Panel title="Device Information">
     {#snippet aside()}
       <Key
         size="sm"
         loading={refreshing}
         disabled={!live || !ready}
-        title={live ? 'Read serial numbers and firmware versions again' : "Can't be read on this system"}
+        title={live ? 'Read serial numbers and firmware versions again' : 'Status unavailable'}
         onclick={refresh}
       >
         {#snippet icon()}<RefreshCw />{/snippet}
@@ -141,28 +149,19 @@
         <dt>Model</dt>
         <!-- The official app shows "LARK A2" for both A2 receivers (features.md §2, §6). -->
         <dd>
-          <span class="mono model-name">{session.displayName || '– –'}</span>
+          <span class="mono model-name">{session.displayName || '–'}</span>
           {#if product?.family === '6118' && session.isCameraVariant}<span class="variant">Camera receiver</span>{/if}
         </dd>
       </div>
       <div class="spec-item">
         <dt>Connection</dt>
-        <dd>{connection ?? '– –'}</dd>
+        <dd>{connection ?? '–'}</dd>
       </div>
       <div class="spec-item">
         <dt>USB ID</dt>
-        <dd class="mono">{usbId ?? '– –'}</dd>
+        <dd class="mono">{usbId ?? '–'}</dd>
       </div>
     </dl>
-
-    {#if writeOnly}
-      <div class="lead">
-        <ConfidenceNote
-          kind="unknown"
-          text="Not read: this system discards the receiver's replies, so serial numbers and firmware versions show as “– –”. Chrome on Linux or ChromeOS, or the local bridge, can read them."
-        />
-      </div>
-    {/if}
 
     <div class="units">
       <Modules min="260px">
@@ -181,18 +180,15 @@
       </Modules>
     </div>
 
-    <div class="firmware">
-      <p>
-        <b>Firmware updates:</b> use the official HollyAudio app on a phone. Mic Console never installs firmware, because
-        an interrupted update can leave a receiver or mic unusable.
-      </p>
-    </div>
+    <p class="firmware" title="Hollyland Web UI never installs firmware: an interrupted update can leave a unit unusable">
+      <span class="k">Firmware updates</span><span>HollyAudio app</span>
+    </p>
   </Panel>
 
   <PairedDevices />
 
   {#if showManual}
-    <Panel title="User Manual" description="Manuals, quick-start guides and downloads on Hollyland's site.">
+    <Panel title="User Manual">
       <div class="links">
         <a class="mc-key mc-key--sm" href="https://www.hollyland.com/download" target="_blank" rel="noopener noreferrer">
           Manuals and downloads
@@ -211,21 +207,25 @@
   <AboutCard />
 
   {#if caps?.factoryReset}
-    <Panel title="Factory Reset" description="Restores the receiver's factory settings." class="danger-zone">
+    <Panel title="Factory Reset" class="danger-zone">
       <div class="danger">
-        <p class="danger-text">
-          {writeOnly
-            ? "This system can't confirm the reset. Values remembered in this browser are cleared too."
-            : 'Values remembered in this browser are cleared too.'}
-        </p>
-        <Key variant="danger-outline" disabled={!ready} onclick={openReset}>Factory Reset</Key>
+        <Key variant="danger-outline" disabled={!ready} title="Also clears the values remembered in this browser" onclick={openReset}
+          >Factory Reset</Key
+        >
       </div>
     </Panel>
   {/if}
 </div>
 
-<Dialog open={resetOpen} title="Factory Reset" tone="danger" blocking={resetting} onclose={() => (resetOpen = false)}>
-  <p>Factory reset will erase some data. Continue?</p>
+<Dialog
+  open={resetOpen}
+  title="Factory Reset"
+  tone="danger"
+  blocking={resetting}
+  onclose={() => (resetOpen = false)}
+  describedby={resetDescId}
+>
+  <p id={resetDescId}>This erases the receiver's settings.</p>
   <label class="typed">
     <span>Type <b class="mono">{CONFIRM_WORD}</b> to confirm</span>
     <!-- svelte-ignore a11y_autofocus -->
@@ -240,9 +240,6 @@
       onkeydown={(e) => e.key === 'Enter' && typedOk && doReset()}
     />
   </label>
-  {#if writeOnly}
-    <ConfidenceNote kind="unknown" text="This system can't confirm the result." />
-  {/if}
   {#snippet actions()}
     <Button variant="secondary" disabled={resetting} onclick={() => (resetOpen = false)}>Cancel</Button>
     <Button variant="danger" loading={resetting} disabled={!typedOk} onclick={doReset}>Confirm</Button>
@@ -292,26 +289,22 @@
     font-size: 13px;
     color: var(--ink-2);
   }
-  .lead {
-    padding: 0 0 14px;
-  }
   .units {
     min-width: 0;
     border-top: 1px solid var(--rule);
   }
   .firmware {
-    padding: 14px 0 20px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 16px;
+    padding: 14px 0 18px;
     border-top: 1px solid var(--rule);
+    font-size: 14px;
   }
-  .firmware p {
-    max-width: 96ch;
+  .firmware .k {
     font-size: 13px;
-    line-height: var(--lh-body);
     color: var(--ink-2);
-  }
-  .firmware b {
-    color: var(--ink);
-    font-weight: 620;
   }
   .links {
     display: flex;
@@ -329,12 +322,6 @@
     justify-content: space-between;
     gap: 12px 24px;
     padding: 4px 0 24px;
-  }
-  .danger-text {
-    max-width: 70ch;
-    font-size: 13px;
-    line-height: var(--lh-body);
-    color: var(--ink-2);
   }
   /* Factory Reset sits alone at the bottom, under the one strong ink rule of the page. */
   .device :global(.danger-zone) {
@@ -369,7 +356,6 @@
   }
   @media (min-width: 600px) {
     .spec,
-    .lead,
     .firmware,
     .links,
     .danger {

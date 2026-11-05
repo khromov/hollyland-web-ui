@@ -39,7 +39,7 @@
     {#if shown}
       <span class="value">{shown}</span>
     {:else}
-      <span class="mc-dash" aria-label="Not read">– –</span>
+      <span class="mc-dash" aria-label="Unknown" title="Unknown">–</span>
     {/if}
     {#if masked && value}
       <button

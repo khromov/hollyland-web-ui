@@ -131,7 +131,7 @@ export class AudioEngine {
           if (opts) {
             try {
               const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
-              const files = await this.stopRecording(`mic-console-${stamp}-interrupted`)
+              const files = await this.stopRecording(`hollyland-web-ui-${stamp}-interrupted`)
               if (files.length) this.onRecordingSalvaged?.(files, opts)
             } catch (err) {
               console.warn('[audio] could not save the interrupted recording', err)

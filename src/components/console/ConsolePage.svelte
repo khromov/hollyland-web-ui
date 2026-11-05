@@ -13,7 +13,6 @@
   import KeyGroup from '../../lib/ui/KeyGroup.svelte'
   import SlideSwitch from '../../lib/ui/SlideSwitch.svelte'
   import Lamp from '../../lib/ui/Lamp.svelte'
-  import Banner from '../../lib/ui/Banner.svelte'
   import ConfidenceNote from '../../lib/ui/ConfidenceNote.svelte'
 
   interface Props {
@@ -73,7 +72,7 @@
 
   const canSend = $derived(prefs.allowRawWrites && connected)
   const sendBlock = $derived(
-    !connected ? 'Needs a connected receiver.' : !prefs.allowRawWrites ? 'Turn on raw writes first.' : null,
+    !connected ? 'No receiver connected' : !prefs.allowRawWrites ? 'Turn on raw writes first' : null,
   )
 
   async function send() {
@@ -81,7 +80,7 @@
     rawError = null
     const bytes = parseHex(rawHex)
     if (!bytes) {
-      rawError = 'Enter an even number of hex digits, for example "AA DD 10 40 00 00".'
+      rawError = 'Enter whole hex bytes, e.g. AA DD 10'
       return
     }
     if (!sendRaw) return
@@ -95,10 +94,13 @@
     const blob = new Blob([lines.join('\n') + '\n'], { type: 'application/x-ndjson' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
-    a.download = `mic-console-traffic-${Date.now()}.jsonl`
+    a.download = `hollyland-web-ui-traffic-${Date.now()}.jsonl`
     a.click()
     setTimeout(() => URL.revokeObjectURL(a.href), 1000)
   }
+
+  const RAW_WARNING = 'Raw frames can change settings, remove pairings or reset the receiver.'
+  const RAW_HINT = 'Hex bytes, padded to 64. The header is normally AA. Manual sends are marked * in the log.'
 
   function toggleRow(e: TrafficEntry) {
     selected = selected?.id === e.id ? null : e
@@ -108,7 +110,7 @@
 <div class="console">
   <h1 class="visually-hidden">Console</h1>
 
-  <Panel title="Traffic" description="Raw HID frames between this page and the receiver, newest first.">
+  <Panel title="Traffic">
     {#snippet aside()}
       <!-- Not a live region: the frame count changes with every heartbeat. -->
       <span class="capture">
@@ -178,7 +180,7 @@
                 </td>
               </tr>
             {:else}
-              <tr class="empty-row"><td colspan="4" class="empty">{traffic.entries.length ? 'No frames match the filters.' : 'No frames yet.'}</td></tr>
+              <tr class="empty-row"><td colspan="4" class="empty">{traffic.entries.length ? 'No matching frames' : 'No frames'}</td></tr>
             {/each}
           </tbody>
         </table>
@@ -206,18 +208,13 @@
     </div>
   </Panel>
 
-  <Panel title="Raw send" description="Writes one frame to the receiver, padded to 64 bytes.">
+  <Panel title="Raw send">
     <div class="body raw-body">
-      {#if !prefs.allowRawWrites}
-        <Banner tone="warning" title="Raw writes are off">
-          Raw frames can change device settings, remove pairings or reset the device. Turn this on only if you know the
-          protocol.
-        </Banner>
-      {/if}
-      <label class="allow">
+      <label class="allow" title={RAW_WARNING}>
         <SlideSwitch checked={prefs.allowRawWrites} label="Allow raw writes" onchange={(v) => prefs.setAllowRawWrites(v)} />
         <span>Allow raw writes</span>
       </label>
+      <span class="visually-hidden" id="raw-warning">{RAW_WARNING}</span>
       <div class="raw">
         <input
           class="hex-in"
@@ -226,6 +223,7 @@
           disabled={!canSend}
           aria-label="Raw frame hex"
           aria-describedby={sendBlock ? 'raw-block' : 'raw-hint'}
+          title={RAW_HINT}
           onkeydown={(e) => e.key === 'Enter' && send()}
         />
         <Key variant="primary" disabled={!canSend} onclick={send}>
@@ -236,9 +234,7 @@
       {#if sendBlock}
         <ConfidenceNote kind="disabled" id="raw-block" text={sendBlock} />
       {/if}
-      <p class="hint" id="raw-hint">
-        The first byte is the frame header (normally <code>AA</code>). Every manual send is marked with * in the log.
-      </p>
+      <span class="visually-hidden" id="raw-hint">{RAW_HINT}</span>
       {#if rawError}<p class="err" role="alert">{rawError}</p>{/if}
     </div>
   </Panel>
@@ -488,15 +484,6 @@
     border-color: var(--rule);
     box-shadow: none;
     color: var(--ink-3);
-  }
-  .hint {
-    font-size: 12px;
-    line-height: var(--lh-body);
-    color: var(--ink-3);
-  }
-  .hint code {
-    font-size: 12px;
-    color: var(--ink);
   }
   .err {
     font-size: 13px;

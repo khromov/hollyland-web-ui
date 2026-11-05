@@ -363,7 +363,7 @@ export class FamilyDevice<Req, Msg> implements MicDevice {
     const info = this.commands[cmd]
     if (!info) throw new CommandSafetyError(cmd, `${hex16(cmd)} is not in the ${this.family} command catalogue`)
     if (info.safety === 'notify') throw new CommandSafetyError(cmd, `${info.name} is sent by the device only`)
-    if (info.safety === 'ota') throw new DestructiveCommandError(`${info.name} belongs to firmware update, which Mic Console never sends`)
+    if (info.safety === 'ota') throw new DestructiveCommandError(`${info.name} belongs to firmware update, which Hollyland Web UI never sends`)
     if ((o.probe || o.priority === 'background') && info.safety !== 'read') {
       throw new CommandSafetyError(cmd, `${info.name} is not a read: the probe and background polls may only read (FAMILIES.md §2.3)`)
     }

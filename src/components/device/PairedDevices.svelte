@@ -11,10 +11,12 @@
   import Key from '../../lib/ui/Key.svelte'
   import Button from '../../lib/ui/Button.svelte'
   import Dialog from '../../lib/ui/Dialog.svelte'
-  import ConfidenceNote from '../../lib/ui/ConfidenceNote.svelte'
+  import { uid } from '../../lib/ui/field'
   import Lamp from '../../lib/ui/Lamp.svelte'
   import UnitTitle from './UnitTitle.svelte'
   import UnitStatus from './UnitStatus.svelte'
+
+  const removeDescId = uid('remove-desc')
 
   const live = $derived(session.live)
   const writeOnly = $derived(session.writeOnly)
@@ -51,12 +53,7 @@
   }
 </script>
 
-<Panel
-  title="Paired Devices"
-  description={writeOnly
-    ? "This system can't read whether a mic is paired, and can't confirm a removal."
-    : 'A mic counts as paired while it is linked to the receiver, as in the official app.'}
->
+<Panel title="Paired Devices">
   <div class="mods">
     <Modules min="280px">
       {#each rows as r (r.n)}
@@ -67,7 +64,9 @@
               {#if writeOnly}
                 <UnitStatus status="unknown" />
               {:else}
-                <span class="word" class:dim={!paired}><Lamp size="sm" state={paired ? 'on' : 'off'} />{paired ? 'Paired' : 'Not paired'}</span>
+                <span class="word" class:dim={!paired} title={paired ? undefined : 'Off or out of range'}
+                  ><Lamp size="sm" state={paired ? 'on' : 'off'} />{paired ? 'Paired' : 'Not paired'}</span
+                >
               {/if}
             {/snippet}
           </UnitTitle>
@@ -78,8 +77,6 @@
                 Remove Pairing
               </Key>
             </div>
-          {:else if !writeOnly && !paired}
-            <p class="hint">Switched off or out of range also shows as “Not paired”.</p>
           {/if}
         </div>
       {/each}
@@ -92,17 +89,13 @@
       <ChevronDown size={18} aria-hidden="true" />
     </summary>
     <div class="help-body">
-      <p>Pairing is done on the hardware. Neither this page nor the official app can start it.</p>
       <ol>
-        <li>Charge the receiver and the mic, and keep them close together.</li>
-        <li>Follow the pairing steps in your kit's manual to put both into pairing mode.</li>
+        <li>Keep receiver and mic close</li>
+        <li>Put both in pairing mode (see manual)</li>
         {#if live}
-          <li>When the mic is linked, its module here shows {canRemove ? '“Remove Pairing” again' : '“Paired”'}.</li>
+          <li>The mic shows “Paired” here</li>
         {:else}
-          <li>
-            This page can't see the link on this system. To check it, speak into the mic and watch the levels on the
-            <a href="#/audio">Audio</a> page.
-          </li>
+          <li>Check its levels on <a href="#/audio">Audio</a></li>
         {/if}
       </ol>
     </div>
@@ -115,11 +108,9 @@
   tone="danger"
   blocking={busy}
   onclose={() => (confirmFor = null)}
+  describedby={removeDescId}
 >
-  <p>This device will need to be paired again after deletion. Are you sure you want to delete it?</p>
-  {#if writeOnly}
-    <ConfidenceNote kind="unknown" text="This system can't confirm the result." />
-  {/if}
+  <p id={removeDescId}>The mic will need pairing again.</p>
   {#snippet actions()}
     <!-- svelte-ignore a11y_autofocus -->
     <Button variant="secondary" autofocus disabled={busy} onclick={() => (confirmFor = null)}>Cancel</Button>
@@ -152,11 +143,6 @@
   }
   .action {
     display: flex;
-  }
-  .hint {
-    font-size: 12px;
-    line-height: var(--lh-body);
-    color: var(--ink-3);
   }
   .help {
     border-top: 1px solid var(--rule);

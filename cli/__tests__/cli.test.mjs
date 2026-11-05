@@ -1,4 +1,4 @@
-// `npx mic-console`: option parsing, the static file server and the CLI's help/usage paths.
+// `npx hollyland-web-ui`: option parsing, the static file server and the CLI's help/usage paths.
 // (The sudo + USB bridge path needs a terminal and hardware; see the report in the PR.)
 import { execFile } from 'node:child_process'
 import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises'
@@ -10,7 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { DEFAULT_BRIDGE_PORT, DEFAULT_PORT, HOSTED_ORIGIN, HOSTED_URL, bridgeByDefault, helpText, parseOptions, UsageError } from '../lib/options.mjs'
 import { createStaticServer, mimeType, resolveRequestPath } from '../lib/static-server.mjs'
 
-const CLI = fileURLToPath(new URL('../mic-console.mjs', import.meta.url))
+const CLI = fileURLToPath(new URL('../hollyland-web-ui.mjs', import.meta.url))
 
 describe('parseOptions', () => {
   it('defaults: bridge only on macOS', () => {
@@ -52,7 +52,7 @@ describe('parseOptions', () => {
     for (const flag of ['--port', '--bridge-port', '--no-bridge', '--bridge ', '--bridge-only', '--no-open', '--verbose', '--version', '--help']) {
       expect(help).toContain(flag)
     }
-    expect(help).toContain('Mic Console 1.2.3')
+    expect(help).toContain('Hollyland Web UI 1.2.3')
   })
 })
 
@@ -67,7 +67,7 @@ describe('static server', () => {
     outside = await mkdtemp(join(tmpdir(), 'mc-outside-'))
     await mkdir(join(root, 'assets'))
     await mkdir(join(root, 'empty'))
-    await writeFile(join(root, 'index.html'), '<!doctype html><title>Mic Console</title>')
+    await writeFile(join(root, 'index.html'), '<!doctype html><title>Hollyland Web UI</title>')
     await writeFile(join(root, 'assets', 'app-abc.js'), 'export {}')
     await writeFile(join(root, 'assets', 'font.woff2'), Buffer.from([0x77, 0x4f, 0x46, 0x32]))
     await writeFile(join(root, 'assets', 'mod.wasm'), Buffer.from([0, 0x61, 0x73, 0x6d]))
@@ -104,7 +104,7 @@ describe('static server', () => {
     expect(r.headers['content-type']).toBe('text/html; charset=utf-8')
     expect(r.headers['cache-control']).toBe('no-cache')
     expect(r.headers['x-content-type-options']).toBe('nosniff')
-    expect(r.body).toContain('Mic Console')
+    expect(r.body).toContain('Hollyland Web UI')
   })
 
   it('sends the right MIME types and caches hashed assets', async () => {
@@ -157,7 +157,7 @@ describe('static server', () => {
   })
 })
 
-describe('mic-console command', () => {
+describe('hollyland-web-ui command', () => {
   function run(args) {
     return new Promise((resolve) => {
       execFile(process.execPath, [CLI, ...args], { env: { ...process.env, NO_COLOR: '1' }, timeout: 10_000 }, (error, stdout, stderr) =>
@@ -169,7 +169,7 @@ describe('mic-console command', () => {
   it('--help and --version', async () => {
     const help = await run(['--help'])
     expect(help.code).toBe(0)
-    expect(help.stdout).toContain('Usage: npx mic-console [options]')
+    expect(help.stdout).toContain('Usage: npx hollyland-web-ui [options]')
     const version = await run(['--version'])
     expect(version.code).toBe(0)
     expect(version.stdout.trim()).toMatch(/^\d+\.\d+\.\d+/)
@@ -179,6 +179,6 @@ describe('mic-console command', () => {
     const r = await run(['--frobnicate'])
     expect(r.code).toBe(2)
     expect(r.stderr).toContain('unknown option --frobnicate')
-    expect(r.stderr).toContain('npx mic-console --help')
+    expect(r.stderr).toContain('npx hollyland-web-ui --help')
   })
 })

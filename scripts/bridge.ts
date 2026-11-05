@@ -1,5 +1,5 @@
 /**
- * Mic Console local USB bridge: full read/write on macOS, where the OS drops the receiver's
+ * Hollyland Web UI local USB bridge: full read/write on macOS, where the OS drops the receiver's
  * replies before any browser sees them (docs/PROTOCOL.md §2.4). See docs/BRIDGE.md.
  *
  *   npm run bridge [-- --port 47321 --allow-origin https://example.com --iap2 --verbose]
@@ -22,7 +22,7 @@
  * Do not run this file with plain `node` + sudo: use `npm run bridge` (scripts/bridge-launch.mjs),
  * which re-launches it under sudo with the current node binary and tsx.
  *
- * `npx mic-console` (cli/mic-console.mjs) runs a bundled copy (cli/dist/bridge.mjs, built by
+ * `npx hollyland-web-ui` (cli/hollyland-web-ui.mjs) runs a bundled copy (cli/dist/bridge.mjs, built by
  * `npm run build:cli`) under sudo with --embedded: a short banner and log lines marked "bridge",
  * because its output shares the terminal with the CLI's.
  */
@@ -37,9 +37,9 @@ import {
 const BRIDGE_VERSION = '1.0.0'
 
 /**
- * Origin of the hosted Mic Console build on GitHub Pages (https://khromov.github.io/hollyland-web-ui/).
+ * Origin of the hosted Hollyland Web UI build on GitHub Pages (https://khromov.github.io/hollyland-web-ui/).
  * Not accepted by default: an origin covers every page on that host and the bridge relays any
- * command (factory reset included), so only `npx mic-console --bridge-only` (or an explicit
+ * command (factory reset included), so only `npx hollyland-web-ui --bridge-only` (or an explicit
  * --allow-origin) lets the hosted page in. Used here only to label it in the banner.
  */
 const GITHUB_PAGES_ORIGIN = 'https://khromov.github.io'
@@ -60,25 +60,25 @@ interface Options {
   iap2Interface: number
   pid: number | null
   verbose: boolean
-  /** Started by `npx mic-console`: short banner, log lines marked "bridge". */
+  /** Started by `npx hollyland-web-ui`: short banner, log lines marked "bridge". */
   embedded: boolean
 }
 
-const HELP = `Mic Console USB bridge ${BRIDGE_VERSION}
+const HELP = `Hollyland Web UI USB bridge ${BRIDGE_VERSION}
 
 Usage: npm run bridge [-- options]
 
 Options:
   --port <n>              WebSocket port on 127.0.0.1 (default ${BRIDGE_DEFAULT_PORT})
   --allow-origin <url>    also accept pages from this origin, e.g. ${GITHUB_PAGES_ORIGIN}
-                          for the hosted Mic Console (repeatable; localhost and
+                          for the hosted Hollyland Web UI (repeatable; localhost and
                           127.0.0.1 pages are always accepted)
   --allow-no-origin       accept clients without an Origin header (local Node scripts)
   --iap2                  also relay the vendor bulk interface on /iap2 (experimental)
   --iap2-interface <n>    interface number for --iap2 (default 7)
   --pid <n>               only capture this USB product id (decimal or 0x hex)
   --verbose               print every packet
-  --embedded              short banner and "bridge" log prefix (used by npx mic-console)
+  --embedded              short banner and "bridge" log prefix (used by npx hollyland-web-ui)
   -h, --help              show this help
 
 USB audio from the receiver pauses while the bridge runs. Press Ctrl+C to give it back.
@@ -146,7 +146,7 @@ function parseArgs(argv: readonly string[]): Options | 'help' {
 // --------------------------------------------------------------------------------- logging
 
 const t0 = Date.now()
-/** "bridge" under npx mic-console, whose own messages share the terminal. */
+/** "bridge" under npx hollyland-web-ui, whose own messages share the terminal. */
 let logLabel = ''
 function log(line: string): void {
   const s = ((Date.now() - t0) / 1000).toFixed(1).padStart(7)
@@ -610,7 +610,7 @@ function printRootHelp(embedded: boolean): void {
   if (embedded) {
     console.error(
       'The bridge needs root to take the receiver away from the operating system.\n' +
-        'Start it with "npx mic-console", which asks for your password through sudo.',
+        'Start it with "npx hollyland-web-ui", which asks for your password through sudo.',
     )
     return
   }
@@ -666,7 +666,7 @@ async function main(): Promise<void> {
     console.error(
       `Could not load the "usb" package (${errText(e)}). ` +
         (opts.embedded
-          ? 'Try a fresh copy: npx --yes mic-console@latest'
+          ? 'Try a fresh copy: npx --yes hollyland-web-ui@latest'
           : 'Run "npm install" in the project folder first.'),
     )
     process.exit(1)
@@ -690,7 +690,7 @@ async function main(): Promise<void> {
   let stoppingSince = 0
   const shutdown = (code: number, why: string) => {
     if (stopping) {
-      // One Ctrl+C can arrive twice: from the terminal and relayed by a launcher (npx mic-console, sudo).
+      // One Ctrl+C can arrive twice: from the terminal and relayed by a launcher (npx hollyland-web-ui, sudo).
       if (Date.now() - stoppingSince > 1500) log('still giving the receiver back to the OS…')
       return
     }
@@ -724,7 +724,7 @@ async function main(): Promise<void> {
   process.on('exit', () => bridge.releaseSync())
 
   if (opts.embedded) {
-    // npx mic-console prints the page address and the instructions itself.
+    // npx hollyland-web-ui prints the page address and the instructions itself.
     log(`listening on ${bridge.server.url('hid')} (this computer only; one page at a time)`)
     if (opts.iap2) log(`iAP2 relay on ${bridge.server.url('iap2')} (experimental, raw bulk bytes)`)
     bridge.start()
@@ -735,12 +735,12 @@ async function main(): Promise<void> {
     'http://localhost:*, https://localhost:*',
     'http://127.0.0.1:*, https://127.0.0.1:*',
     ...bridge.server.allowedOrigins.map((o) =>
-      o === GITHUB_PAGES_ORIGIN ? `${o} (hosted Mic Console, --allow-origin)` : `${o} (--allow-origin)`,
+      o === GITHUB_PAGES_ORIGIN ? `${o} (hosted Hollyland Web UI, --allow-origin)` : `${o} (--allow-origin)`,
     ),
     ...(opts.allowNoOrigin ? ['clients without an Origin header (--allow-no-origin)'] : []),
   ]
   console.log(`
-Mic Console USB bridge ${BRIDGE_VERSION}
+Hollyland Web UI USB bridge ${BRIDGE_VERSION}
 
   WebSocket   ${bridge.server.url('hid')}${opts.iap2 ? `\n  iAP2 relay  ${bridge.server.url('iap2')} (experimental, raw bulk bytes)` : ''}
   Listening   127.0.0.1 only (not reachable from other computers)
@@ -750,7 +750,7 @@ Mic Console USB bridge ${BRIDGE_VERSION}
   While the bridge holds the receiver its USB AUDIO IS PAUSED (no mic input on this computer).
   Press Ctrl+C to stop; the receiver is handed back to the OS automatically.
 ${opts.port !== BRIDGE_DEFAULT_PORT ? `\n  Custom port: open the page with ?bridge=${opts.port}\n` : ''}
-In Mic Console, choose "Connect through local bridge".
+In Hollyland Web UI, choose "Connect through local bridge".
 `)
   if (opts.allowOrigins.some((o) => !isLoopbackOrigin(o) && o.startsWith('http:'))) {
     log('note: plain-http origins other than localhost cannot be trusted on a shared network')

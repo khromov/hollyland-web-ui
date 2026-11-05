@@ -2,7 +2,7 @@
   /**
    * A notice: a dark display window with a lamp (never a yellow or coloured banner, since
    * yellow is Mic 2's identity).
-   *   sendonly  "→ SEND-ONLY LINK" band for the write-only link (macOS / Windows drop replies)
+   *   sendonly  arrow glyph, for the link that can't read the receiver
    *   danger    red lamp (connection lost, errors)
    *   warning   hollow lamp
    *   success   green lamp
@@ -17,13 +17,13 @@
   interface Props {
     tone?: 'info' | 'success' | 'warning' | 'danger' | 'sendonly'
     title?: string
-    /** Uppercase lamp legend; defaults to "Send-only link" for tone="sendonly". */
+    /** Uppercase lamp legend (optional). */
     legend?: string
     children?: Snippet
     actions?: Snippet
   }
   let { tone = 'info', title, legend, children, actions }: Props = $props()
-  const shownLegend = $derived(legend ?? (tone === 'sendonly' ? 'Send-only link' : undefined))
+  const shownLegend = $derived(legend)
 </script>
 
 <div class="mc-window banner {tone}" role={tone === 'danger' ? 'alert' : 'status'}>

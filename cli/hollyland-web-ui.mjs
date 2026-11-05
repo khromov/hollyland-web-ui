@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// `npx mic-console`: serves the prebuilt Mic Console web UI on http://127.0.0.1:<port>, starts the
+// `npx hollyland-web-ui`: serves the prebuilt Hollyland Web UI on http://127.0.0.1:<port>, starts the
 // local USB bridge (macOS by default, under sudo) and opens the page, which then connects through
 // the bridge by itself (?bridge=auto). See README.md and docs/BRIDGE.md.
 //
@@ -19,7 +19,7 @@ const BRIDGE_SCRIPT = join(HERE, 'dist', 'bridge.mjs')
 const HOST = '127.0.0.1'
 const OS_NAME = { darwin: 'macOS', linux: 'Linux', win32: 'Windows' }[process.platform] ?? process.platform
 /** sudo expands %u to the user name. */
-const SUDO_PROMPT = 'Password for %u (Mic Console needs it to start the USB bridge): '
+const SUDO_PROMPT = 'Password for %u (Hollyland Web UI needs it to start the USB bridge): '
 
 // ------------------------------------------------------------------------------------- output
 
@@ -47,7 +47,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 // ------------------------------------------------------------------------------------- bridge
 
-/** What answers on 127.0.0.1:<port>: a Mic Console bridge, something else, or nothing. */
+/** What answers on 127.0.0.1:<port>: a Hollyland Web UI bridge, something else, or nothing. */
 function probeBridge(port, timeoutMs = 1000) {
   return new Promise((resolve) => {
     const req = get({ host: HOST, port, path: '/', agent: false, timeout: timeoutMs }, (res) => {
@@ -56,7 +56,7 @@ function probeBridge(port, timeoutMs = 1000) {
       res.on('data', (chunk) => {
         if (body.length < 4096) body += chunk
       })
-      res.on('end', () => resolve(res.statusCode === 200 && body.startsWith('Mic Console bridge') ? 'bridge' : 'other'))
+      res.on('end', () => resolve(res.statusCode === 200 && body.startsWith('Hollyland Web UI bridge') ? 'bridge' : 'other'))
       res.on('error', () => resolve('other'))
     })
     req.on('timeout', () => {
@@ -161,7 +161,7 @@ async function setUpBridge(opts, pageOrigin) {
         process.exitCode = code || 1
         void shutdown()
       } else {
-        warn('The page shows "Connection lost". Run npx mic-console again to restart it.')
+        warn('The page shows "Connection lost". Run npx hollyland-web-ui again to restart it.')
       }
     })
     return true
@@ -176,15 +176,15 @@ async function setUpBridge(opts, pageOrigin) {
 function explainBridgeFailure({ error, code, signal, usedSudo, interactive, bridgeOnly }) {
   say()
   if (error?.code === 'ENOENT' && usedSudo) {
-    warn("The USB bridge didn't start: sudo isn't installed here (run Mic Console as root to use the bridge).")
+    warn("The USB bridge didn't start: sudo isn't installed here (run Hollyland Web UI as root to use the bridge).")
   } else if (error) {
     warn(`The USB bridge didn't start: ${error.message}`)
   } else {
     warn(`The USB bridge didn't start (${signal ? `signal ${signal}` : `exit code ${code}`}; see the message above).`)
     // sudo -n: there was no terminal to ask for the password in.
-    if (usedSudo && !interactive) warn('sudo can only ask for your password in a terminal: run npx mic-console in a terminal window.')
+    if (usedSudo && !interactive) warn('sudo can only ask for your password in a terminal: run npx hollyland-web-ui in a terminal window.')
   }
-  if (!bridgeOnly) warn('Mic Console keeps running without it. Run npx mic-console again to retry, or add --no-bridge.')
+  if (!bridgeOnly) warn('Hollyland Web UI keeps running without it. Run npx hollyland-web-ui again to retry, or add --no-bridge.')
 }
 
 // -------------------------------------------------------------------------------------- web UI
@@ -286,7 +286,7 @@ async function stop(signal) {
     server.closeAllConnections?.()
     await new Promise((resolve) => server.close(() => resolve()))
   }
-  say(green('Mic Console stopped.'))
+  say(green('Hollyland Web UI stopped.'))
   // Exit even if something still holds the event loop open.
   setTimeout(() => process.exit(), 500).unref()
 }
@@ -299,7 +299,7 @@ async function main() {
     opts = parseOptions(process.argv.slice(2))
   } catch (e) {
     if (e instanceof UsageError) {
-      console.error(`mic-console: ${e.message}\nRun "npx mic-console --help" to see the options.`)
+      console.error(`hollyland-web-ui: ${e.message}\nRun "npx hollyland-web-ui --help" to see the options.`)
       process.exit(2)
     }
     throw e
@@ -317,7 +317,7 @@ async function main() {
   for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => onSignal(sig))
 
   say()
-  say(`${bold('Mic Console')} ${version}  ${dim('unofficial control panel for Hollyland LARK wireless mics')}`)
+  say(`${bold('Hollyland Web UI')} ${version}  ${dim('unofficial control panel for Hollyland LARK wireless mics')}`)
   say()
 
   let pageOrigin = null
@@ -332,7 +332,7 @@ async function main() {
     } catch (e) {
       if (e.code === 'EADDRINUSE') {
         console.error(
-          `Port ${opts.port} on ${HOST} is already in use. Is Mic Console already running in another terminal?\n` +
+          `Port ${opts.port} on ${HOST} is already in use. Is Hollyland Web UI already running in another terminal?\n` +
             'Stop it, or pick another port with --port <n>.',
         )
       } else {
@@ -360,7 +360,7 @@ async function main() {
   if (opts.bridgeOnly) {
     if (bridge.external) {
       say()
-      say('Nothing else to start. Open Mic Console and press "Connect through local bridge".')
+      say('Nothing else to start. Open Hollyland Web UI and press "Connect through local bridge".')
       say(dim(`If the hosted page says "Bridge refused this page", stop that bridge and run this command again.`))
       await shutdown()
       return
@@ -374,7 +374,7 @@ async function main() {
     }
     say()
     const hosted = opts.bridgePort === DEFAULT_BRIDGE_PORT ? `${HOSTED_URL}?bridge=auto` : `${HOSTED_URL}?bridge=${opts.bridgePort}&auto=1`
-    say(`${bold('Ready.')} Open Mic Console and press "Connect through local bridge", or open`)
+    say(`${bold('Ready.')} Open Hollyland Web UI and press "Connect through local bridge", or open`)
     say(`${cyan(hosted)} to connect right away.`)
     say()
     say(`The receiver's USB audio is paused while the bridge runs.`)

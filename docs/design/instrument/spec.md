@@ -1,8 +1,8 @@
-# Mic Console, Direction A: "Instrument"
+# Hollyland Web UI, Direction A: "Instrument"
 
 ## Concept
 
-Mic Console is drawn as the front panel of a piece of audio equipment: one light aluminium faceplate, divided by hairline rules rather than stacked into cards. Information sits in dark, recessed display windows where the purple and yellow channel LEDs light up. The level meters are the largest element on the screen. Every control is a physical-feeling key, slide switch or detent fader. Each one carries a printed legend and its value in tabular mono numerals, so you can read the panel at a glance mid-shoot.
+Hollyland Web UI is drawn as the front panel of a piece of audio equipment: one light aluminium faceplate, divided by hairline rules rather than stacked into cards. Information sits in dark, recessed display windows where the purple and yellow channel LEDs light up. The level meters are the largest element on the screen. Every control is a physical-feeling key, slide switch or detent fader. Each one carries a printed legend and its value in tabular mono numerals, so you can read the panel at a glance mid-shoot.
 
 Colour has one job: identity. Purple means Mic 1 and yellow means Mic 2, matching the LEDs on the transmitters. Everything else is ink on aluminium. The interface has no accent colour, gradients or glows.
 
@@ -18,7 +18,7 @@ Colour has one job: identity. Purple means Mic 1 and yellow means Mic 2, matchin
 | (b) Phone overview, light, first viewport / full page | `b-phone-overview-light-390x844.png`, `b-phone-overview-light-390-full.png` |
 | (b) Phone overview, dark | `b-phone-overview-dark-390x844.png` |
 | (c) Desktop Audio page | `c-desktop-audio-light-1440x900.png` |
-| (c) Desktop Connect page | `c-desktop-connect-light-1440x900.png` |
+| (c) Desktop Connect page (superseded by the single-column page under "Connect screen") | `c-desktop-connect-light-1440x900.png` |
 | (d) Phone send-only state (macOS) | `d-phone-sendonly-light-390x844.png`, `d-phone-sendonly-light-390-full.png` |
 | Earlier iterations | `iter1/`, `iter2/`; current UI for reference: `current/` |
 
@@ -213,15 +213,17 @@ Lamps are used for channel identity (purple, yellow), the link (green), the mute
 - *Device:* a spec-sheet table with a left label column and hairline rows. Firmware `3.0.2.008` appears on RX, Mic 1 and Mic 2 in mono. Serials are masked (`•••• •••• 7F3A`) with a reveal key. Paired devices are list rows with a quiet "Remove pairing" key.
 - *Factory reset:* sits alone at the bottom, separated by a 1.5 px ink rule. It uses a red outline key and a typed-confirmation dialog.
 
-**Connect screen.**
+**Connect screen.** One centred column (680 px max), read top to bottom, in plain page type. It replaces the first mockup's three panes, Chrome-chooser preview, "Full control on a Mac" column and "How it connects" schematic (frame (c) Desktop Connect in `mockup.html` is superseded).
 
-- **Left:** three numbered steps and a primary "Connect receiver" key, followed by a window that previews Chrome's chooser line ("Wireless Microphone · pick this").
-- **Middle:** "Full control on a Mac": `npm run bridge` in a code window, a "Connect through local bridge" key and a hollow lamp reading "No bridge on 127.0.0.1:47321".
-- **Right:** troubleshooting rows.
-- **Lower row, "How it connects":** a schematic showing that the receiver gives the page two separate USB links:
-  - *USB audio* (solid, green lamp): available now, for levels, effects and recording.
-  - *USB control / WebHID* (dashed, hollow lamp): not connected, for settings, battery, mute and firmware.
-  - This explains why Audio works without the control link, and what "send-only" means.
+- **Title:** "Control your Hollyland USB microphone from your computer", with one subtitle line naming the supported receivers and saying settings go straight to the receiver over USB.
+- **Steps:** three numbered steps (plug in the receiver, switch on the mics, press Connect receiver and pick the receiver in the browser's list). The chooser is described in words; nothing imitates browser UI. No LED colours: purple/yellow only hold for the LARK A2 with Mic Recognition on.
+- **Connect receiver:** the primary key, plus "Reconnect …" when the browser already has permission for a receiver. Connection errors appear as a banner right under it. While a bridge connection runs or has just failed (e.g. `npx hollyland-web-ui` opens the page with `?bridge=auto`), a status line with a lamp sits under the key with "Show details", which opens and scrolls to the bridge disclosure.
+- **Platform note:** one short paragraph: Linux and ChromeOS get full control; macOS and Windows can send settings but can't read the receiver's status back. A link to the Audio page, which works without connecting.
+- **Disclosures** (native `<details>`, closed by default, between hairline rules):
+  - *Full control on a Mac (local bridge):* **macOS only**; on other systems it is not shown unless a bridge connection is under way or has failed. The bridge command in a code window with Copy, a "Connect through local bridge" key, the address it expects, and short facts (Chrome's local-network prompt on the hosted site, Ctrl+C to stop, what origins the bridge accepts). Opens by itself while a bridge connection runs or fails.
+  - *Receiver not in the list?:* re-plug or try another port, close HollyAudio, the Linux udev rule in a code window, and the Windows Sound settings check.
+- **Disclaimer:** "Independent project · not affiliated with Hollyland" at the bottom of the column, until the status line has room to carry it (1200 px).
+- **Without WebHID** (Safari, Firefox, phones): the reason in one paragraph and a "Copy link" key instead of the steps.
 
 ### Send-only (write-only) state: confidence language
 
@@ -289,7 +291,7 @@ What the user sees in this state:
 | 9 | Twingate (web) · device details | https://mobbin.com/screens/66d04258-ac9b-4a85-b384-02f26229b5f5 | A key/value column next to a ✓/✕ capability list. Became the platform capability lines on Connect (read & write / send only). |
 | 10 | Fabric (web) · Sources | https://mobbin.com/screens/162f77fe-5b3a-4c52-a051-9a9847f6646a | "→ 1-way sync (read only)" against "↔ 2-way sync". The send-only state is expressed as link direction (→ glyph, "two-way" in the status line). |
 | 11 | Stripe (web) · Workbench / Health | https://mobbin.com/screens/ce2f0b29-60dd-4d06-b49e-b6583c6dbee2 | A "Read only" mode tag living in a persistent bottom bar. Became the desktop mono status line for link state instead of banners. |
-| 12 | Google Meet (web) · HID device chooser | https://mobbin.com/screens/b123e134-fe60-40fa-8ce3-bf0153e99516 | Chrome's native "wants to connect to a HID device" chooser. The Connect screen previews what that chooser will show ("Wireless Microphone · pick this"). |
+| 12 | Google Meet (web) · HID device chooser | https://mobbin.com/screens/b123e134-fe60-40fa-8ce3-bf0153e99516 | Chrome's native "wants to connect to a HID device" chooser. The first mockup previewed that chooser on the Connect screen; the shipped page describes it in words instead. |
 | 13 | Dialpad (web) · hardware settings | https://mobbin.com/screens/f672a5ee-aa70-4709-be44-4cb2b65da073 | A mini level meter next to the microphone it measures. Meters live inside each channel module, not only on the Audio page. |
 | 14 | Sonos (iOS) · settings, Hardware group | https://mobbin.com/screens/f2eeb985-af5b-4267-8606-d958534c9101 | "Status Light" grouped under Hardware. Indicator light and Mic recognition are grouped as one hardware function. |
 | 15 | Sonos (iOS) · EQ | https://mobbin.com/screens/94dc4c87-2132-43f2-9e96-b0a3467426de | The value printed at the right of each control (+2, 0) on a light grey panel. Gave the value-at-head and the aluminium tone. |

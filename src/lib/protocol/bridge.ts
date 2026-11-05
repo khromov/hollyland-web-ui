@@ -31,17 +31,17 @@ import type { WebHidLinkSpec } from './core/types'
 export const BRIDGE_DEFAULT_PORT = 47321
 export const BRIDGE_DEFAULT_URL = `ws://127.0.0.1:${BRIDGE_DEFAULT_PORT}/hid`
 
-/** The npm package of the launcher (cli/mic-console.mjs): web UI and bridge in one command. */
-export const NPM_PACKAGE = 'mic-console'
+/** The npm package of the launcher (cli/hollyland-web-ui.mjs): web UI and bridge in one command. */
+export const NPM_PACKAGE = 'hollyland-web-ui'
 /**
  * Whether NPM_PACKAGE is on npm yet. While false, the page tells people to start the bridge from a
  * clone of the repository, never with npx: the bridge runs as root, so the page must not point at a
  * package name that isn't published (and could be claimed by someone else). Set it to true once
- * `npm view mic-console` shows the published package.
+ * `npm view hollyland-web-ui` shows the published package.
  */
 export const NPM_PACKAGE_PUBLISHED: boolean = false
 export const REPO_URL = 'https://github.com/khromov/hollyland-web-ui'
-/** Origin of the hosted Mic Console (GitHub Pages, https://khromov.github.io/hollyland-web-ui/). */
+/** Origin of the hosted Hollyland Web UI (GitHub Pages, https://khromov.github.io/hollyland-web-ui/). */
 export const HOSTED_ORIGIN = 'https://khromov.github.io'
 
 /** Where the page is served from, which decides how the bridge has to be started for it. */
@@ -69,7 +69,7 @@ export interface BridgeStartHelp {
 
 /**
  * How to start a bridge that accepts this page (shown in the connect screen and in errors).
- * - With the npm package: `npx mic-console --bridge-only` (only the bridge: this page is already
+ * - With the npm package: `npx hollyland-web-ui --bridge-only` (only the bridge: this page is already
  *   open; that mode also accepts the hosted page).
  * - From a clone: `npm run bridge`, which accepts pages on this computer only; other pages need
  *   `--allow-origin`.
@@ -84,7 +84,7 @@ export function bridgeStartHelp(origin: string | null = pageOrigin(), published 
   }
   return {
     command: clone,
-    where: ctx === 'loopback' ? 'in the Mic Console project folder' : `in a clone of ${repo}, after npm install`,
+    where: ctx === 'loopback' ? 'in the Hollyland Web UI project folder' : `in a clone of ${repo}, after npm install`,
     fromClone: null,
   }
 }
@@ -123,15 +123,14 @@ async function explainLocalNetworkBlock(e: unknown): Promise<unknown> {
   if (state === 'denied') {
     return new BridgeError(
       'blocked',
-      'Chrome is blocking this site from reaching the bridge on this computer. Click the site-settings icon left of ' +
-        'the address, allow Local network access, and reload the page.',
+      'Allow Local network access in the site settings (left of the address), then reload.',
       { cause: e, closeCode: e.closeCode },
     )
   }
   if (state === 'prompt') {
     return new BridgeError(
       'not-running',
-      `${e.message} When Chrome asks whether this site may access apps and services on this device, choose Allow.`,
+      `${e.message} When Chrome asks about devices on this network, choose Allow.`,
       { cause: e, closeCode: e.closeCode },
     )
   }
@@ -307,7 +306,7 @@ export function bridgeCloseError(code: number, reason: string, reachedServer: bo
     case BRIDGE_CLOSE.inUse:
       return new BridgeError(
         'in-use',
-        'Another page or tab is already connected to the bridge. Disconnect it there (or close that tab) and try again.',
+        'Another tab is using the bridge. Close it, then retry.',
         { closeCode: code },
       )
     case BRIDGE_CLOSE.origin: {
@@ -316,20 +315,15 @@ export function bridgeCloseError(code: number, reason: string, reachedServer: bo
       const fix = origin
         ? `"${help.command}"${help.where ? ` ${help.where}` : ''}`
         : `"npm run bridge -- --allow-origin <this page's origin>"`
-      const accepts = NPM_PACKAGE_PUBLISHED
-        ? `pages served from this computer, plus the hosted Mic Console (${new URL(HOSTED_ORIGIN).host}) when started with --bridge-only`
-        : 'pages served from this computer, plus sites named with --allow-origin'
-      return new BridgeError('origin', `The bridge accepts ${accepts}. To allow this page, stop it with Ctrl+C and start it with ${fix}.`, {
-        closeCode: code,
-      })
+      return new BridgeError('origin', `Restart the bridge with ${fix}.`, { closeCode: code })
     }
     case BRIDGE_CLOSE.unavailable:
       return new BridgeError('unavailable', `The bridge has this channel switched off${why}.`, { closeCode: code })
     case BRIDGE_CLOSE.stopped:
-      return new BridgeError('closed', `The bridge stopped. ${bridgeStartSentence()} to use it again.`, { closeCode: code })
+      return new BridgeError('closed', `The bridge stopped. ${bridgeStartSentence()}.`, { closeCode: code })
   }
   if (!reachedServer) {
-    return new BridgeError('not-running', `No bridge answered at ${url}. ${bridgeStartSentence()}, then try again.`, {
+    return new BridgeError('not-running', `No bridge at ${url}. ${bridgeStartSentence()}.`, {
       closeCode: code,
     })
   }
@@ -484,7 +478,7 @@ export class BridgeTransport extends BaseTransport {
   async send(packet: Uint8Array): Promise<void> {
     const ws = this.ws
     if (!ws || ws.readyState !== WS_OPEN) throw new TransportError('the bridge connection is closed')
-    if (!this.device) throw new BridgeError('unplugged', 'The receiver is not connected to the bridge right now.')
+    if (!this.device) throw new BridgeError('unplugged', 'Receiver not connected to the bridge.')
     const { maxOut, fixed } = this.packet
     if (packet.length === 0 || packet.length > maxOut) throw new TransportError(`packet length ${packet.length} not in 1..${maxOut}`)
     if (fixed) {
@@ -534,8 +528,8 @@ export class BridgeTransport extends BaseTransport {
       const timer = setTimeout(() => {
         finish(
           this.reachedServer
-            ? new BridgeError('timeout', `The bridge at ${this.url} accepted the connection but never said hello. Restart it and try again.`)
-            : new BridgeError('not-running', `No bridge answered at ${this.url} within ${Math.round(timeoutMs / 100) / 10} s. ${bridgeStartSentence()}.`),
+            ? new BridgeError('timeout', `The bridge at ${this.url} didn't respond. Restart it.`)
+            : new BridgeError('not-running', `No bridge at ${this.url}. ${bridgeStartSentence()}.`),
         )
         try {
           ws.close()
@@ -554,7 +548,7 @@ export class BridgeTransport extends BaseTransport {
         reject(
           new BridgeError(
             'no-device',
-            'The bridge is running but has no receiver. Plug the receiver in (or re-plug it), wait for the bridge to say "captured", then try again.',
+            'Plug in (or re-plug) the receiver, wait for "captured", then retry.',
           ),
         )
       }, timeoutMs)

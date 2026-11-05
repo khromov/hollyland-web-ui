@@ -6,7 +6,7 @@
    *
    * The controls inside draw the blocked look themselves (flat face, aria-disabled) from the
    * field context set here. The reason is said in place:
-   * - `showReason` (default): a line under the control, with the disabled swatch
+   * - `showReason` (default): a short line under the control
    * - `reasonId`: the reason is printed elsewhere (e.g. a switch at a module head whose reason
    *   sits in the module body); the control is described by that element
    */
@@ -73,7 +73,7 @@
 >
   {@render children()}
   {#if reason && showReason && !reasonId}
-    <p class="reason" id={ownId}><span class="mc-swatch mc-swatch--disabled" aria-hidden="true"></span>{reason}</p>
+    <p class="reason" id={ownId}>{reason}</p>
   {/if}
 </div>
 
@@ -93,14 +93,8 @@
     cursor: not-allowed;
   }
   .reason {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
     font-size: 12px;
     line-height: 1.4;
     color: var(--ink-2);
-  }
-  .reason .mc-swatch {
-    margin-top: 1px;
   }
 </style>

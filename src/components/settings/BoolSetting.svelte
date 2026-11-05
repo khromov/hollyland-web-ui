@@ -1,13 +1,13 @@
 <script lang="ts">
   /**
-   * One receiver feature setting as a faceplate module: title, the control at the head (or a
-   * key row in the body for a two-way choice such as "15min | Never"), the description, and a
-   * footnote saying how much is known about the value. It never invents a state:
+   * One receiver feature setting as a faceplate module: title and the control at the head (or a
+   * key row in the body for a two-way choice such as "15min | Never"). It never invents a state:
    *  - read back (live):            slide switch, ON / OFF in the track
    *  - sent, not confirmed:         "Off | On" send pair with the last value marked (hatch)
-   *                                 + "Last sent 17:42 · not confirmed"
-   *  - unknown (never read / sent): "Off | On" with nothing marked + "Not read"
-   *  - disabled:                    flat control + the reason in words
+   *  - unknown (never read / sent): "Off | On" with nothing marked (dashed)
+   *  - disabled:                    flat control + the reason in a few words
+   * What the setting does is the title's tooltip; how much is known about the value ("Last sent
+   * 17:42 · not confirmed", "Unknown") is the control's own tooltip. Neither is printed.
    */
   import Module from '../../lib/ui/Module.svelte'
   import SlideSwitch from '../../lib/ui/SlideSwitch.svelte'
@@ -18,7 +18,8 @@
 
   interface Props {
     title: string
-    description?: string
+    /** What the setting does: the title's tooltip, never visible text. */
+    hint?: string
     value: boolean | undefined
     /** Replies are dropped by the OS: a known value is what this browser sent last. */
     writeOnly?: boolean
@@ -27,35 +28,30 @@
     disabledReason?: string | null
     /** A two-way choice instead of a switch, e.g. { on: '15min', off: 'Never' } (shown in that order). */
     choice?: { on: string; off: string } | null
-    /** A standing footnote, e.g. "Changing it restarts the receiver." */
-    note?: string
-    /** When this page sent the value (write-only caption). */
+    /** When this page sent the value (write-only tooltip). */
     sentAt?: number | null
     onchange: (value: boolean) => void
   }
 
   let {
     title,
-    description,
+    hint,
     value,
     writeOnly = false,
     pending = false,
     disabled = false,
     disabledReason = null,
     choice = null,
-    note,
     sentAt = null,
     onchange,
   }: Props = $props()
 
-  const noteId = uid('set-note')
+  const reasonId = uid('set-reason')
   const unknown = $derived(value === undefined)
   const sent = $derived(writeOnly && !unknown)
-  const confidenceText = $derived(unknown || sent || !!disabledReason)
-  const hasFoot = $derived(confidenceText || !!note)
   setFieldContext({
     get describedBy() {
-      return confidenceText ? noteId : undefined
+      return disabledReason ? reasonId : undefined
     },
     get blocked() {
       return false
@@ -73,7 +69,7 @@
   let target: 'on' | 'off' | null = $state(null)
 </script>
 
-<Module {title} {description} head={choice ? undefined : headControl} foot={hasFoot ? footNotes : undefined}>
+<Module {title} description={hint} head={choice ? undefined : headControl} foot={disabledReason ? reason : undefined}>
   {#if choice}
     <div class="choice">
       <KeyGroup
@@ -81,7 +77,8 @@
         value={unknown ? null : value ? 'on' : 'off'}
         label={title}
         size="sm"
-        confidence={sent ? 'sent' : 'solid'}
+        confidence={unknown ? 'unknown' : sent ? 'sent' : 'solid'}
+        {sentAt}
         disabled={disabled || pending}
         pendingValue={pending ? target : null}
         onchange={(v) => {
@@ -93,25 +90,13 @@
   {/if}
 </Module>
 
-{#snippet footNotes()}
-  {#if disabledReason}
-    <ConfidenceNote kind="disabled" id={noteId} text={disabledReason} />
-  {:else if sent}
-    <ConfidenceNote
-      kind="sent"
-      id={noteId}
-      at={sentAt}
-      text={sentAt ? undefined : 'Last sent from this browser · not confirmed'}
-    />
-  {:else if unknown}
-    <ConfidenceNote kind="unknown" id={noteId} text={writeOnly ? 'Not read' : "Not read: the receiver didn't report it"} />
-  {/if}
-  {#if note}<p class="note">{note}</p>{/if}
+{#snippet reason()}
+  <ConfidenceNote kind="disabled" id={reasonId} text={disabledReason ?? ''} />
 {/snippet}
 
 {#snippet headControl()}
   {#if unknown || writeOnly}
-    <SendPair value={unknown ? null : !!value} label={title} {pending} disabled={disabled || !!disabledReason} {onchange} />
+    <SendPair value={unknown ? null : !!value} label={title} {sentAt} {pending} disabled={disabled || !!disabledReason} {onchange} />
   {:else}
     <SlideSwitch checked={!!value} label={title} {pending} disabled={disabled || !!disabledReason} onchange={(v) => onchange(v)} />
   {/if}
@@ -120,13 +105,5 @@
 <style>
   .choice {
     max-width: 260px;
-  }
-  .note {
-    font-size: 12px;
-    line-height: var(--lh-body);
-    color: var(--ink-3);
-  }
-  .note:not(:first-child) {
-    margin-top: 6px;
   }
 </style>

@@ -1,5 +1,5 @@
 <script lang="ts">
-  /** A unit's link state as a lamp plus a word: Online (lit), Offline (dark), Not read (hollow). */
+  /** A unit's link state as a lamp plus a word: Online (lit), Offline (dark); unknown is a hollow lamp and "–". */
   import Lamp from '../../lib/ui/Lamp.svelte'
 
   interface Props {
@@ -7,13 +7,13 @@
   }
   let { status }: Props = $props()
   const word = $derived(
-    status === 'connected' ? 'Connected' : status === 'online' ? 'Online' : status === 'offline' ? 'Offline' : 'Not read',
+    status === 'connected' ? 'Connected' : status === 'online' ? 'Online' : status === 'offline' ? 'Offline' : null,
   )
 </script>
 
-<span class="st">
+<span class="st" title={word ? undefined : 'Unknown'}>
   <Lamp size="sm" state={status === 'unknown' ? 'hollow' : status === 'offline' ? 'off' : 'on'} />
-  {word}
+  {#if word}{word}{:else}<span class="mc-dash" aria-hidden="true">–</span><span class="visually-hidden">Status unknown</span>{/if}
 </span>
 
 <style>

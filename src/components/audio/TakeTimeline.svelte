@@ -221,7 +221,7 @@
 
 <div class="mc-window tl" bind:this={root}>
   {#if mode === 'empty'}
-    <p class="empty">Each take appears here as it records: one lane per channel, with its level over time.</p>
+    <p class="empty">No takes</p>
   {:else}
     <div class="top">
       <span class="name">
@@ -266,7 +266,7 @@
       </div>
     </div>
     {#if mode === 'take' && take && !take.envelope}
-      <p class="note">No level overview for this take.</p>
+      <p class="note">No level overview</p>
     {/if}
   {/if}
 </div>
@@ -286,11 +286,11 @@
   .empty {
     display: grid;
     align-items: center;
-    min-height: 104px;
+    min-height: 72px;
     padding: 0 6px;
     font-size: 14px;
     line-height: 1.45;
-    color: var(--w-ink);
+    color: var(--w-ink-2);
   }
   .top {
     display: flex;

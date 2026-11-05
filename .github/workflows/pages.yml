@@ -1,4 +1,4 @@
-# Builds Mic Console and publishes it to GitHub Pages:
+# Builds Hollyland Web UI and publishes it to GitHub Pages:
 # https://khromov.github.io/hollyland-web-ui/
 #
 # One-time setup: Settings -> Pages -> Source: "GitHub Actions"

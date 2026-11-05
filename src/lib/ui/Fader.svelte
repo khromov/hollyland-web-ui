@@ -9,13 +9,14 @@
    *   A finger only moves it with a tap or a mostly horizontal drag: a vertical swipe that starts
    *   on the fader scrolls the page and changes nothing (touch-action: pan-y).
    * - Touch (pointer: coarse) or flanks="always": 46 px −/+ keys flank the fader.
-   * - confidence 'sent': hatched cap, dashed fill (last sent, not confirmed);
-   *   'unknown' / value null: no cap, dashed slot; any stop can still be picked.
+   * - confidence 'sent': hatched cap, dashed fill (last sent, not confirmed; said in the tooltip);
+   *   'unknown' / value null: no cap, dashed slot, "–"; any stop can still be picked.
    * Value is a 0-based stop index, like StepBar.
    */
   import { Minus, Plus } from '@lucide/svelte'
   import type { Confidence } from './types'
   import { getFieldContext } from './field'
+  import { confidenceNote } from './confidence'
 
   interface Props {
     steps: number
@@ -24,6 +25,8 @@
     disabled?: boolean
     pending?: boolean
     confidence?: Confidence
+    /** When a 'sent' value was sent, for the tooltip. */
+    sentAt?: number | Date | null
     /** −/+ keys: on touch screens only (auto), always, or never. */
     flanks?: 'auto' | 'always' | 'never'
     /** Print the value ("6/6") to the right of the fader. Usually it sits at the module head. */
@@ -39,6 +42,7 @@
     disabled = false,
     pending = false,
     confidence = 'solid',
+    sentAt = null,
     flanks = 'auto',
     showValue = false,
     format = (i) => `${i + 1}`,
@@ -55,11 +59,8 @@
   const last = $derived(Math.max(1, steps - 1))
   const pos = (i: number) => `calc(16px + (100% - 32px) * ${i / last})`
 
-  const valueText = $derived(
-    value === null
-      ? 'Not read. Use the arrow keys or a number to send a value.'
-      : `${format(value)} of ${steps}${confidence === 'sent' ? ', last sent, not confirmed' : ''}`,
-  )
+  const note = $derived(unknown ? 'Unknown' : confidenceNote(confidence, sentAt))
+  const valueText = $derived(unknown || value === null ? 'Unknown' : `${format(value)} of ${steps}${note ? `, ${note}` : ''}`)
 
   function commit(v: number) {
     if (inert) return
@@ -152,6 +153,7 @@
     role="slider"
     tabindex={disabled ? -1 : 0}
     aria-label={label}
+    title={note}
     aria-valuemin={1}
     aria-valuemax={steps}
     aria-valuenow={value === null ? undefined : value + 1}
@@ -187,7 +189,7 @@
   >
   {#if showValue}
     <span class="value" aria-hidden="true">
-      {#if shown === null}<span class="mc-dash">– –</span>{:else}{format(shown)}{/if}<small>/{steps}</small>
+      {#if shown === null}<span class="mc-dash">–</span>{:else}{format(shown)}{/if}<small>/{steps}</small>
     </span>
   {/if}
 </div>

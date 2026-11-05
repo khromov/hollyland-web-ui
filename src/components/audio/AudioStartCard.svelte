@@ -1,9 +1,7 @@
 <script lang="ts">
   /**
-   * Why there are no live levels, and the key that fixes it, as a dark display window.
-   * Uses the shared audio.meterState, so it says the same as the meter windows:
-   * first run ("Show live levels"), waiting, permission blocked, no input, USB audio paused while
-   * the local bridge runs (macOS), or another error.
+   * Why there are no live levels (a short state; errors add their fix), and the key that fixes
+   * it, as a dark display window. Uses the shared audio.meterState, like the meter windows.
    */
   import { audio } from '../../lib/state/audio.svelte'
   import Lamp from '../../lib/ui/Lamp.svelte'
@@ -14,31 +12,26 @@
   let { compact = false }: Props = $props()
 
   const mstate = $derived(audio.meterState)
-  const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform)
 
   const title = $derived(
     {
       live: 'Live levels',
-      idle: 'Live levels and recording',
-      starting: 'Starting live audio',
-      denied: 'Microphone access blocked',
-      paused: 'USB audio paused',
+      idle: 'Live audio off',
+      starting: 'Waiting for microphone access…',
+      denied: 'Microphone blocked',
+      paused: 'Paused while the bridge runs',
       nodevice: 'No audio input',
       error: 'Live levels stopped',
     }[mstate],
   )
   const text = $derived(
-    mstate === 'paused'
-      ? `The receiver's USB audio is paused while the local bridge holds it. Stop the bridge (Ctrl+C) to see levels and record on this ${isMac ? 'Mac' : 'computer'}.`
-      : mstate === 'denied'
-        ? 'Microphone access is blocked for this page. Allow it in the site settings next to the address bar, then try again.'
-        : mstate === 'nodevice'
-          ? (audio.error ?? 'No audio input was found. Plug in the receiver, then try again.')
-          : mstate === 'error'
-            ? (audio.meterMessage ?? 'Live levels stopped.')
-            : mstate === 'starting'
-              ? 'Waiting for microphone access…'
-              : 'The receiver is also a USB microphone. Allow microphone access to see live levels per channel, monitor, use voice effects and record. Audio stays on this computer.',
+    mstate === 'denied'
+      ? 'Allow it in site settings, then try again.'
+      : mstate === 'nodevice'
+        ? 'Plug in the receiver, then try again.'
+        : mstate === 'error'
+          ? (audio.meterMessage ?? null)
+          : null,
   )
   const action = $derived(
     mstate === 'idle'
@@ -62,7 +55,7 @@
         </span>
         {title}
       </p>
-      <p class="text">{text}</p>
+      {#if text}<p class="text">{text}</p>{/if}
     </div>
     {#if action}
       <button type="button" class="mc-key mc-key--light {compact ? 'mc-key--sm' : ''}" onclick={() => audio.start()}>{action}</button>

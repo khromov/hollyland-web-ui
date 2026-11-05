@@ -1,8 +1,8 @@
 <script lang="ts">
   /**
-   * A notice band under the header (send-only link, lost connection): a dark display window with
-   * a mark (lamp or arrow) and either an uppercase lamp legend or a title, the explanation, keys,
-   * and an optional expandable part. Same window, legend and keys as the Banner primitive, but laid
+   * A notice band under the header (e.g. the lost connection): a dark display window with a mark
+   * (lamp or glyph) and either an uppercase lamp legend or a title, a short line, keys, and an
+   * optional expandable part. Same window, legend and keys as the Banner primitive, but laid
    * out as one band on wide screens (words left, keys right) so the panel keeps its height; stacked
    * on phones.
    */
@@ -11,7 +11,7 @@
   interface Props {
     /** The lamp or glyph at the left. */
     mark: Snippet
-    /** Uppercase lamp legend ("Send-only link"). */
+    /** Uppercase lamp legend. */
     legend?: string
     /** One sentence that follows the legend on the same line on wide screens. */
     lead?: string
@@ -21,7 +21,7 @@
     children: Snippet
     /** Keys at the right (wide) or under the words (phone). */
     actions?: Snippet
-    /** A short line under the keys, e.g. what the main key costs. */
+    /** A short line under the keys. */
     note?: Snippet
     /** Expanded details, full width under the band. */
     more?: Snippet

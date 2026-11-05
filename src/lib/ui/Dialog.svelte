@@ -19,9 +19,14 @@
     children: Snippet
     actions?: Snippet
     icon?: Snippet
+    /**
+     * Id(s) of the body text that says the consequence ("This erases the receiver's settings."),
+     * read out with the title when the dialog opens.
+     */
+    describedby?: string
   }
 
-  let { open, title, blocking = false, tone = 'neutral', size = 'sm', onclose, children, actions, icon }: Props =
+  let { open, title, blocking = false, tone = 'neutral', size = 'sm', onclose, children, actions, icon, describedby }: Props =
     $props()
 
   let el: HTMLDialogElement
@@ -42,6 +47,7 @@
   bind:this={el}
   class="dialog {tone} {size}"
   aria-labelledby={titleId}
+  aria-describedby={describedby}
   oncancel={(e) => {
     e.preventDefault()
     requestClose()

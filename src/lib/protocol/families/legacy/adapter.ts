@@ -252,12 +252,12 @@ export class LegacyMicDevice implements MicDevice {
    */
   async sendRaw(frame: Uint8Array, o: { force?: boolean; timeoutMs?: number } = {}): Promise<void> {
     if (frame.length > 0 && frame[0] === OTA_DATA_MAGIC) {
-      throw new DestructiveCommandError('a firmware data packet (0x55): firmware update is never sent by Mic Console')
+      throw new DestructiveCommandError('a firmware data packet (0x55): firmware update is never sent by Hollyland Web UI')
     }
     const f = decodeFrame(frame)
     const request = f && f.direction === 'request' ? f : null
     const info = request ? COMMANDS[request.cmd] : undefined
-    if (info?.safety === 'ota') throw new DestructiveCommandError(`${info.name} belongs to firmware update, which Mic Console never sends`)
+    if (info?.safety === 'ota') throw new DestructiveCommandError(`${info.name} belongs to firmware update, which Hollyland Web UI never sends`)
     if (info?.safety === 'notify') throw new DestructiveCommandError(`${info.name} is sent by the device only`)
     if (this.support.hardware === 'untested' && o.force) {
       const name = displayName(this.product)

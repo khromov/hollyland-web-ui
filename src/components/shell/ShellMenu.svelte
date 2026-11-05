@@ -62,9 +62,9 @@
 <div bind:this={panel} id={panelId} class="panel" popover="auto" {ontoggle} role="group" aria-label="Menu">
   {#if link.connected}
     <div class="row device">
-      <Lamp color={link.lamp.color} state={link.lamp.state} blink={link.lamp.blink} />
+      <Lamp color={link.lamp.color} state={link.lamp.state} blink={link.lamp.blink} label={link.mode ? undefined : link.lampLabel} />
       <span class="name mono">{session.displayName}</span>
-      <span class="mode">{link.mode}</span>
+      {#if link.mode}<span class="mode">{link.mode}</span>{/if}
     </div>
     {#if ondisconnect}
       <div class="row">
@@ -76,11 +76,8 @@
     <span class="label">Theme</span>
     <KeyGroup options={THEMES} value={prefs.theme} label="Theme" size="sm" onchange={(t) => prefs.setTheme(t)} />
   </div>
-  <div class="row split">
-    <span class="label">
-      Developer mode
-      <span class="hint">Adds the Console tab with the raw USB traffic.</span>
-    </span>
+  <div class="row split" title="Adds the Console tab (raw USB traffic)">
+    <span class="label">Developer mode</span>
     <SlideSwitch checked={prefs.developer} label="Developer mode" onchange={(v) => prefs.setDeveloper(v)} />
   </div>
 </div>
@@ -136,15 +133,8 @@
     color: var(--ink-2);
   }
   .label {
-    display: grid;
-    gap: 2px;
     font-size: 14px;
     font-weight: 600;
-  }
-  .hint {
-    font-size: 12px;
-    font-weight: 400;
-    color: var(--ink-3);
   }
   .split {
     grid-template-columns: minmax(0, 1fr) auto;

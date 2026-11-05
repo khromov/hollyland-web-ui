@@ -2,9 +2,10 @@
   /**
    * The link status from the session, in the StatusLine primitive.
    * - line (≥ 600 px): the 36 px line pinned to the bottom of the window:
-   *   "● WebHID · two-way   Last reply 0.4 s ago   Firmware RX … · TX1 … · TX2 …   Independent project …"
+   *   "● Connected   Last reply 0.4 s ago   Firmware RX … · TX1 … · TX2 …   Unofficial · …"
+   *   (only the disclaimer while there is no session: the header says "Not connected")
    * - band (< 600 px): the 32 px band under the phone header, live connections only:
-   *   "● Live · read & write · Reply 0.4 s                    RX 3.0.2.008"
+   *   "Last reply 0.4 s                    RX 3.0.2.008"
    */
   import StatusLine from '../../lib/ui/StatusLine.svelte'
   import type { StatusItem } from '../../lib/ui/StatusLine.svelte'
@@ -32,16 +33,13 @@
 
   const bandItems = $derived.by((): StatusItem[] => {
     const age = session.lastUpdate ? formatAge(clock.now - session.lastUpdate) : null
-    return [
-      { label: link.viaBridge ? 'Live · read & write · bridge' : 'Live · read & write' },
-      ...(age ? [{ label: 'Reply', value: age }] : []),
-    ]
+    return [...(link.viaBridge ? [{ label: 'Bridge' }] : []), ...(age ? [{ label: 'Last reply', value: age }] : [])]
   })
   const rxVersion = $derived(session.units?.rx.version ?? null)
 </script>
 
 {#if variant === 'line'}
-  <footer class="line">
+  <footer class="line" class:bare={items.length === 0}>
     <StatusLine {items} end={link.statusEnd} />
   </footer>
 {:else}
@@ -67,9 +65,10 @@
   .fw {
     color: var(--ink-2);
   }
-  /* The disclaimer gives way first, then the firmware, so the line never wraps. */
+  /* The disclaimer gives way first, then the firmware, so the line never wraps. Without a
+     session the line holds the disclaimer only, at every width. */
   @media (max-width: 1199px) {
-    .line :global(.end) {
+    .line:not(.bare) :global(.end) {
       display: none;
     }
   }
