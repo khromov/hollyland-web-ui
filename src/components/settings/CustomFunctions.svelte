@@ -3,18 +3,23 @@
    * LARK M2S "Custom Functions" (features.md §16.1; Android CustomFunctionActivity).
    * Up to two functions can be assigned to hardware buttons. Each assignment is a slot write
    * [slot, function, keyOperation, tx1Color, tx2Color] (cmd 0x37), sent as soon as a click type
-   * is chosen, as in the official app.
+   * is chosen, as in the official app. One module per function: its switch at the head, the
+   * buttons it can go on as key rows (one key per click type) when it is on.
    */
   import { session } from '../../lib/state/session.svelte'
   import { prefs } from '../../lib/state/prefs.svelte'
   import { toasts } from '../../lib/ui/toast.svelte'
-  import Card from '../../lib/ui/Card.svelte'
-  import Switch from '../../lib/ui/Switch.svelte'
-  import SegmentedControl from '../../lib/ui/SegmentedControl.svelte'
-  import Banner from '../../lib/ui/Banner.svelte'
-  import Button from '../../lib/ui/Button.svelte'
-  import ChannelBadge from '../device/ChannelBadge.svelte'
-  import BoolControl from '../overview/BoolControl.svelte'
+  import Panel from '../../lib/ui/Panel.svelte'
+  import Modules from '../../lib/ui/Modules.svelte'
+  import Module from '../../lib/ui/Module.svelte'
+  import KeyGroup from '../../lib/ui/KeyGroup.svelte'
+  import SlideSwitch from '../../lib/ui/SlideSwitch.svelte'
+  import SendPair from '../../lib/ui/SendPair.svelte'
+  import ConfidenceNote from '../../lib/ui/ConfidenceNote.svelte'
+  import Lamp from '../../lib/ui/Lamp.svelte'
+  import Tag from '../../lib/ui/Tag.svelte'
+  import Key from '../../lib/ui/Key.svelte'
+  import type { Confidence, KeyOption } from '../../lib/ui/types'
   import {
     BUTTONS,
     CLICK_LABEL,
@@ -27,6 +32,7 @@
     type ButtonId,
   } from './customButtons'
   import { reportResult } from './feedback'
+  import { sentTimes } from './sent.svelte'
 
   const NOT_CONNECTED = 'Mic1 and Mic2 are not connected; the current function cannot be configured.'
   const UP_TO_TWO = 'Supports up to two customizable buttons.'
@@ -38,8 +44,10 @@
   const known = $derived(session.settings.buttons !== undefined)
   const colors = $derived(session.settings.buttonColors)
   const live = $derived(session.live)
+  const writeOnly = $derived(session.writeOnly)
   const blocked = $derived(live && !(session.units?.tx1.online && session.units?.tx2.online))
   const busy = $derived(session.customButtonsPending || session.phase !== 'ready')
+  const confidence: Confidence = $derived(writeOnly ? 'sent' : 'solid')
 
   /** Functions switched on here but not assigned to a button yet: function -> reserved slot. */
   let reserved: Record<number, 1 | 2> = $state({})
@@ -85,17 +93,40 @@
     return ds ? (slots[ds - 1]?.keyOp ?? 0) : 0
   }
 
-  function stateText(f: Fn): string {
-    if (slotOf(f.func) === null) return known ? 'Off' : 'Unknown'
-    return keyOpLabel(currentKeyOp(f.func)) ?? 'Pending Setup'
-  }
-
   /** Label of the other function already using this button + click, if any. */
   function takenBy(func: number, keyOp: number): string | null {
     for (const s of slots) {
       if (s && s.func !== 0 && s.func !== func && s.keyOp === keyOp) return functionLabel(s.func)
     }
     return null
+  }
+
+  function clickOptions(f: Fn, bid: ButtonId): KeyOption<number>[] {
+    const current = currentKeyOp(f.func)
+    return BUTTONS[bid].clicks.map((c) => {
+      const other = current === c.keyOp ? null : takenBy(f.func, c.keyOp)
+      return {
+        value: c.keyOp,
+        label: CLICK_LABEL[c.click],
+        disabled: !!other,
+        hint: other ? `Used by ${other}` : undefined,
+      }
+    })
+  }
+
+  function takenNotes(f: Fn): string[] {
+    const current = currentKeyOp(f.func)
+    return f.buttons.flatMap((bid) =>
+      BUTTONS[bid].clicks.flatMap((c) => {
+        const other = current === c.keyOp ? null : takenBy(f.func, c.keyOp)
+        return other ? [`${CLICK_LABEL[c.click]} on the ${BUTTONS[bid].label} is used by ${other}.`] : []
+      }),
+    )
+  }
+
+  /** True when the key operation is one of the keys shown for this function. */
+  function shownKeyOp(f: Fn, keyOp: number): boolean {
+    return f.buttons.some((bid) => BUTTONS[bid].clicks.some((c) => c.keyOp === keyOp))
   }
 
   function guard(): boolean {
@@ -115,6 +146,7 @@
   async function toggle(f: Fn, on: boolean) {
     if (!guard()) return
     if (on) {
+      if (slotOf(f.func) !== null) return
       const free = ([1, 2] as const).find((i) => !usedSlots.includes(i))
       if (!free) {
         toasts.info(UP_TO_TWO)
@@ -129,6 +161,7 @@
       return
     }
     writing = { func: f.func, keyOp: 0 }
+    sentTimes.mark('buttons')
     const ok = await session.setCustomButton(ds, 0, 0)
     writing = null
     if (ok) dropReservation(f.func)
@@ -138,8 +171,9 @@
   async function choose(f: Fn, keyOp: number) {
     if (!guard()) return
     const slot = slotOf(f.func)
-    if (!slot || currentKeyOp(f.func) === keyOp) return
+    if (!slot || (currentKeyOp(f.func) === keyOp && !writeOnly)) return
     writing = { func: f.func, keyOp }
+    sentTimes.mark('buttons')
     const ok = await session.setCustomButton(slot, f.func, keyOp)
     writing = null
     if (ok) dropReservation(f.func)
@@ -148,13 +182,14 @@
 
   async function clearForeign(slot: 1 | 2) {
     if (!guard()) return
+    sentTimes.mark('buttons')
     reportResult(await session.setCustomButton(slot, 0, 0))
   }
 
   // ---- Mic Recognition light colours (TX 1 and TX 2 always get opposite colours) ----
   const TXS = [1, 2] as const
   const identifyOn = $derived(slotOf(FUNC_IDENTIFY) !== null)
-  const colorOptions = LIGHT_COLORS.map((c) => ({ value: c.value as number, label: c.label }))
+  const colorOptions: KeyOption<number>[] = LIGHT_COLORS.map((c) => ({ value: c.value as number, label: c.label }))
   const known1 = $derived(colors && colors.tx1 > 0 ? colors.tx1 : null)
   const known2 = $derived(colors && colors.tx2 > 0 ? colors.tx2 : null)
 
@@ -168,333 +203,222 @@
     const ds = deviceSlotOf(FUNC_IDENTIFY)
     const func = ds ? FUNC_IDENTIFY : 0
     const keyOp = ds ? currentKeyOp(FUNC_IDENTIFY) : 0
+    sentTimes.mark('buttons')
     reportResult(await session.setCustomButton(slot, func, keyOp, next))
   }
+
+  const sentNote = $derived(sentTimes.at.buttons ? undefined : 'Last sent from this browser · not confirmed')
 </script>
 
-<Card title="Custom Functions" overline="Receiver buttons">
-  <p class="lead">
-    Give the receiver and mic buttons an extra job. Up to two functions can be assigned at a time. A choice is sent to
-    the receiver right away.
-  </p>
-
+<Panel title="Custom Functions" description="Give the receiver and mic buttons an extra job. Up to two at a time; each choice is sent right away.">
   {#if blocked}
-    <div class="notice"><Banner tone="warning">{NOT_CONNECTED}</Banner></div>
+    <div class="lead"><ConfidenceNote kind="disabled" text={NOT_CONNECTED} /></div>
   {:else if !known}
-    <div class="notice">
-      <Banner tone="info">
-        {session.writeOnly
-          ? "This system can't read the current assignments, so each function shows as unknown. Choices you send from this browser are remembered here."
-          : "The receiver hasn't reported the current assignments yet, so each function shows as unknown."}
-      </Banner>
+    <div class="lead">
+      <ConfidenceNote
+        kind="unknown"
+        text={writeOnly
+          ? "Not read: this system can't read the current assignments. Choices sent from this browser are remembered here."
+          : "Not read: the receiver hasn't reported the current assignments yet."}
+      />
     </div>
   {/if}
 
-  <ul class="fns" aria-busy={busy || undefined}>
-    {#each fns as f (f.func)}
-      {@const on = slotOf(f.func) !== null}
-      {@const current = currentKeyOp(f.func)}
-      <li class="fn" class:on>
-        <div class="fn-head">
-          <div class="fn-text">
-            <div class="fn-label" id="fn-{f.func}">{f.label}</div>
-            <div class="fn-desc">{f.description}</div>
-            <div class="fn-state" class:assigned={on && current !== 0}>{stateText(f)}</div>
-          </div>
-          {#if known || on}
-            <Switch
-              checked={on}
-              label={f.label}
-              disabled={busy || blocked}
-              pending={writing?.func === f.func && writing.keyOp === 0}
-              onchange={(v) => toggle(f, v)}
-            />
-          {:else}
-            <!-- Unknown assignment: an Off | On pair with nothing selected, never a fake "Off". -->
-            <BoolControl value={undefined} label={f.label} onchange={(v) => toggle(f, v)} />
-          {/if}
-        </div>
+  <div class="mods" aria-busy={busy || undefined}>
+    <Modules min="280px">
+      {#each fns as f (f.func)}
+        {@const on = slotOf(f.func) !== null}
+        {@const current = currentKeyOp(f.func)}
+        {@const notes = on ? takenNotes(f) : []}
+        <Module title={f.label} description={f.description}>
+          {#snippet head()}
+            {#if known || on}
+              <SlideSwitch
+                checked={on}
+                label={f.label}
+                disabled={busy || blocked}
+                pending={writing?.func === f.func && writing.keyOp === 0}
+                confidence={writeOnly && known && !(on && deviceSlotOf(f.func) === null) ? 'sent' : 'solid'}
+                onchange={(v) => toggle(f, v)}
+              />
+            {:else}
+              <!-- Unknown assignment: an Off | On pair with nothing marked, never a fake "Off". -->
+              <SendPair value={null} label={f.label} disabled={busy || blocked} onchange={(v) => toggle(f, v)} />
+            {/if}
+          {/snippet}
 
-        {#if on}
-          <fieldset class="triggers" disabled={busy || blocked} aria-labelledby="fn-{f.func}">
-            {#each f.buttons as bid (bid)}
-              {@const b = BUTTONS[bid]}
-              <div class="button-group" role="group" aria-labelledby="btn-{f.func}-{bid}">
-                <div class="button-name" id="btn-{f.func}-{bid}">{b.label}</div>
-                <div class="clicks">
-                  {#each b.clicks as c (c.keyOp)}
-                    {@const other = current === c.keyOp ? null : takenBy(f.func, c.keyOp)}
-                    {@const isWriting = writing?.func === f.func && writing.keyOp === c.keyOp}
-                    <label class="click" class:selected={current === c.keyOp} class:taken={!!other}>
-                      <input
-                        type="radio"
-                        name="trigger-{f.func}"
-                        value={c.keyOp}
-                        checked={current === c.keyOp}
-                        disabled={!!other}
-                        aria-describedby={other ? `taken-${f.func}-${c.keyOp}` : undefined}
-                        onchange={() => choose(f, c.keyOp)}
-                      />
-                      <span class="dot" aria-hidden="true"></span>
-                      <span class="click-text">
-                        <span class="click-label">{CLICK_LABEL[c.click]}</span>
-                        {#if other}
-                          <span class="taken-by" id="taken-{f.func}-{c.keyOp}">Used by {other}</span>
-                        {/if}
-                      </span>
-                      {#if isWriting}<span class="spinner" aria-hidden="true"></span>{/if}
-                    </label>
-                  {/each}
+          {#if on}
+            <div class="triggers">
+              {#each f.buttons as bid (bid)}
+                <div class="trigger">
+                  <span class="trigger-name">{BUTTONS[bid].label}</span>
+                  <KeyGroup
+                    options={clickOptions(f, bid)}
+                    value={BUTTONS[bid].clicks.some((c) => c.keyOp === current) ? current : null}
+                    label="{f.label}: {BUTTONS[bid].label}"
+                    size="sm"
+                    {confidence}
+                    disabled={busy || blocked}
+                    pendingValue={writing?.func === f.func ? writing.keyOp : null}
+                    onchange={(v) => choose(f, v)}
+                  />
                 </div>
+              {/each}
+            </div>
+          {/if}
+
+          {#snippet foot()}
+            {#if on && current === 0}
+              <p class="state pending"><span class="mc-swatch mc-swatch--unknown" aria-hidden="true"></span>Pending Setup: choose a button and click</p>
+            {:else if on && writeOnly}
+              <ConfidenceNote kind="sent" at={sentTimes.at.buttons} text={sentNote} />
+            {:else if on && !shownKeyOp(f, current)}
+              <!-- Assigned to a button this receiver variant doesn't list (e.g. set from the other RX). -->
+              <p class="state">Assigned to {keyOpLabel(current) ?? 'another button'}</p>
+            {/if}
+            {#each notes as n (n)}
+              <ConfidenceNote kind="disabled" text={n} />
+            {/each}
+          {/snippet}
+        </Module>
+      {/each}
+
+      {#if identifyOn}
+        <Module title="Light colours" description="Mic Recognition lights each mic in its own colour. The two mics always use different colours.">
+          <div class="colors" style="--mic1: #9d6bff; --mic2: #ffcc1a">
+            {#each TXS as tx (tx)}
+              {@const value = tx === 1 ? known1 : known2}
+              <div class="color-row">
+                <span class="color-name">
+                  <Tag title="Transmitter {tx}">TX{tx}</Tag>
+                  {#if prefs.micNames[tx - 1]?.trim()}<span class="sub">{prefs.micLabel(tx === 1 ? 0 : 1)}</span>{/if}
+                </span>
+                <KeyGroup
+                  options={colorOptions}
+                  {value}
+                  label="TX {tx} light colour"
+                  size="sm"
+                  {confidence}
+                  disabled={busy || blocked}
+                  onchange={(v) => pickColor(tx, v)}
+                >
+                  {#snippet item(o)}
+                    <span class="color-key"><Lamp color={o.value === 1 ? 'mic1' : 'mic2'} size="sm" />{o.label}</span>
+                  {/snippet}
+                </KeyGroup>
               </div>
             {/each}
-          </fieldset>
-        {/if}
-      </li>
-    {/each}
-  </ul>
+          </div>
+          {#snippet foot()}
+            {#if known1 === null}
+              <ConfidenceNote kind="unknown" text="Not read. Choosing one sets both mics." />
+            {:else if writeOnly}
+              <ConfidenceNote kind="sent" at={sentTimes.at.buttons} text={sentNote} />
+            {/if}
+          {/snippet}
+        </Module>
+      {/if}
+    </Modules>
+  </div>
 
   {#each foreign as x (x.slot)}
     <div class="foreign">
       <span>
-        Slot {x.slot}: {functionLabel(x.func)}{keyOpLabel(x.keyOp) ? `, ${keyOpLabel(x.keyOp)}` : ''} (not offered for this
-        receiver)
+        Slot <span class="mono">{x.slot}</span>: {functionLabel(x.func)}{keyOpLabel(x.keyOp) ? `, ${keyOpLabel(x.keyOp)}` : ''}
+        (not offered for this receiver)
       </span>
-      <Button size="sm" variant="ghost" disabled={busy || blocked} onclick={() => clearForeign(x.slot)}>Clear</Button>
+      <Key size="sm" variant="quiet" disabled={busy || blocked} onclick={() => clearForeign(x.slot)}>Clear</Key>
     </div>
   {/each}
-
-  {#if identifyOn}
-    <div class="colors">
-      <h3>Mic Recognition</h3>
-      <p class="fn-desc">Light colour for each mic. The two mics always use different colours.</p>
-      {#each TXS as tx (tx)}
-        {@const value = tx === 1 ? known1 : known2}
-        <div class="color-row">
-          <div class="color-name">
-            <ChannelBadge channel={tx === 1 ? 'tx1' : 'tx2'} />
-            <span>TX {tx}</span>
-            {#if prefs.micNames[tx - 1]?.trim()}<span class="sub">{prefs.micLabel(tx === 1 ? 0 : 1)}</span>{/if}
-          </div>
-          <div class="color-seg">
-            <SegmentedControl
-              options={colorOptions}
-              {value}
-              label="TX {tx} light colour"
-              size="sm"
-              disabled={busy || blocked}
-              onchange={(v) => pickColor(tx, v)}
-            />
-          </div>
-        </div>
-      {/each}
-      {#if known1 === null}
-        <p class="fn-desc">The current colours aren't known yet. Choosing one sets both mics.</p>
-      {/if}
-    </div>
-  {/if}
-</Card>
+</Panel>
 
 <style>
   .lead {
-    color: var(--color-text-muted);
-    font-size: var(--text-sm);
-    line-height: var(--leading-sm);
-    max-width: 62ch;
+    padding: 4px 0 12px;
   }
-  .notice {
-    margin-top: var(--space-3);
-  }
-  .fns {
-    list-style: none;
-    margin: var(--space-3) 0 0;
-    padding: 0;
-  }
-  .fn {
-    padding: var(--space-3) 0;
-  }
-  .fn + .fn {
-    border-top: 1px solid var(--color-border);
-  }
-  .fn-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-4);
-  }
-  .fn-text {
+  .mods {
     min-width: 0;
-  }
-  .fn-label {
-    font-weight: var(--weight-medium);
-  }
-  .fn-desc {
-    color: var(--color-text-muted);
-    font-size: var(--text-sm);
-    line-height: var(--leading-sm);
-  }
-  .fn-state {
-    margin-top: 2px;
-    font-size: var(--text-sm);
-    color: var(--color-text-subtle);
-  }
-  .fn-state.assigned {
-    color: var(--color-text);
-  }
-  .on .fn-state:not(.assigned) {
-    color: var(--color-warning);
   }
   .triggers {
-    margin: var(--space-3) 0 0;
-    padding: var(--space-3);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-surface-2);
     display: grid;
-    gap: var(--space-3);
+    gap: 12px;
+    padding-top: 4px;
+  }
+  .trigger {
+    display: grid;
+    gap: 6px;
     min-width: 0;
+    max-width: 380px;
   }
-  .triggers:disabled {
-    opacity: 0.6;
+  .trigger-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink-2);
   }
-  .button-name {
-    font-size: var(--text-xs);
-    font-weight: var(--weight-semibold);
-    letter-spacing: var(--tracking-caps);
-    text-transform: uppercase;
-    color: var(--color-text-subtle);
-    margin-bottom: 6px;
+  .state {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--ink-2);
   }
-  .clicks {
+  .state.pending {
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .state .mc-swatch {
+    margin-top: 1px;
+  }
+  .colors {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 170px), 1fr));
-    gap: var(--space-2);
+    gap: 10px;
   }
-  .click {
-    position: relative;
+  .color-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 220px);
+    align-items: center;
+    gap: 12px;
+  }
+  .color-name {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
-    min-height: var(--hit-min);
-    padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--color-border-control);
-    border-radius: var(--radius-md);
-    background: var(--color-surface-1);
-    cursor: pointer;
-    transition: border-color var(--dur-fast) var(--ease-standard);
-  }
-  .click:hover:not(.taken) {
-    border-color: var(--color-text-muted);
-  }
-  .click.selected {
-    border-color: var(--color-accent);
-    box-shadow: 0 0 0 1px var(--color-accent) inset;
-  }
-  .click.taken {
-    cursor: not-allowed;
-    border-style: dashed;
-    border-color: var(--color-border-strong);
-    color: var(--color-text-subtle);
-  }
-  .click:has(input:focus-visible) {
-    outline: var(--focus-width) solid var(--color-focus);
-    outline-offset: var(--focus-offset);
-  }
-  .click input {
-    position: absolute;
-    opacity: 0;
-    width: 1px;
-    height: 1px;
-    margin: 0;
-  }
-  .dot {
-    flex: none;
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    border: 2px solid var(--color-border-control);
-    display: grid;
-    place-items: center;
-  }
-  .selected .dot {
-    border-color: var(--color-accent);
-  }
-  .selected .dot::after {
-    content: '';
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--color-accent);
-  }
-  .click-text {
-    display: grid;
+    gap: 8px;
     min-width: 0;
-    flex: 1;
   }
-  .click-label {
-    font-size: var(--text-sm);
-    font-weight: var(--weight-medium);
+  .color-name .sub {
+    font-size: 13px;
+    color: var(--ink-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  .taken-by {
-    font-size: var(--text-xs);
-    color: var(--color-text-subtle);
-  }
-  .spinner {
-    flex: none;
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    border: 2px solid var(--color-accent);
-    border-right-color: transparent;
-    animation: spin 0.7s linear infinite;
-  }
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
+  .color-key {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
   }
   .foreign {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-3);
-    padding: var(--space-2) 0;
-    border-top: 1px solid var(--color-border);
-    font-size: var(--text-sm);
-    color: var(--color-text-muted);
+    gap: 12px;
+    padding: 10px 0;
+    border-top: 1px solid var(--rule);
+    font-size: 13px;
+    color: var(--ink-2);
   }
-  .colors {
-    margin-top: var(--space-2);
-    padding-top: var(--space-4);
-    border-top: 1px solid var(--color-border);
-    display: grid;
-    gap: var(--space-2);
+  @media (min-width: 1280px) {
+    .lead {
+      padding: 20px var(--module-pad) 0;
+    }
+    .foreign {
+      padding-inline: var(--module-pad);
+    }
   }
-  h3 {
-    font-size: var(--text-md);
-    font-weight: var(--weight-semibold);
-    letter-spacing: 0;
-  }
-  .color-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
-    flex-wrap: wrap;
-    padding: var(--space-1) 0;
-  }
-  .color-name {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    font-weight: var(--weight-medium);
-  }
-  .color-name .sub {
-    color: var(--color-text-subtle);
-    font-weight: var(--weight-regular);
-    font-size: var(--text-sm);
-  }
-  .color-seg {
-    width: 184px;
+  @media (max-width: 599px) {
+    .mods {
+      --gutter: 0px;
+    }
   }
 </style>

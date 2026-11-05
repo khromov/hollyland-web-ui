@@ -1,132 +1,124 @@
 <script lang="ts">
-  /** Disclaimer, protocol notes and the platform support summary. */
-  import { session } from '../../lib/state/session.svelte'
-  import Card from '../../lib/ui/Card.svelte'
-  import Chip from '../../lib/ui/Chip.svelte'
-  import KeyValue from '../../lib/ui/KeyValue.svelte'
+  /** Disclaimer, supported receivers and where the page can read and write. */
+  import Panel from '../../lib/ui/Panel.svelte'
+  import Modules from '../../lib/ui/Modules.svelte'
+  import Module from '../../lib/ui/Module.svelte'
+  import Lamp from '../../lib/ui/Lamp.svelte'
+  import type { LampState } from '../../lib/ui/types'
 
-  const transport = $derived(
-    session.transportKind === 'webhid'
-      ? 'WebHID'
-      : session.transportKind === 'mock'
-        ? 'Simulator (development)'
-        : session.transportKind === 'bridge'
-          ? 'Local bridge'
-          : (session.transportKind ?? null),
-  )
-  const mode = $derived(session.live ? 'Live (read and write)' : session.writeOnly ? 'Write-only' : null)
-  const usbId = $derived(
-    session.product
-      ? `${session.product.vendorId.toString(16).padStart(4, '0')}:${session.product.productId.toString(16).padStart(4, '0')}`
-      : null,
-  )
-
-  const PLATFORMS: { name: string; tone: 'success' | 'warning' | 'neutral'; status: string; note: string }[] = [
+  const PLATFORMS: { name: string; lamp: LampState; status: string; note: string }[] = [
     {
       name: 'Chrome or Edge on Linux and ChromeOS',
-      tone: 'success',
-      status: 'Live',
-      note: 'Reads and writes everything. Linux needs a udev rule for the receiver.',
+      lamp: 'on',
+      status: 'Read and write',
+      note: 'Full control. Linux needs a udev rule for the receiver.',
     },
     {
-      name: 'Chrome or Edge on macOS and Windows',
-      tone: 'warning',
-      status: 'Write-only',
-      note: "The OS drops the receiver's replies: settings can be sent, but nothing can be read.",
+      name: 'Chrome or Edge on macOS',
+      lamp: 'hollow',
+      status: 'Send only',
+      note: "macOS drops the receiver's replies: settings can be sent, nothing can be read. The local bridge gives full control, but pauses the receiver's USB audio while it runs.",
     },
     {
-      name: 'macOS with the local bridge',
-      tone: 'success',
-      status: 'Live',
-      note: "Optional helper that talks to the receiver over USB directly. The receiver's USB audio pauses while it runs.",
+      name: 'Chrome or Edge on Windows',
+      lamp: 'hollow',
+      status: 'Unverified',
+      note: 'Expected to be send only, like macOS. Not tested on hardware yet. The bridge does not run on Windows.',
     },
     {
       name: 'Safari, Firefox, Chrome on Android',
-      tone: 'neutral',
-      status: 'Not supported',
-      note: 'No WebHID. The Audio page still works for levels and recording.',
+      lamp: 'off',
+      status: 'No control',
+      note: 'No WebHID. The Audio page still works for levels, effects and recording.',
     },
   ]
 </script>
 
-<Card title="About" overline="Mic Console">
-  <p class="text">
-    Mic Console is an independent, unofficial project. It is not made, endorsed or supported by Hollyland. Product
-    names are used only to say which receivers it works with.
-  </p>
-  <p class="text">
-    The USB protocol was documented from the official apps and checked on a real LARK A2. The notes are in
-    <code>docs/PROTOCOL.md</code> in the project's source repository.
-  </p>
-
-  <dl class="conn">
-    <KeyValue label="Connection" value={transport} />
-    <KeyValue label="Mode" value={mode} />
-    <KeyValue label="USB ID" value={usbId} mono />
-  </dl>
-
-  <h3>Where it works</h3>
-  <ul class="platforms">
-    {#each PLATFORMS as p (p.name)}
-      <li>
-        <div class="p-head">
-          <span class="p-name">{p.name}</span>
-          <Chip tone={p.tone}>{p.status}</Chip>
-        </div>
-        <div class="p-note">{p.note}</div>
-      </li>
-    {/each}
-  </ul>
-</Card>
+<Panel title="About" description="An independent project. Not made, endorsed or supported by Hollyland.">
+  <div class="mods">
+    <Modules columns="repeat(auto-fit, minmax(min(100%, 300px), 1fr))">
+      <Module title="Mic Console">
+        <p class="text">
+          Works with the LARK A2, LARK A2S, LARK M2 and LARK M2S. Product names are used only to say which receivers it
+          works with.
+        </p>
+        <p class="text">
+          The USB protocol was documented from the official apps and checked on a real LARK A2. The notes are in
+          <code>docs/PROTOCOL.md</code> in the project's source repository.
+        </p>
+      </Module>
+      <Module title="Where it works">
+        <ul class="platforms">
+          {#each PLATFORMS as p (p.name)}
+            <li>
+              <div class="p-head">
+                <span class="p-name">{p.name}</span>
+                <span class="p-status"><Lamp size="sm" state={p.lamp} />{p.status}</span>
+              </div>
+              <p class="p-note">{p.note}</p>
+            </li>
+          {/each}
+        </ul>
+      </Module>
+    </Modules>
+  </div>
+</Panel>
 
 <style>
-  .text {
-    color: var(--color-text-muted);
-    font-size: var(--text-sm);
-    line-height: var(--leading-sm);
+  .mods {
+    min-width: 0;
   }
-  .text + .text {
-    margin-top: var(--space-2);
+  .text {
+    max-width: 62ch;
+    font-size: 13px;
+    line-height: var(--lh-body);
+    color: var(--ink-2);
   }
   code {
-    padding: 1px 6px;
-    border-radius: var(--radius-xs);
-    background: var(--color-surface-3);
-    color: var(--color-text);
-  }
-  .conn {
-    margin: var(--space-3) 0 0;
-  }
-  h3 {
-    margin-top: var(--space-4);
-    font-size: var(--text-md);
-    letter-spacing: 0;
+    color: var(--ink);
   }
   .platforms {
     list-style: none;
-    margin: var(--space-2) 0 0;
+    margin: 0;
     padding: 0;
   }
   .platforms li {
-    padding: var(--space-2) 0;
+    padding: 10px 0;
+  }
+  .platforms li:first-child {
+    padding-top: 0;
   }
   .platforms li + li {
-    border-top: 1px solid var(--color-border);
+    border-top: 1px solid var(--rule-soft);
   }
   .p-head {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-3);
+    gap: 4px 12px;
   }
   .p-name {
-    font-weight: var(--weight-medium);
-    font-size: var(--text-sm);
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .p-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--ink-2);
+    white-space: nowrap;
   }
   .p-note {
-    font-size: var(--text-sm);
-    line-height: var(--leading-sm);
-    color: var(--color-text-subtle);
     margin-top: 2px;
+    font-size: 13px;
+    line-height: var(--lh-body);
+    color: var(--ink-2);
+  }
+  @media (max-width: 599px) {
+    .mods {
+      --gutter: 0px;
+    }
   }
 </style>

@@ -4,19 +4,26 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="color-scheme" content="dark light" />
-    <meta name="theme-color" content="#0B0D10" media="(prefers-color-scheme: dark)" />
-    <meta name="theme-color" content="#F5F6F8" media="(prefers-color-scheme: light)" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#E8E7E2" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#141416" media="(prefers-color-scheme: dark)" />
     <meta
       name="description"
-      content="Unofficial browser control panel for Hollyland LARK A2 and LARK M2 wireless microphones (WebHID)."
+      content="Unofficial browser control panel for Hollyland LARK A2, A2S, M2 and M2S wireless microphones (WebHID)."
     />
     <title>Mic Console</title>
     <script>
-      // Apply the saved theme before first paint to avoid a flash.
+      // Apply the saved theme before first paint to avoid a flash (Aluminium light, Graphite dark;
+      // no saved choice follows the system). The browser chrome colour follows the forced theme.
       try {
         var t = localStorage.getItem('mc.theme')
-        if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t)
+        if (t === 'light' || t === 'dark') {
+          document.documentElement.setAttribute('data-theme', t)
+          var c = t === 'dark' ? '#141416' : '#E8E7E2'
+          document.querySelectorAll('meta[name="theme-color"]').forEach(function (m) {
+            m.setAttribute('content', c)
+          })
+        }
       } catch (e) {}
     </script>
   </head>

@@ -1,72 +1,65 @@
 <script lang="ts">
-  import { Moon, Sun, Monitor, Unplug, Bug } from '@lucide/svelte'
-  import { router, type Route } from '../lib/state/router.svelte'
-  import { prefs } from '../lib/state/prefs.svelte'
+  /**
+   * The faceplate's top strip: wordmark, section tabs, and the link at the right
+   * ("● LARK A2  Live · read & write │ Disconnect ☾").
+   * - ≥ 960 px: everything inline, as drawn.
+   * - 600–959 px: glyph, tabs, lamp + device; Disconnect and theme move into the ≡ menu.
+   * - < 600 px: 56 px tall, wordmark, lamp + device and the ≡ menu; the tabs move to the bottom bar.
+   */
+  import type { HeaderTab } from './shell/types'
+  import { session } from '../lib/state/session.svelte'
+  import Key from '../lib/ui/Key.svelte'
+  import Lamp from '../lib/ui/Lamp.svelte'
   import Wordmark from './Wordmark.svelte'
+  import ShellMenu from './shell/ShellMenu.svelte'
+  import ThemeKey from './shell/ThemeKey.svelte'
+  import { link } from './shell/link.svelte'
 
   interface Props {
-    connected: boolean
-    deviceName?: string
-    statusText: string
-    /** Shorter status for phones (e.g. "Write-only"). */
-    statusShort?: string
-    statusTone: 'neutral' | 'success' | 'warning' | 'danger' | 'accent'
-    tabs: { route: Route; label: string }[]
+    tabs: HeaderTab[]
+    /** Label of the tab for the page on screen. */
+    current: string
     ondisconnect?: () => void
   }
-  let { connected, deviceName = '', statusText, statusShort, statusTone, tabs, ondisconnect }: Props = $props()
+  let { tabs, current, ondisconnect }: Props = $props()
 
-  const themeIcon = $derived(prefs.theme === 'dark' ? Moon : prefs.theme === 'light' ? Sun : Monitor)
-  const nextTheme = $derived(prefs.theme === 'system' ? 'dark' : prefs.theme === 'dark' ? 'light' : 'system')
+  const name = $derived(link.connected ? session.displayName : '')
 </script>
 
-<header class="header">
-  <div class="inner">
-    <Wordmark compact={connected} />
-    {#if connected}
-      <nav class="tabs" aria-label="Sections">
-        {#each tabs as t (t.route)}
-          <a
-            href="#/{t.route}"
-            class:active={router.route === t.route}
-            aria-current={router.route === t.route ? 'page' : undefined}>{t.label}</a
-          >
-        {/each}
-      </nav>
-    {/if}
-    <div class="spacer"></div>
-    <div class="status {statusTone}" role="status">
-      <span class="dot" aria-hidden="true"></span>
-      <span class="status-text">
-        {#if deviceName}<span class="dev"><strong>{deviceName}</strong>&nbsp;·&nbsp;</span>{/if}<span
-          class="long">{statusText}</span
-        ><span class="short">{statusShort ?? statusText}</span>
-      </span>
+<header class="header" class:many={tabs.length > 4}>
+  <div class="brand">
+    <span class="full"><Wordmark /></span>
+    <span class="mid"><Wordmark glyphOnly /></span>
+    <span class="small"><Wordmark size="sm" compact /></span>
+  </div>
+
+  {#if tabs.length}
+    <nav class="tabs" aria-label="Sections">
+      {#each tabs as t (t.label)}
+        <a href="#/{t.route}" class="tab" class:on={t.label === current} aria-current={t.label === current ? 'page' : undefined}
+          >{t.label}</a
+        >
+      {/each}
+    </nav>
+  {/if}
+
+  <div class="device">
+    <div class="devname">
+      <Lamp color={link.lamp.color} state={link.lamp.state} blink={link.lamp.blink} />
+      {#if name}<b class="mono">{name}</b>{/if}
+      <span class="mode" class:solo={!name}>{link.mode}</span>
     </div>
-    <button
-      type="button"
-      class="icon-btn"
-      aria-pressed={prefs.developer}
-      title="Developer mode"
-      aria-label="Developer mode"
-      onclick={() => prefs.setDeveloper(!prefs.developer)}
-    >
-      <Bug size={18} />
-    </button>
-    <button
-      type="button"
-      class="icon-btn"
-      title="Theme: {prefs.theme}"
-      aria-label="Theme: {prefs.theme}. Switch to {nextTheme}"
-      onclick={() => prefs.setTheme(nextTheme)}
-    >
-      {#if themeIcon}{@const Icon = themeIcon}<Icon size={18} />{/if}
-    </button>
-    {#if connected && ondisconnect}
-      <button type="button" class="icon-btn" title="Disconnect" aria-label="Disconnect" onclick={ondisconnect}>
-        <Unplug size={18} />
-      </button>
-    {/if}
+    <span class="visually-hidden" aria-live="polite" aria-atomic="true">{link.announcement}</span>
+    <div class="wide-only">
+      {#if link.connected && ondisconnect}
+        <span class="vr" aria-hidden="true"></span>
+        <Key variant="quiet" onclick={ondisconnect}>Disconnect</Key>
+      {/if}
+      <ThemeKey />
+    </div>
+    <div class="narrow-only">
+      <ShellMenu {ondisconnect} />
+    </div>
   </div>
 </header>
 
@@ -75,143 +68,192 @@
     position: sticky;
     top: 0;
     z-index: var(--z-sticky);
-    background: color-mix(in oklab, var(--color-bg) 82%, transparent);
-    backdrop-filter: saturate(1.4) blur(10px);
-    border-bottom: 1px solid var(--color-border);
-    padding-top: env(safe-area-inset-top);
+    display: flex;
+    align-items: stretch;
+    gap: 36px;
+    height: calc(var(--header-h) + env(safe-area-inset-top));
+    padding: env(safe-area-inset-top) var(--gutter) 0;
+    background: var(--chassis);
+    border-bottom: 1px solid var(--rule);
   }
-  .inner {
+  .brand {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
-    height: var(--header-h);
-    max-width: var(--content-max);
-    margin: 0 auto;
-    padding: 0 var(--gutter);
+    flex: none;
+  }
+  .mid,
+  .small {
+    display: none;
   }
   .tabs {
     display: flex;
-    flex: none;
     gap: 2px;
-    margin-left: var(--space-4);
+    min-width: 0;
   }
-  .tabs a {
-    display: inline-flex;
+  .tab {
+    position: relative;
+    display: flex;
     align-items: center;
-    min-height: var(--hit-min);
-    padding: 0 12px;
-    border-radius: var(--radius-sm);
-    color: var(--color-text-muted);
+    padding: 0 14px;
+    font-size: 14px;
+    font-weight: 520;
+    color: var(--ink-2);
     text-decoration: none;
-    font-weight: var(--weight-medium);
-    font-size: var(--text-sm);
-  }
-  .tabs a:hover {
-    color: var(--color-text);
-    background: var(--color-surface-3);
-  }
-  .tabs a.active {
-    color: var(--color-text);
-    background: var(--color-surface-3);
-  }
-  .spacer {
-    flex: 1 1 0;
-    min-width: 0;
-  }
-  .status {
-    display: inline-flex;
-    align-items: center;
-    flex: 0 1 auto;
-    min-width: 0;
-    gap: 8px;
-    padding: 6px 12px;
-    border-radius: var(--radius-full);
-    background: var(--color-surface-1);
-    border: 1px solid var(--color-border);
-    font-size: var(--text-sm);
-    color: var(--color-text-muted);
-    max-width: 42ch;
-  }
-  .status-text {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .short {
+  .tab:hover {
+    color: var(--ink);
+  }
+  .tab.on {
+    color: var(--ink);
+    font-weight: 660;
+  }
+  .tab.on::after {
+    content: '';
+    position: absolute;
+    left: 14px;
+    right: 14px;
+    bottom: -1px;
+    height: 3px;
+    background: var(--ink);
+  }
+  .tab:focus-visible {
+    outline-offset: -6px;
+  }
+  .device {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-left: auto;
+    min-width: 0;
+  }
+  .devname {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    white-space: nowrap;
+  }
+  .devname b {
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.02em;
+  }
+  .mode {
+    font-size: 13px;
+    color: var(--ink-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .wide-only {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    align-self: stretch;
+  }
+  .narrow-only {
     display: none;
   }
-  .status strong {
-    color: var(--color-text);
-    font-weight: var(--weight-semibold);
+  .vr {
+    width: 1px;
+    align-self: stretch;
+    margin: 14px 8px 14px 0;
+    background: var(--rule);
   }
-  .dot {
-    flex: none;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--color-text-subtle);
+
+  /* 960–1279: no "Unofficial" note when the Console tab crowds the row. */
+  @media (max-width: 1279px) {
+    .header {
+      gap: 24px;
+    }
+    .many .full :global(.tag) {
+      display: none;
+    }
+    .tab {
+      padding: 0 12px;
+    }
+    .tab.on::after {
+      left: 12px;
+      right: 12px;
+    }
   }
-  .success .dot {
-    background: var(--color-success);
-    box-shadow: 0 0 0 3px var(--color-success-soft);
+  /* Below 1100 px the link words would be cut mid-word ("Live · read & w…"): the lamp and the
+     device name stay, and the status line under the page says the rest. */
+  @media (max-width: 1099px) {
+    .mode:not(.solo) {
+      display: none;
+    }
   }
-  .warning .dot {
-    background: var(--color-warning);
+
+  /* 600–959: glyph only, tabs, lamp + device; the rest is in the menu. */
+  @media (max-width: 959px) {
+    .header {
+      gap: 16px;
+      padding-right: calc(var(--gutter) - 8px);
+    }
+    .full {
+      display: none;
+    }
+    .mid {
+      display: inline-flex;
+    }
+    .tab {
+      padding: 0 10px;
+    }
+    .tab.on::after {
+      left: 10px;
+      right: 10px;
+    }
+    .device {
+      gap: 4px;
+    }
+    .mode:not(.solo) {
+      display: none;
+    }
+    .wide-only {
+      display: none;
+    }
+    .narrow-only {
+      display: flex;
+    }
   }
-  .danger .dot {
-    background: var(--color-danger);
+  @media (max-width: 719px) {
+    .many .mode {
+      display: none;
+    }
   }
-  .accent .dot {
-    background: var(--color-accent);
-  }
-  .icon-btn {
-    display: grid;
-    place-items: center;
-    flex: none;
-    width: 44px;
-    height: 44px;
-    border-radius: var(--radius-md);
-    border: 0;
-    background: transparent;
-    color: var(--color-text-muted);
-  }
-  .icon-btn:hover {
-    background: var(--color-surface-3);
-    color: var(--color-text);
-  }
-  .icon-btn[aria-pressed='true'] {
-    color: var(--color-accent);
-    background: var(--color-accent-soft);
-  }
-  /* Section tabs live in the header only where all of them fit; below that the bottom TabBar has them. */
-  @media (max-width: 1023px) {
+
+  /* Phones: the tabs live in the bottom bar. */
+  @media (max-width: 599px) {
+    .header {
+      --header-h: var(--header-h-sm);
+      gap: 10px;
+      padding-left: var(--gutter);
+      padding-right: 6px;
+    }
+    .mid {
+      display: none;
+    }
+    .small {
+      display: inline-flex;
+    }
     .tabs {
       display: none;
     }
-  }
-  /* With tabs in the header, the device name is in the page itself (Receiver card, Device page). */
-  @media (min-width: 1024px) and (max-width: 1279px) {
-    .dev {
-      display: none;
+    .devname {
+      gap: 8px;
     }
-  }
-  @media (max-width: 767px) {
-    .inner {
-      gap: var(--space-1);
+    .devname b {
+      font-size: 12px;
     }
-    .status {
-      padding: 4px 10px;
-      font-size: var(--text-xs);
-    }
-  }
-  @media (max-width: 559px) {
-    .dev,
-    .long {
-      display: none;
-    }
-    .short {
+    .mode.solo {
       display: inline;
+      font-size: 13px;
+    }
+  }
+  @media (max-width: 359px) {
+    .small :global(.name) {
+      display: none;
     }
   }
 </style>

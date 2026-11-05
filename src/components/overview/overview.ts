@@ -2,18 +2,8 @@
  * Pure helpers for the Overview page: labels and rules from docs/research/features.md §4, §12, §16.
  */
 import type { Family } from '../../lib/protocol'
-import type { SegmentOption } from '../../lib/ui/types'
+import type { KeyOption, SegmentOption } from '../../lib/ui/types'
 import { toasts } from '../../lib/ui/toast.svelte'
-
-export type Level = { rmsDb: number; peakDb: number }
-export type LevelReader = () => Level | null
-
-/** Battery status word, exactly as the A2 app (C6118DeviceActivity#updateBatteryView). */
-export function micBatteryWord(battery: number | undefined, charging: boolean): string {
-  if (!battery || battery <= 0) return ''
-  if (charging) return 'Charging'
-  return battery <= 10 ? 'Low' : 'Normal'
-}
 
 /** Camera RX row (§4.2): "--" when 0, "Low" at 10 % or below, otherwise "Normal". No charging state. */
 export function cameraRxBatteryWord(battery: number | undefined): string {
@@ -36,18 +26,31 @@ export function noiseOptions(maxLevel: number): SegmentOption<number>[] {
   ]
 }
 
-export function noiseLevelName(level: number | undefined, maxLevel: number): string | null {
-  if (level === undefined) return null
-  if (level <= 0) return 'Off'
-  return noiseOptions(maxLevel).find((o) => o.value === level)?.label ?? `Level ${level}`
-}
-
 export const CHANNEL_MODE_LABEL: Record<number, string> = { 0: 'Mono', 1: 'Stereo', 2: 'SafeTr' }
 
 export const CHANNEL_MODE_HINT: Record<number, string> = {
   0: 'Both mics mixed onto one channel.',
   1: 'Mic 1 on the left channel, Mic 2 on the right.',
   2: 'Safety track: second channel recorded 6 dB lower',
+}
+
+/** Footnote of the Channel mode module, for the mode in effect (or last sent). */
+export const CHANNEL_MODE_FOOT: Record<number, string> = {
+  0: 'both mics mixed, on both channels.',
+  1: 'Mic 1 left, Mic 2 right.',
+  2: 'both mics mixed on the left, a safety copy 6 dB lower on the right.',
+}
+
+const MODE_GLYPH = { 0: 'mono', 1: 'stereo', 2: 'safetr' } as const
+
+/** Channel-mode keys with their routing glyphs, for the modes this receiver offers. */
+export function channelModeOptions(modes: readonly number[]): KeyOption<number>[] {
+  return modes.map((m) => ({
+    value: m,
+    label: CHANNEL_MODE_LABEL[m] ?? `Mode ${m}`,
+    hint: CHANNEL_MODE_HINT[m],
+    glyph: MODE_GLYPH[m as 0 | 1 | 2],
+  }))
 }
 
 /** The A2 renders any value other than 0/1 as SafeTr. */
@@ -69,7 +72,7 @@ export const VOLUME_LOCKED_TEXT = 'Volume adjustment locked, please unlock first
 export function noiseLabel(family: Family | null): string {
   if (family === '6302') return 'NC'
   if (family === '6301') return 'NC Level'
-  return 'Noise Cancellation'
+  return 'Noise cancellation'
 }
 
 /** Label of the volume control in the official app, per family. */
@@ -80,29 +83,97 @@ export function volumeLabel(family: Family | null): string {
 }
 
 /**
- * Meter source for a mic, following the app (C6118AudioLevelMonitor): Stereo L = Mic 1, R = Mic 2;
- * Mono and SafeTr use the first channel for both, and in SafeTr Mic 2 reads 6 dB lower.
- * An unknown mode falls back to the plain left/right mapping.
+ * Where a mic lands on the receiver's USB output, from the channel mode (normalised).
+ * `side` is the mono legend ("L", "R", "L + R"), `text` says it in words.
  */
-export function meterSource(
-  mic: 0 | 1,
-  mode: number | undefined,
-  read: (channel: number) => Level | null,
-  inputChannels: number,
-): { read: LevelReader; caption: string } {
-  if (mode === 0) return { read: () => read(0), caption: 'Mono mix' }
-  if (mode === 2) {
-    if (mic === 0) return { read: () => read(0), caption: 'Main track' }
-    return {
-      read: () => {
-        const l = read(0)
-        return l ? { rmsDb: l.rmsDb - 6, peakDb: l.peakDb - 6 } : null
-      },
-      caption: 'Safety track, -6 dB',
-    }
+export function micOutput(mic: 0 | 1, mode: number | null | undefined): { side: string; text: string } | null {
+  switch (mode) {
+    case 1:
+      return mic === 0 ? { side: 'L', text: 'Left channel' } : { side: 'R', text: 'Right channel' }
+    case 0:
+      return { side: 'L + R', text: 'Mono mix' }
+    case 2:
+      return { side: 'L + R', text: 'Main + safety' }
+    default:
+      return null
   }
-  if (inputChannels === 1) return { read: () => read(0), caption: 'Mono input' }
-  return { read: () => read(mic), caption: mic === 0 ? 'Left channel' : 'Right channel' }
+}
+
+/**
+ * What the meter window of a USB channel says it carries when that isn't simply one mic
+ * (the window label itself is "Mix · L", "Main", "Safety −6 dB" or "L").
+ */
+export function meterCaption(
+  mode: number | null | undefined,
+  side: 'L' | 'R',
+  writeOnly: boolean,
+  /** Write-only: the mode last sent from this browser (labels stay neutral until it is confirmed). */
+  sentMode: number | null = null,
+): string | null {
+  switch (mode) {
+    case 1:
+      return null
+    case 0:
+      return 'both mics, mixed'
+    case 2:
+      return side === 'L' ? 'both mics' : 'both mics, 6 dB lower'
+    default:
+      if (!writeOnly) return 'as the receiver sends it'
+      return sentMode !== null && CHANNEL_MODE_LABEL[sentMode]
+        ? `channel mode last sent: ${CHANNEL_MODE_LABEL[sentMode]}`
+        : 'channel mode not read'
+  }
+}
+
+/**
+ * When each setting was last sent from this browser on a write-only link, per receiver model.
+ * The session remembers the values sent; this adds the time for "Last sent 17:42".
+ */
+const SENT_AT_PREFIX = 'mc.overview.sentAt.'
+export type SentAt = Partial<Record<string, number>>
+
+export function loadSentAt(productId: number | undefined): SentAt {
+  if (productId === undefined) return {}
+  try {
+    const raw = localStorage.getItem(SENT_AT_PREFIX + productId.toString(16))
+    return raw ? (JSON.parse(raw) as SentAt) : {}
+  } catch {
+    return {}
+  }
+}
+
+export function saveSentAt(productId: number | undefined, value: SentAt) {
+  if (productId === undefined) return
+  try {
+    localStorage.setItem(SENT_AT_PREFIX + productId.toString(16), JSON.stringify(value))
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+/** "17:42" */
+export function formatHm(t: number | undefined | null): string | null {
+  if (!t) return null
+  return new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+}
+
+/** When a value was sent: "17:42" today, "yesterday 17:42", otherwise "3 Nov 17:42". */
+export function formatSentAt(t: number | undefined | null, now = Date.now()): string | null {
+  const hm = formatHm(t)
+  if (!hm || !t) return hm
+  const day = (x: number) => {
+    const d = new Date(x)
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+  }
+  const days = Math.round((day(now) - day(t)) / 86_400_000)
+  if (days === 0) return hm
+  if (days === 1) return `yesterday ${hm}`
+  const date = new Date(t).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    ...(new Date(t).getFullYear() !== new Date(now).getFullYear() ? { year: 'numeric' } : {}),
+  })
+  return `${date} ${hm}`
 }
 
 let lastBlocked = { msg: '', at: 0 }
@@ -112,8 +183,4 @@ export function blockedToast(msg: string) {
   if (msg === lastBlocked.msg && now - lastBlocked.at < 2000) return
   lastBlocked = { msg, at: now }
   toasts.warning(msg)
-}
-
-export function formatClock(t: number): string {
-  return new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }

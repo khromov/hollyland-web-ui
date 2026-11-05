@@ -25,8 +25,3 @@ export function serialText(sn: string | undefined | null, online: boolean): stri
   if (!s || /^[:\-. 0]+$/.test(s)) return null
   return s
 }
-
-/** "••••4HZB": keeps screenshots safer; the copy button still copies the full value. */
-export function maskSerial(sn: string): string {
-  return sn.length <= 4 ? sn : `••••${sn.slice(-4)}`
-}

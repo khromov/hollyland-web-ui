@@ -1,120 +1,132 @@
 <script lang="ts">
   /**
-   * A boolean receiver setting that never invents a state.
-   *  - known value: a Switch (or a two-way choice such as "15min | Never")
-   *  - unknown value (write-only mode before the first send, or a failed read): an "Off | On"
-   *    pair with nothing selected, plus a short "Unknown" note
-   * In write-only mode a known value is labelled as "last sent from this browser".
+   * One receiver feature setting as a faceplate module: title, the control at the head (or a
+   * key row in the body for a two-way choice such as "15min | Never"), the description, and a
+   * footnote saying how much is known about the value. It never invents a state:
+   *  - read back (live):            slide switch, ON / OFF in the track
+   *  - sent, not confirmed:         "Off | On" send pair with the last value marked (hatch)
+   *                                 + "Last sent 17:42 · not confirmed"
+   *  - unknown (never read / sent): "Off | On" with nothing marked + "Not read"
+   *  - disabled:                    flat control + the reason in words
    */
-  import { History } from '@lucide/svelte'
-  import SettingRow from '../../lib/ui/SettingRow.svelte'
-  import Switch from '../../lib/ui/Switch.svelte'
-  import SegmentedControl from '../../lib/ui/SegmentedControl.svelte'
-  import Chip from '../../lib/ui/Chip.svelte'
+  import Module from '../../lib/ui/Module.svelte'
+  import SlideSwitch from '../../lib/ui/SlideSwitch.svelte'
+  import SendPair from '../../lib/ui/SendPair.svelte'
+  import KeyGroup from '../../lib/ui/KeyGroup.svelte'
+  import ConfidenceNote from '../../lib/ui/ConfidenceNote.svelte'
+  import { setFieldContext, uid } from '../../lib/ui/field'
 
   interface Props {
-    label: string
+    title: string
     description?: string
     value: boolean | undefined
+    /** Replies are dropped by the OS: a known value is what this browser sent last. */
+    writeOnly?: boolean
     pending?: boolean
     disabled?: boolean
     disabledReason?: string | null
-    /** Replies are dropped by the OS: values are what this browser sent last. */
-    writeOnly?: boolean
-    /** Render as a two-way choice instead of a switch, e.g. { on: '15min', off: 'Never' }. */
+    /** A two-way choice instead of a switch, e.g. { on: '15min', off: 'Never' } (shown in that order). */
     choice?: { on: string; off: string } | null
-    /** Narrow screen: a segmented control goes under the label instead of beside it. */
-    narrow?: boolean
+    /** A standing footnote, e.g. "Changing it restarts the receiver." */
+    note?: string
+    /** When this page sent the value (write-only caption). */
+    sentAt?: number | null
     onchange: (value: boolean) => void
   }
 
   let {
-    label,
+    title,
     description,
     value,
+    writeOnly = false,
     pending = false,
     disabled = false,
     disabledReason = null,
-    writeOnly = false,
     choice = null,
-    narrow = false,
+    note,
+    sentAt = null,
     onchange,
   }: Props = $props()
 
-  const segmented = $derived(!!choice || value === undefined)
-  const stacked = $derived(narrow && segmented)
+  const noteId = uid('set-note')
+  const unknown = $derived(value === undefined)
+  const sent = $derived(writeOnly && !unknown)
+  const confidenceText = $derived(unknown || sent || !!disabledReason)
+  const hasFoot = $derived(confidenceText || !!note)
+  setFieldContext({
+    get describedBy() {
+      return confidenceText ? noteId : undefined
+    },
+    get blocked() {
+      return false
+    },
+  })
 
-  const options = $derived(
+  const choiceOptions = $derived(
     choice
       ? [
-          { value: 'on', label: choice.on },
-          { value: 'off', label: choice.off },
+          { value: 'on' as const, label: choice.on },
+          { value: 'off' as const, label: choice.off },
         ]
-      : [
-          { value: 'off', label: 'Off' },
-          { value: 'on', label: 'On' },
-        ],
+      : [],
   )
-  const segValue = $derived(value === undefined ? null : value ? 'on' : 'off')
-  // The segment being written, so the spinner appears in the chosen option.
   let target: 'on' | 'off' | null = $state(null)
-  const pendingValue = $derived(pending ? target : null)
-
-  function pick(v: string) {
-    target = v === 'on' ? 'on' : 'off'
-    onchange(v === 'on')
-  }
 </script>
 
-<SettingRow {label} {description} disabledReason={disabledReason} {stacked}>
-  {#snippet control()}
-    {#if segmented}
-      <div class="seg" class:wide={!!choice} class:stacked>
-        <SegmentedControl {options} value={segValue} {label} size="sm" disabled={disabled || pending} {pendingValue} onchange={pick} />
-      </div>
-    {:else}
-      <Switch checked={value === true} {label} {pending} {disabled} onchange={(v) => onchange(v)} />
-    {/if}
-  {/snippet}
-  {#if value === undefined}
-    <p class="note">
-      <Chip>Unknown</Chip>
-      <span>
-        {writeOnly ? "This system can't read it. Choose a value to send it." : "The receiver didn't report this value."}
-      </span>
-    </p>
-  {:else if writeOnly}
-    <p class="note subtle">
-      <History size={14} aria-hidden="true" />
-      <span>Last sent from this browser</span>
-    </p>
+<Module {title} {description} head={choice ? undefined : headControl} foot={hasFoot ? footNotes : undefined}>
+  {#if choice}
+    <div class="choice">
+      <KeyGroup
+        options={choiceOptions}
+        value={unknown ? null : value ? 'on' : 'off'}
+        label={title}
+        size="sm"
+        confidence={sent ? 'sent' : 'solid'}
+        disabled={disabled || pending}
+        pendingValue={pending ? target : null}
+        onchange={(v) => {
+          target = v
+          onchange(v === 'on')
+        }}
+      />
+    </div>
   {/if}
-</SettingRow>
+</Module>
+
+{#snippet footNotes()}
+  {#if disabledReason}
+    <ConfidenceNote kind="disabled" id={noteId} text={disabledReason} />
+  {:else if sent}
+    <ConfidenceNote
+      kind="sent"
+      id={noteId}
+      at={sentAt}
+      text={sentAt ? undefined : 'Last sent from this browser · not confirmed'}
+    />
+  {:else if unknown}
+    <ConfidenceNote kind="unknown" id={noteId} text={writeOnly ? 'Not read' : "Not read: the receiver didn't report it"} />
+  {/if}
+  {#if note}<p class="note">{note}</p>{/if}
+{/snippet}
+
+{#snippet headControl()}
+  {#if unknown || writeOnly}
+    <SendPair value={unknown ? null : !!value} label={title} {pending} disabled={disabled || !!disabledReason} {onchange} />
+  {:else}
+    <SlideSwitch checked={!!value} label={title} {pending} disabled={disabled || !!disabledReason} onchange={(v) => onchange(v)} />
+  {/if}
+{/snippet}
 
 <style>
-  .seg {
-    width: 116px;
-  }
-  .seg.wide {
-    width: 168px;
-  }
-  .seg.stacked {
-    width: min(100%, 240px);
+  .choice {
+    max-width: 260px;
   }
   .note {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    flex-wrap: wrap;
-    font-size: var(--text-sm);
-    line-height: var(--leading-sm);
-    color: var(--color-text-muted);
+    font-size: 12px;
+    line-height: var(--lh-body);
+    color: var(--ink-3);
   }
-  .note.subtle {
-    color: var(--color-text-subtle);
-    gap: 6px;
-  }
-  .note :global(svg) {
-    flex: none;
+  .note:not(:first-child) {
+    margin-top: 6px;
   }
 </style>

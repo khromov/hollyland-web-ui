@@ -1,0 +1,282 @@
+/* ============================================================
+   Instrument primitives shared by several components (global on purpose, prefixed mc-).
+   Components in src/lib/ui render these classes; pages may use them directly for one-offs.
+
+   Confidence vocabulary (one meaning per look):
+     solid      read back from the receiver ........ ink-filled key / lit switch / numbers
+     sent       sent from this browser, unconfirmed  2 px ink outline on the edge + 135° hatch
+                                                     + "Last sent 17:42 · not confirmed"
+     unknown    never read, never sent ............. 1.5 px dashed outline, "– –", hollow lamp
+                                                     + "Not read"
+     disabled   can't be used right now ............ flat recessed face, no shadow, ink-3 label
+                                                     + an inline reason (never dashed; the note
+                                                     has no swatch, the flat key carries the look)
+     focus      keyboard focus ..................... 2 px ring standing 3 px off the edge
+   ============================================================ */
+
+/* ---------------- Keys ---------------- */
+.mc-key {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: var(--key-h);
+  min-width: var(--hit);
+  padding: 0 14px;
+  border-radius: var(--r-key);
+  border: 1px solid var(--key-edge);
+  background: var(--key);
+  color: var(--ink);
+  box-shadow: var(--raised);
+  font: 560 13px/1.15 var(--f-sans);
+  white-space: nowrap;
+  text-align: center;
+  text-decoration: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-press) var(--ease),
+    transform var(--dur-press) var(--ease);
+}
+.mc-key:hover:where(:not(:disabled, [aria-disabled='true'], .is-selected, .is-disabled)) {
+  background: var(--key-hover);
+}
+/* Pressing sinks the key. */
+.mc-key:active:where(:not(:disabled, [aria-disabled='true'], .is-disabled)) {
+  transform: translateY(1px);
+  box-shadow: var(--press-shadow);
+}
+.mc-key--sm {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+/* A 36 px key still takes 44 px of pointer: the hit area extends 4 px above and below. */
+.mc-key--sm::after {
+  content: '';
+  position: absolute;
+  inset: -4px 0;
+}
+.mc-key--lg {
+  min-height: var(--key-h-lg);
+  padding: 0 22px;
+  font-size: 15px;
+  font-weight: 620;
+}
+.mc-key--tall {
+  min-height: var(--key-h-tall);
+  flex-direction: column;
+  gap: 7px;
+  padding: 9px 6px 8px;
+  font-size: 13px;
+}
+.mc-key--icon {
+  width: var(--hit);
+  padding: 0;
+}
+.mc-key--block {
+  display: flex;
+  width: 100%;
+}
+@media (pointer: coarse) {
+  .mc-key--sm {
+    min-height: var(--hit);
+  }
+}
+/* Phones and touch: 14 px legends (the panel is read at arm's length). */
+@media (max-width: 599px), (pointer: coarse) {
+  .mc-key {
+    font-size: 14px;
+  }
+  .mc-key--sm {
+    font-size: 13px;
+  }
+}
+
+/* Selected (solid, read back): pressed in and backlit. Inverts to paper on Graphite. */
+.mc-key.is-selected {
+  background: var(--sel);
+  color: var(--sel-ink);
+  border-color: var(--sel);
+  box-shadow: var(--press-shadow);
+}
+
+/* Sent, not confirmed: 2 px ink outline on the edge over a hatch. */
+.mc-key.is-sent {
+  border: 2px solid var(--ink);
+  padding-inline: 13px;
+  background: var(--hatch), var(--key);
+  color: var(--ink);
+  box-shadow: none;
+}
+.mc-key--tall.is-sent {
+  padding-inline: 5px;
+}
+
+/* Unknown: dashed outline, no face. Still operable when the control can send blind. */
+.mc-key.is-unknown {
+  border: 1.5px dashed var(--ink-3);
+  background: transparent;
+  color: var(--ink-2);
+  box-shadow: none;
+}
+
+/* Disabled / blocked: flat recessed face, no shadow, ink-3 label (4.6:1). Never dashed. */
+.mc-key:disabled,
+.mc-key[aria-disabled='true'],
+.mc-key.is-disabled {
+  background: var(--chassis-2);
+  border: 1px solid var(--rule);
+  color: var(--ink-3);
+  box-shadow: none;
+  transform: none;
+}
+.mc-key.is-selected:disabled,
+.mc-key.is-selected[aria-disabled='true'],
+.mc-key.is-selected.is-disabled {
+  /* The chosen value stays readable while the group is blocked: an ink outline, flat. */
+  border: 1px solid var(--ink-3);
+  color: var(--ink-2);
+  font-weight: 650;
+}
+
+/* Variants */
+.mc-key--primary {
+  background: var(--sel);
+  color: var(--sel-ink);
+  border-color: var(--sel);
+}
+.mc-key--primary:hover:where(:not(:disabled, [aria-disabled='true'])) {
+  background: var(--sel-hover);
+}
+.mc-key--quiet {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--ink-2);
+  padding-inline: 10px;
+}
+.mc-key--quiet:hover:where(:not(:disabled, [aria-disabled='true'])) {
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+  color: var(--ink);
+}
+.mc-key--quiet:disabled,
+.mc-key--quiet[aria-disabled='true'] {
+  background: transparent;
+  border-color: transparent;
+}
+.mc-key--danger {
+  background: var(--rec);
+  border-color: var(--rec);
+  color: var(--on-rec);
+}
+.mc-key--danger:hover:where(:not(:disabled, [aria-disabled='true'])) {
+  background: color-mix(in srgb, var(--rec) 88%, var(--ink));
+}
+.mc-key--danger-outline {
+  border: 1.5px solid var(--rec);
+  color: var(--rec-ink);
+}
+/* Keys that sit inside a dark window (notices): a paper key and a quiet underlined link-key. */
+.mc-key--light {
+  background: #ecebe6;
+  color: #141416;
+  border-color: #ecebe6;
+  box-shadow: none;
+}
+.mc-key--light:hover:where(:not(:disabled)) {
+  background: #ffffff;
+}
+.mc-window .mc-key--quiet {
+  color: #c9c8c3;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.mc-window .mc-key--quiet:hover:where(:not(:disabled)) {
+  background: rgb(255 255 255 / 0.08);
+  color: #ffffff;
+}
+
+/* Busy indicator inside a key */
+.mc-spinner {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  animation: mc-spin 0.7s linear infinite;
+}
+@keyframes mc-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------------- Display window ---------------- */
+.mc-window {
+  --focus: var(--w-ink);
+  background: var(--window);
+  color: var(--w-ink);
+  border-radius: var(--r-win);
+  box-shadow: var(--window-shadow);
+}
+
+/* ---------------- Confidence swatches and notes ---------------- */
+.mc-swatch {
+  display: inline-block;
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+.mc-swatch--sent {
+  border: 1.5px solid var(--ink);
+  background: var(--hatch-strong);
+}
+.mc-swatch--unknown {
+  border: 1.5px dashed var(--ink-3);
+}
+/* Disabled notes keep the swatch's indent but draw nothing: a small recessed square read as an
+   unchecked checkbox. The flat key above already shows "disabled". */
+.mc-swatch--disabled {
+  visibility: hidden;
+}
+.mc-swatch--solid {
+  background: var(--ink);
+}
+
+/* "– –": a value that isn't known */
+.mc-dash {
+  font-family: var(--f-mono);
+  font-stretch: var(--mono-stretch);
+  color: var(--ink-3);
+  letter-spacing: 0.06em;
+}
+
+/* Mono legend text (scales, IDs, status values) */
+.mc-legend {
+  font: 500 var(--t-legend) / 1.3 var(--f-mono);
+  font-stretch: var(--mono-stretch);
+  font-variant-numeric: tabular-nums slashed-zero;
+}
+
+/* Lamp legends are the only uppercase text: CLIP, REC, SEND-ONLY LINK. */
+.mc-lamp-legend {
+  font: 600 var(--t-legend) / 1 var(--f-mono);
+  font-stretch: var(--mono-stretch);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* ---------------- Faceplate structure ---------------- */
+/* Hairline rules divide the panel; nothing is boxed. */
+.mc-rule-top {
+  border-top: 1px solid var(--rule);
+}
+.mc-rule-strong {
+  border-top: 1.5px solid var(--ink);
+}

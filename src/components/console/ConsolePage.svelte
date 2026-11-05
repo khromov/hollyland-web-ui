@@ -1,13 +1,20 @@
 <script lang="ts">
-  import { Pause, Play, Trash2, Download, Send } from '@lucide/svelte'
+  /**
+   * Developer console: the raw HID traffic between this page and the receiver, shown in a dark
+   * display window like a hardware readout (time, direction, bytes in mono, decoded text), and a
+   * gated raw-frame sender.
+   */
+  import { Pause, Trash2, Download, Send } from '@lucide/svelte'
   import type { TrafficEntry } from '../../lib/state/traffic.svelte'
   import { traffic } from '../../lib/state/traffic.svelte'
   import { prefs } from '../../lib/state/prefs.svelte'
-  import Card from '../../lib/ui/Card.svelte'
-  import Button from '../../lib/ui/Button.svelte'
-  import SegmentedControl from '../../lib/ui/SegmentedControl.svelte'
-  import Switch from '../../lib/ui/Switch.svelte'
+  import Panel from '../../lib/ui/Panel.svelte'
+  import Key from '../../lib/ui/Key.svelte'
+  import KeyGroup from '../../lib/ui/KeyGroup.svelte'
+  import SlideSwitch from '../../lib/ui/SlideSwitch.svelte'
+  import Lamp from '../../lib/ui/Lamp.svelte'
   import Banner from '../../lib/ui/Banner.svelte'
+  import ConfidenceNote from '../../lib/ui/ConfidenceNote.svelte'
 
   interface Props {
     /** Sends a raw frame. Resolves with an error message, or null on success. */
@@ -16,7 +23,14 @@
   }
   let { sendRaw, connected }: Props = $props()
 
-  let dir: 'all' | 'out' | 'in' = $state('all')
+  type Dir = 'all' | 'out' | 'in'
+  const DIRS: { value: Dir; label: string }[] = [
+    { value: 'all', label: 'All' },
+    { value: 'out', label: 'Sent' },
+    { value: 'in', label: 'Received' },
+  ]
+
+  let dir: Dir = $state('all')
   let hideHeartbeat = $state(true)
   let filter = $state('')
   let rawHex = $state('')
@@ -38,13 +52,32 @@
     return `${d.toLocaleTimeString([], { hour12: false })}.${String(d.getMilliseconds()).padStart(3, '0')}`
   }
 
+  /** The selected frame as hex-dump lines of 16 bytes: offset, bytes. */
+  const dump = $derived.by(() => {
+    const frame: TrafficEntry | null = selected
+    if (!frame) return []
+    return Array.from({ length: Math.ceil(frame.bytes.length / 16) }, (_, row) => ({
+      offset: (row * 16).toString(16).padStart(2, '0'),
+      bytes: Array.from(frame.bytes.subarray(row * 16, row * 16 + 16), (b, i) => ({
+        i: row * 16 + i,
+        hex: b.toString(16).padStart(2, '0'),
+      })),
+    }))
+  })
+
   function parseHex(s: string): Uint8Array | null {
     const clean = s.replace(/0x/gi, '').replace(/[^0-9a-f]/gi, '')
     if (!clean.length || clean.length % 2) return null
     return Uint8Array.from(clean.match(/../g)!.map((h) => parseInt(h, 16)))
   }
 
+  const canSend = $derived(prefs.allowRawWrites && connected)
+  const sendBlock = $derived(
+    !connected ? 'Needs a connected receiver.' : !prefs.allowRawWrites ? 'Turn on raw writes first.' : null,
+  )
+
   async function send() {
+    if (!canSend) return
     rawError = null
     const bytes = parseHex(rawHex)
     if (!bytes) {
@@ -66,330 +99,459 @@
     a.click()
     setTimeout(() => URL.revokeObjectURL(a.href), 1000)
   }
+
+  function toggleRow(e: TrafficEntry) {
+    selected = selected?.id === e.id ? null : e
+  }
 </script>
 
-<div class="page">
-  <div class="intro">
-    <h1>Console</h1>
-    <p>Raw HID traffic between this page and the receiver. Useful for debugging and protocol research.</p>
-  </div>
+<div class="console">
+  <h1 class="visually-hidden">Console</h1>
 
-  <Card>
-    <div class="toolbar">
-      <span class="capture" class:paused={traffic.paused}>
-        <span class="dot" aria-hidden="true"></span>
-        {traffic.paused ? 'Paused' : 'Capturing'} · <span class="readout">{traffic.total}</span> frames
+  <Panel title="Traffic" description="Raw HID frames between this page and the receiver, newest first.">
+    {#snippet aside()}
+      <!-- Not a live region: the frame count changes with every heartbeat. -->
+      <span class="capture">
+        <Lamp size="sm" state={traffic.paused ? 'off' : 'on'} />
+        <span>{traffic.paused ? 'Paused' : 'Capturing'}</span>
+        <span class="count"><span class="mono">{traffic.total.toLocaleString('en-US')}</span> frames</span>
       </span>
-      <div class="spacer"></div>
-      <Button size="sm" variant="ghost" onclick={() => (traffic.paused = !traffic.paused)}>
-        {#snippet icon()}{#if traffic.paused}<Play size={16} />{:else}<Pause size={16} />{/if}{/snippet}
-        {traffic.paused ? 'Resume' : 'Pause'}
-      </Button>
-      <Button size="sm" variant="ghost" onclick={() => traffic.clear()}>
-        {#snippet icon()}<Trash2 size={16} />{/snippet}
-        Clear
-      </Button>
-      <Button size="sm" variant="ghost" onclick={exportJsonl}>
-        {#snippet icon()}<Download size={16} />{/snippet}
-        Export
-      </Button>
-    </div>
-    <div class="filters">
-      <SegmentedControl
-        size="sm"
-        label="Direction"
-        options={[
-          { value: 'all', label: 'All' },
-          { value: 'out', label: 'Out' },
-          { value: 'in', label: 'In' },
-        ]}
-        value={dir}
-        onchange={(v) => (dir = v)}
-      />
-      <label class="toggle">
-        <Switch checked={hideHeartbeat} label="Hide heartbeat" onchange={(v) => (hideHeartbeat = v)} />
-        <span>Hide heartbeat</span>
-      </label>
-      <input class="filter" type="search" placeholder="Filter hex or text" bind:value={filter} aria-label="Filter frames" />
-    </div>
+    {/snippet}
 
-    <!-- The scrollable log must be reachable and scrollable from the keyboard. -->
-    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-    <div class="table-wrap" tabindex="0" role="region" aria-label="Frame log">
-      <table>
-        <thead>
-          <tr><th class="time">Time</th><th>Dir</th><th>Bytes</th><th>Decoded</th></tr>
-        </thead>
-        <tbody>
-          {#each rows as e (e.id)}
-            <!-- Mouse: the whole row toggles the detail; keyboard: the button in the Dir cell. -->
-            <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
-            <tr
-              class={e.status}
-              class:selected={selected?.id === e.id}
-              onclick={() => (selected = selected?.id === e.id ? null : e)}
-            >
-              <td class="mono time">{fmtTime(e.t)}</td>
-              <td class="dir {e.dir}">
-                <button
-                  type="button"
-                  class="row-btn"
-                  aria-expanded={selected?.id === e.id}
-                  aria-controls="frame-detail"
-                  aria-label="{e.dir === 'out' ? 'Sent' : 'Received'} frame at {fmtTime(e.t)}{e.manual ? ', manual' : ''}: show detail"
-                  onclick={(ev) => {
-                    ev.stopPropagation()
-                    selected = selected?.id === e.id ? null : e
-                  }}>{e.dir.toUpperCase()}{e.manual ? '*' : ''}</button
-                >
-              </td>
-              <td class="mono hex">{e.hexShort}</td>
-              <td class="decoded">{e.decoded ?? ''}{e.status === 'timeout' ? ' · TIMEOUT' : e.status === 'error' ? ' · ERROR' : ''}</td>
-            </tr>
-          {:else}
-            <tr><td colspan="4" class="empty">No frames yet.</td></tr>
-          {/each}
-        </tbody>
-      </table>
-    </div>
-
-    {#if selected}
-      <div class="detail" id="frame-detail">
-        <div class="overline">Frame detail</div>
-        <div class="bytes mono">
-          {#each selected.bytes as b, i (i)}
-            <span title="offset {i}">{b.toString(16).padStart(2, '0')}</span>
-          {/each}
+    <div class="body">
+      <div class="toolbar">
+        <div class="dir">
+          <KeyGroup options={DIRS} value={dir} label="Direction" size="sm" onchange={(v) => (dir = v)} />
         </div>
-        {#if selected.decoded}<p>{selected.decoded}</p>{/if}
+        <label class="hb">
+          <SlideSwitch checked={hideHeartbeat} label="Hide heartbeat" onchange={(v) => (hideHeartbeat = v)} />
+          <span>Hide heartbeat</span>
+        </label>
+        <input class="filter" type="search" placeholder="Filter hex or text" bind:value={filter} aria-label="Filter frames" />
+        <div class="actions">
+          <Key size="sm" selected={traffic.paused} onclick={() => (traffic.paused = !traffic.paused)}>
+            {#snippet icon()}<Pause />{/snippet}
+            Pause
+          </Key>
+          <Key size="sm" variant="quiet" onclick={() => traffic.clear()}>
+            {#snippet icon()}<Trash2 />{/snippet}
+            Clear
+          </Key>
+          <Key size="sm" variant="quiet" onclick={exportJsonl}>
+            {#snippet icon()}<Download />{/snippet}
+            Export
+          </Key>
+        </div>
       </div>
-    {/if}
-  </Card>
 
-  <Card title="Raw send" overline="Developer">
-    {#if !prefs.allowRawWrites}
-      <Banner tone="warning" title="Raw writes are off">
-        Raw frames can change device settings, remove pairings or reset the device. Turn this on only if you know the
-        protocol.
-      </Banner>
-    {/if}
-    <label class="toggle allow">
-      <Switch checked={prefs.allowRawWrites} label="Allow raw writes" onchange={(v) => prefs.setAllowRawWrites(v)} />
-      <span>Allow raw writes</span>
-    </label>
-    <div class="raw">
-      <input
-        class="mono"
-        placeholder="AA DD 10 40 00 00"
-        bind:value={rawHex}
-        disabled={!prefs.allowRawWrites || !connected}
-        aria-label="Raw frame hex"
-        onkeydown={(e) => e.key === 'Enter' && send()}
-      />
-      <Button variant="primary" disabled={!prefs.allowRawWrites || !connected} onclick={send}>
-        {#snippet icon()}<Send size={16} />{/snippet}
-        Send
-      </Button>
+      <!-- The scrollable log must be reachable and scrollable from the keyboard. -->
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+      <div class="mc-window log" tabindex="0" role="region" aria-label="Frame log">
+        <table>
+          <thead>
+            <tr><th class="c-time">Time</th><th class="c-dir">Dir</th><th>Bytes</th><th class="c-dec">Decoded</th></tr>
+          </thead>
+          <tbody>
+            {#each rows as e (e.id)}
+              <!-- Mouse: the whole row toggles the detail; keyboard: the button in the Dir cell. -->
+              <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+              <tr class={e.status} class:selected={selected?.id === e.id} onclick={() => toggleRow(e)}>
+                <td class="mono c-time">{fmtTime(e.t)}</td>
+                <td class="c-dir">
+                  <button
+                    type="button"
+                    class="row-btn {e.dir}"
+                    aria-expanded={selected?.id === e.id}
+                    aria-controls="frame-detail"
+                    aria-label="{e.dir === 'out' ? 'Sent' : 'Received'} frame at {fmtTime(e.t)}{e.manual ? ', manual' : ''}: show detail"
+                    onclick={(ev) => {
+                      ev.stopPropagation()
+                      toggleRow(e)
+                    }}
+                    ><span class="arrow" aria-hidden="true">{e.dir === 'out' ? '→' : '←'}</span>{e.dir}{e.manual ? '*' : ''}</button
+                  >
+                </td>
+                <td class="mono hex">{e.hexShort}</td>
+                <td class="c-dec">
+                  {#if e.status !== 'ok'}<span class="bad"><Lamp size="sm" color="rec" />{e.status === 'timeout' ? 'Timeout' : 'Error'}</span>{/if}
+                  {e.decoded ?? ''}
+                </td>
+              </tr>
+            {:else}
+              <tr class="empty-row"><td colspan="4" class="empty">{traffic.entries.length ? 'No frames match the filters.' : 'No frames yet.'}</td></tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+
+      {#if selected}
+        <div class="mc-window detail" id="frame-detail">
+          <div class="detail-head">
+            <span class="detail-title">{selected.dir === 'out' ? 'Sent' : 'Received'} · <span class="mono">{fmtTime(selected.t)}</span> · <span class="mono">{selected.bytes.length}</span> bytes</span>
+            <button type="button" class="mc-key mc-key--quiet mc-key--sm" onclick={() => (selected = null)}>Close</button>
+          </div>
+          <div class="dump mono" role="table" aria-label="Frame bytes">
+            {#each dump as line (line.offset)}
+              <div class="dump-row" role="row">
+                <span class="off" role="rowheader">{line.offset}</span>
+                <span class="cells" role="cell">
+                  {#each line.bytes as b (b.i)}<span class:hdr={b.i < 6} title="offset {b.i}">{b.hex}</span>{/each}
+                </span>
+              </div>
+            {/each}
+          </div>
+          {#if selected.decoded}<p class="decoded">{selected.decoded}</p>{/if}
+        </div>
+      {/if}
     </div>
-    <p class="hint">
-      Frames are padded to 64 bytes. The first byte is the frame header (normally <code>AA</code>). Every manual send
-      is tagged with * in the log.
-    </p>
-    {#if rawError}<p class="err" role="alert">{rawError}</p>{/if}
-  </Card>
+  </Panel>
+
+  <Panel title="Raw send" description="Writes one frame to the receiver, padded to 64 bytes.">
+    <div class="body raw-body">
+      {#if !prefs.allowRawWrites}
+        <Banner tone="warning" title="Raw writes are off">
+          Raw frames can change device settings, remove pairings or reset the device. Turn this on only if you know the
+          protocol.
+        </Banner>
+      {/if}
+      <label class="allow">
+        <SlideSwitch checked={prefs.allowRawWrites} label="Allow raw writes" onchange={(v) => prefs.setAllowRawWrites(v)} />
+        <span>Allow raw writes</span>
+      </label>
+      <div class="raw">
+        <input
+          class="hex-in"
+          placeholder="AA DD 10 40 00 00"
+          bind:value={rawHex}
+          disabled={!canSend}
+          aria-label="Raw frame hex"
+          aria-describedby={sendBlock ? 'raw-block' : 'raw-hint'}
+          onkeydown={(e) => e.key === 'Enter' && send()}
+        />
+        <Key variant="primary" disabled={!canSend} onclick={send}>
+          {#snippet icon()}<Send />{/snippet}
+          Send
+        </Key>
+      </div>
+      {#if sendBlock}
+        <ConfidenceNote kind="disabled" id="raw-block" text={sendBlock} />
+      {/if}
+      <p class="hint" id="raw-hint">
+        The first byte is the frame header (normally <code>AA</code>). Every manual send is marked with * in the log.
+      </p>
+      {#if rawError}<p class="err" role="alert">{rawError}</p>{/if}
+    </div>
+  </Panel>
 </div>
 
 <style>
-  .page {
+  .console {
     display: grid;
-    gap: var(--space-5);
+    min-width: 0;
   }
-  .intro h1 {
-    font-size: var(--text-2xl);
-  }
-  .intro p {
-    color: var(--color-text-muted);
-  }
-  .toolbar {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    flex-wrap: wrap;
-  }
-  .spacer {
-    flex: 1;
+  .body {
+    display: grid;
+    /* minmax(0, …): a long hex line or banner never widens the page (no sideways scroll at 320 px). */
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    min-width: 0;
+    padding: 4px 0 24px;
   }
   .capture {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    font-size: var(--text-sm);
-    color: var(--color-text-muted);
+    font-size: 13px;
+    color: var(--ink-2);
   }
-  .capture .dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--color-danger);
-    animation: pulse 1.6s ease-in-out infinite;
+  .count {
+    color: var(--ink-3);
   }
-  .capture.paused .dot {
-    animation: none;
-    background: var(--color-text-subtle);
+  .count .mono {
+    color: var(--ink);
   }
-  @keyframes pulse {
-    50% {
-      opacity: 0.35;
-    }
-  }
-  .filters {
+  .toolbar {
     display: flex;
-    align-items: center;
-    gap: var(--space-4);
     flex-wrap: wrap;
-    margin: var(--space-3) 0;
+    align-items: center;
+    gap: 10px 16px;
   }
-  .toggle {
+  .dir {
+    width: 260px;
+    max-width: 100%;
+  }
+  .hb,
+  .allow {
     display: inline-flex;
     align-items: center;
-    gap: var(--space-2);
-    font-size: var(--text-sm);
-    color: var(--color-text-muted);
+    gap: 10px;
+    font-size: 14px;
+    color: var(--ink);
+  }
+  .filter,
+  .hex-in {
+    height: 36px;
+    padding: 0 12px;
+    border-radius: var(--r-key);
+    border: 1px solid var(--key-edge);
+    background: var(--key);
+    box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.12);
+    color: var(--ink);
+    font-size: 14px;
   }
   .filter {
-    flex: 1;
-    min-width: 180px;
-    min-height: var(--control-h-sm);
-    padding: 0 var(--space-3);
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--color-border-control);
-    background: var(--color-surface-3);
+    flex: 1 1 200px;
+    min-width: 0;
   }
-  .table-wrap {
-    max-height: 52vh;
+  .filter::placeholder,
+  .hex-in::placeholder {
+    color: var(--ink-3);
+  }
+  .filter:focus-visible,
+  .hex-in:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 3px;
+  }
+  .actions {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+  }
+
+  /* ---- Log window ---- */
+  .log {
+    max-height: 56vh;
     overflow: auto;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
+    overscroll-behavior: contain;
   }
   table {
     width: 100%;
     border-collapse: collapse;
-    font-size: var(--text-sm);
+    font-size: 13px;
   }
   thead th {
     position: sticky;
     top: 0;
-    background: var(--color-surface-2);
+    z-index: 1;
+    padding: 10px 12px 8px;
+    background: var(--window);
+    border-bottom: 1px solid var(--w-rule);
     text-align: left;
-    font-weight: var(--weight-semibold);
-    font-size: var(--text-xs);
-    color: var(--color-text-subtle);
-    padding: 6px 10px;
-    border-bottom: 1px solid var(--color-border);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--w-ink-2);
   }
   td {
-    padding: 4px 10px;
-    border-bottom: 1px solid var(--color-border);
+    padding: 5px 12px;
+    border-bottom: 1px solid var(--w-rule);
     vertical-align: top;
-    box-shadow: inset 3px 0 0 transparent;
+    color: var(--w-ink);
   }
-  tr {
+  tbody tr {
     cursor: pointer;
   }
-  tr:hover td {
-    background: var(--color-surface-3);
+  tbody tr:hover td {
+    background: rgb(255 255 255 / 0.04);
   }
   tr.selected td {
-    background: var(--color-accent-soft);
+    background: rgb(255 255 255 / 0.1);
   }
-  tr.error td:first-child,
-  tr.timeout td:first-child {
-    box-shadow: inset 3px 0 0 var(--color-danger);
+  tr.selected td:first-child {
+    box-shadow: inset 2px 0 0 var(--w-ink);
   }
-  .time {
+  .empty-row {
+    cursor: default;
+  }
+  .c-time {
     white-space: nowrap;
-    color: var(--color-text-subtle);
+    width: 1%;
+    color: var(--w-ink-2);
   }
-  .dir {
-    font-weight: var(--weight-semibold);
-    font-size: var(--text-xs);
+  .c-dir {
+    width: 1%;
+    white-space: nowrap;
   }
   .row-btn {
-    margin: -4px -6px;
-    padding: 4px 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: -3px -6px;
+    padding: 3px 6px;
     border: 0;
-    border-radius: var(--radius-xs);
+    border-radius: 3px;
     background: transparent;
-    color: inherit;
-    font: inherit;
+    color: var(--w-ink);
+    font-size: 12px;
+    font-weight: 600;
   }
-  .dir.out {
-    color: var(--color-accent);
+  .row-btn.in {
+    color: var(--live);
   }
-  .dir.in {
-    color: var(--color-success);
+  /* Touch: a 44 px target for each row (the rows grow to fit it). */
+  @media (pointer: coarse) {
+    .row-btn {
+      min-height: 44px;
+      min-width: 44px;
+      margin-block: 0;
+    }
+  }
+  .arrow {
+    font-family: var(--f-mono);
   }
   .hex {
+    width: 1%;
     white-space: nowrap;
-    color: var(--color-text);
+    font-size: 12px;
+    padding-right: 28px;
   }
-  .decoded {
-    color: var(--color-text-muted);
-    overflow-wrap: anywhere;
+  .c-dec {
+    color: #c9c8c3;
+    overflow-wrap: break-word;
+  }
+  .bad {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-right: 8px;
+    color: #ff8a82;
+    font-weight: 600;
   }
   .empty {
+    padding: 40px 12px;
     text-align: center;
-    color: var(--color-text-subtle);
-    padding: var(--space-6);
+    color: var(--w-ink-2);
   }
+
+  /* ---- Frame detail: a hex dump ---- */
   .detail {
-    margin-top: var(--space-3);
     display: grid;
-    gap: var(--space-2);
+    gap: 10px;
+    padding: 10px 14px 14px;
   }
-  .bytes {
+  .detail-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .detail-title {
+    font-size: 13px;
+    color: var(--w-ink);
+  }
+  .dump {
     display: grid;
-    grid-template-columns: repeat(16, minmax(0, 1fr));
-    gap: 2px 6px;
-    font-size: var(--text-sm);
-    max-width: 640px;
+    gap: 4px;
+    font-size: 13px;
+    overflow-x: auto;
   }
-  .bytes span:nth-child(-n + 6) {
-    color: var(--color-accent);
+  .dump-row {
+    display: flex;
+    gap: 16px;
   }
-  .allow {
-    margin: var(--space-3) 0;
+  .off {
+    flex: none;
+    width: 2ch;
+    color: var(--w-ink-2);
+  }
+  .cells {
+    display: grid;
+    grid-template-columns: repeat(16, 2ch);
+    column-gap: 1.1ch;
+    color: var(--w-ink-2);
+  }
+  .cells .hdr {
+    color: var(--w-ink);
+    font-weight: 600;
+  }
+  .decoded {
+    font-size: 13px;
+    color: #c9c8c3;
+  }
+
+  /* ---- Raw send ---- */
+  .raw-body {
+    max-width: 760px;
   }
   .raw {
     display: flex;
-    gap: var(--space-2);
+    gap: 8px;
   }
-  .raw input {
+  .hex-in {
     flex: 1;
     min-width: 0;
-    min-height: var(--control-h-md);
-    padding: 0 var(--space-3);
-    border-radius: var(--radius-md);
-    border: 1px solid var(--color-border-control);
-    background: var(--color-surface-3);
+    height: var(--hit);
+    font-family: var(--f-mono);
+    font-stretch: var(--mono-stretch);
+  }
+  .hex-in:disabled {
+    background: var(--chassis-2);
+    border-color: var(--rule);
+    box-shadow: none;
+    color: var(--ink-3);
   }
   .hint {
-    font-size: var(--text-sm);
-    color: var(--color-text-subtle);
-    margin-top: var(--space-2);
+    font-size: 12px;
+    line-height: var(--lh-body);
+    color: var(--ink-3);
+  }
+  .hint code {
+    font-size: 12px;
+    color: var(--ink);
   }
   .err {
-    color: var(--color-danger);
-    font-size: var(--text-sm);
+    font-size: 13px;
+    color: var(--rec-ink);
   }
+
+  @media (min-width: 1280px) {
+    .body {
+      padding: 24px 0 28px var(--module-pad);
+    }
+  }
+  /* Narrow: each frame is two lines (direction and bytes, then the decoded text). */
   @media (max-width: 767px) {
-    .hex {
-      max-width: 40vw;
+    thead {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+    }
+    tbody tr:not(.empty-row) {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      column-gap: 12px;
+      padding: 6px 12px;
+      border-bottom: 1px solid var(--w-rule);
+    }
+    tbody tr:not(.empty-row) td {
+      padding: 0;
+      border: 0;
+      width: auto;
+    }
+    tbody tr:not(.empty-row) .c-time {
+      display: none;
+    }
+    tbody tr:not(.empty-row) .hex {
       overflow: hidden;
       text-overflow: ellipsis;
+      padding: 0;
     }
-    .time {
-      display: none;
+    tbody tr:not(.empty-row) .c-dec {
+      grid-column: 1 / -1;
+      margin-top: 2px;
+    }
+    tr.selected {
+      background: rgb(255 255 255 / 0.1);
+      box-shadow: inset 2px 0 0 var(--w-ink);
+    }
+    tr.selected td,
+    tr.selected td:first-child {
+      background: none;
+      box-shadow: none;
+    }
+    .actions {
+      margin-left: 0;
     }
   }
 </style>

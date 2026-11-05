@@ -1,87 +1,107 @@
 <script lang="ts">
+  /**
+   * A notice: a dark display window with a lamp (never a yellow or coloured banner, since
+   * yellow is Mic 2's identity).
+   *   sendonly  "→ SEND-ONLY LINK" band for the write-only link (macOS / Windows drop replies)
+   *   danger    red lamp (connection lost, errors)
+   *   warning   hollow lamp
+   *   success   green lamp
+   *   info      no lamp, an info glyph
+   * Keys passed in `actions` sit on the dark window: use variant "light" for the main one and
+   * "ghost" for quiet ones.
+   */
   import type { Snippet } from 'svelte'
-  import { CircleAlert, Info, TriangleAlert, CircleCheck } from '@lucide/svelte'
+  import { ArrowRight, Info } from '@lucide/svelte'
+  import Lamp from './Lamp.svelte'
 
   interface Props {
-    tone?: 'info' | 'success' | 'warning' | 'danger'
+    tone?: 'info' | 'success' | 'warning' | 'danger' | 'sendonly'
     title?: string
+    /** Uppercase lamp legend; defaults to "Send-only link" for tone="sendonly". */
+    legend?: string
     children?: Snippet
     actions?: Snippet
   }
-  let { tone = 'info', title, children, actions }: Props = $props()
-  const Icon = $derived({ info: Info, success: CircleCheck, warning: TriangleAlert, danger: CircleAlert }[tone])
+  let { tone = 'info', title, legend, children, actions }: Props = $props()
+  const shownLegend = $derived(legend ?? (tone === 'sendonly' ? 'Send-only link' : undefined))
 </script>
 
-<div class="banner {tone}" role={tone === 'danger' ? 'alert' : 'status'}>
-  <Icon size={20} aria-hidden="true" />
+<div class="mc-window banner {tone}" role={tone === 'danger' ? 'alert' : 'status'}>
+  <span class="mark" aria-hidden="true">
+    {#if tone === 'sendonly'}
+      <ArrowRight size={18} strokeWidth={1.75} />
+    {:else if tone === 'danger'}
+      <Lamp color="rec" />
+    {:else if tone === 'success'}
+      <Lamp color="live" />
+    {:else if tone === 'warning'}
+      <Lamp state="hollow" />
+    {:else}
+      <Info size={16} strokeWidth={1.75} />
+    {/if}
+  </span>
   <div class="content">
+    {#if shownLegend}<div class="legend mc-lamp-legend">{shownLegend}</div>{/if}
     {#if title}<div class="title">{title}</div>{/if}
     {#if children}<div class="text">{@render children()}</div>{/if}
+    {#if actions}<div class="actions">{@render actions()}</div>{/if}
   </div>
-  {#if actions}<div class="actions">{@render actions()}</div>{/if}
 </div>
 
 <style>
   .banner {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--space-3);
-    padding: var(--space-3) var(--space-4);
-    border-radius: var(--radius-md);
-    border: 1px solid var(--tone-border);
-    background: var(--tone-bg);
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr);
+    column-gap: 12px;
+    padding: 12px 16px 14px 14px;
   }
-  .banner > :global(svg) {
-    flex: none;
-    margin-top: 1px;
-    color: var(--tone-fg);
-  }
-  .info {
-    --tone-fg: var(--color-accent);
-    --tone-bg: var(--color-accent-soft);
-    --tone-border: color-mix(in oklab, var(--color-accent) 35%, transparent);
-  }
-  .success {
-    --tone-fg: var(--color-success);
-    --tone-bg: var(--color-success-soft);
-    --tone-border: color-mix(in oklab, var(--color-success) 35%, transparent);
-  }
-  .warning {
-    --tone-fg: var(--color-warning);
-    --tone-bg: var(--color-warning-soft);
-    --tone-border: color-mix(in oklab, var(--color-warning) 35%, transparent);
-  }
-  .danger {
-    --tone-fg: var(--color-danger);
-    --tone-bg: var(--color-danger-soft);
-    --tone-border: color-mix(in oklab, var(--color-danger) 35%, transparent);
+  .mark {
+    display: grid;
+    place-items: center;
+    height: 20px;
+    color: var(--w-ink);
   }
   .content {
-    flex: 1;
+    display: grid;
+    gap: 6px;
     min-width: 0;
   }
+  .legend {
+    display: flex;
+    align-items: center;
+    min-height: 20px;
+    color: var(--w-ink);
+    letter-spacing: 0.05em;
+  }
   .title {
-    font-weight: var(--weight-semibold);
-    color: var(--color-text);
+    min-height: 20px;
+    display: flex;
+    align-items: center;
+    font-size: 14px;
+    font-weight: 620;
+    line-height: 1.35;
+    color: var(--w-ink);
+  }
+  .legend + .title {
+    min-height: 0;
   }
   .text {
-    font-size: var(--text-sm);
-    line-height: var(--leading-sm);
-    color: var(--color-text-muted);
+    font-size: 13px;
+    line-height: var(--lh-body);
+    color: #c9c8c3;
+    max-width: 78ch;
+  }
+  .text :global(code) {
+    color: var(--w-ink);
   }
   .actions {
     display: flex;
-    gap: var(--space-2);
-    align-items: center;
     flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
   }
-  @media (max-width: 559px) {
-    .banner {
-      flex-wrap: wrap;
-    }
-    .actions {
-      width: 100%;
-      padding-left: 32px;
-    }
+  .danger .legend {
+    color: #ff8a82;
   }
 </style>

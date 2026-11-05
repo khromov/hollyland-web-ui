@@ -111,6 +111,8 @@ class Session {
   state: DeviceState | null = $state.raw(null)
   /** Values shown while a write is in flight (and kept in write-only mode). */
   overlay: Partial<Settings> = $state({})
+  /** Write-only: setting keys the user asked to forget (masked in the library's blind-patched state). */
+  private forgotten: Set<string> = $state(new Set())
   pending: Partial<Record<SettingKey, boolean>> = $state({})
   /** Seconds left before the RX restarts (speaker passthrough flow). */
   restartCountdown: number | null = $state(null)
@@ -208,7 +210,34 @@ class Session {
     return this.state?.rx === 'unavailable'
   }
   get settings(): Settings {
-    return { ...(this.state?.settings ?? {}), ...this.overlay }
+    const base = this.state?.settings ?? {}
+    // Write-only: the library patches its own state with every blind write. Values the user
+    // asked to forget stay hidden until they are sent again, so "Forget sent values" really
+    // sets those controls back to "Not read".
+    if (this.writeOnly && this.forgotten.size) {
+      const kept = { ...base } as Record<string, unknown>
+      for (const k of this.forgotten) delete kept[k]
+      return { ...(kept as Settings), ...this.overlay }
+    }
+    return { ...base, ...this.overlay }
+  }
+  /**
+   * The channel mode setting, normalised (the A2 shows any value other than 0/1 as SafeTr),
+   * whether read back or last sent; null when the receiver has no channel-mode control (Lark M2)
+   * or nothing is known.
+   */
+  get channelModeSetting(): number | null {
+    if (!(this.caps?.channelModes.length ?? 0)) return null
+    const m = this.settings.channelMode
+    if (m === undefined || m === null) return null
+    return this.product?.family === '6118' && m !== 0 && m !== 1 ? 2 : m
+  }
+  /**
+   * What the receiver's USB channels carry, for meter and recording labels: the channel mode
+   * read back from the receiver, or null when it isn't (write-only) or the model has no mode.
+   */
+  get usbChannelMode(): number | null {
+    return this.writeOnly ? null : this.channelModeSetting
   }
   get units() {
     return this.state?.units ?? null
@@ -317,6 +346,7 @@ class Session {
     this.detachListeners()
     this.intentionalClose = false
     this.resetWrites()
+    this.forgotten = new Set()
     const quiet = fallback === 'lost' && (this.phase === 'lost' || this.phase === 'restarting')
     if (!quiet) {
       this.phase = 'connecting'
@@ -373,6 +403,7 @@ class Session {
     this.dev = null
     this.state = null
     this.overlay = {}
+    this.forgotten = new Set()
     this.resetWrites()
     this.endRestartFlow()
     this.lastUpdate = null
@@ -434,6 +465,11 @@ class Session {
 
   private rememberSent(patch: Partial<Settings>) {
     if (!this.writeOnly) return
+    if (this.forgotten.size && Object.keys(patch).some((k) => this.forgotten.has(k))) {
+      const next = new Set(this.forgotten)
+      for (const k of Object.keys(patch)) next.delete(k)
+      this.forgotten = next
+    }
     const k = this.sentKey()
     if (!k) return
     storageSet(k, { ...this.sentValues(), ...patch })
@@ -449,6 +485,8 @@ class Session {
         /* noop */
       }
     this.overlay = {}
+    // The library already holds every blind write in its own state: hide those values too.
+    if (this.writeOnly) this.forgotten = new Set(Object.keys(this.state?.settings ?? {}))
   }
 
   // --------------------------------------------------------------------- write pipeline

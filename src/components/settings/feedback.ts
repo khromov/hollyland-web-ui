@@ -11,13 +11,3 @@ export function reportResult(ok: boolean): void {
   if (session.live) toasts.success('Setup successful', { timeout: 2000 })
   else toasts.info("Sent. This system can't confirm it.", { timeout: 2500 })
 }
-
-/** Reactive "narrow screen" flag for components that switch layout in script (not CSS). */
-export function watchNarrow(query = '(max-width: 479px)', set: (v: boolean) => void): () => void {
-  if (typeof window === 'undefined' || !window.matchMedia) return () => {}
-  const mq = window.matchMedia(query)
-  set(mq.matches)
-  const on = () => set(mq.matches)
-  mq.addEventListener('change', on)
-  return () => mq.removeEventListener('change', on)
-}

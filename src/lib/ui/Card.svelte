@@ -1,10 +1,17 @@
 <script lang="ts">
+  /**
+   * Same API as before the redesign, but there are no cards any more: a Card is a faceplate
+   * section under a hairline rule, its title in expanded Archivo. `channel` puts the mic's LED
+   * (in a bezel) in front of the title instead of a coloured top border. `overline` is a small
+   * sentence-case note after the title. New layouts use Panel / Modules / Module.
+   */
   import type { Snippet } from 'svelte'
+  import Lamp from './Lamp.svelte'
 
   interface Props {
     title?: string
     overline?: string
-    /** Channel identity rule on top of the card. */
+    /** Channel identity: the mic's LED in front of the title. */
     channel?: 'tx1' | 'tx2' | 'rx' | null
     dimmed?: boolean
     header?: Snippet
@@ -15,17 +22,15 @@
   const headingId = `card-${Math.random().toString(36).slice(2)}`
 </script>
 
-<section
-  class="card {klass}"
-  class:dimmed
-  data-channel={channel}
-  aria-labelledby={title ? headingId : undefined}
->
+<section class="card {klass}" class:dimmed data-channel={channel} aria-labelledby={title ? headingId : undefined}>
   {#if title || overline || header}
     <header>
       <div class="titles">
-        {#if overline}<div class="overline">{overline}</div>{/if}
+        {#if channel === 'tx1' || channel === 'tx2'}
+          <Lamp color={channel === 'tx1' ? 'mic1' : 'mic2'} size="lg" state={dimmed ? 'off' : 'on'} />
+        {/if}
         {#if title}<h2 id={headingId}>{title}</h2>{/if}
+        {#if overline}<span class="note">{overline}</span>{/if}
       </div>
       {#if header}<div class="extra">{@render header()}</div>{/if}
     </header>
@@ -36,62 +41,48 @@
 <style>
   .card {
     position: relative;
-    background: var(--color-surface-1);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    padding: var(--space-4) var(--space-5) var(--space-5);
-    box-shadow: var(--shadow-1);
+    padding: 18px 0 22px;
+    border-top: 1px solid var(--rule);
     container-type: inline-size;
-    transition: opacity var(--dur-fast);
-  }
-  .card[data-channel]::before {
-    content: '';
-    position: absolute;
-    inset: -1px -1px auto;
-    height: 3px;
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-    background: var(--channel-color, transparent);
-  }
-  .card[data-channel='tx1'] {
-    --channel-color: var(--color-tx1);
-  }
-  .card[data-channel='tx2'] {
-    --channel-color: var(--color-tx2);
-  }
-  .card[data-channel='rx'] {
-    --channel-color: var(--color-rx);
-  }
-  /* Offline / unavailable: only the decorative parts fade. Text keeps full contrast, so the
-     state is carried by words ("Disconnected", "Not connected…"), never by fading alone. */
-  .dimmed {
-    background: color-mix(in oklab, var(--color-surface-1) 70%, var(--color-bg));
-    box-shadow: none;
-  }
-  .dimmed[data-channel]::before {
-    opacity: 0.35;
-  }
-  .dimmed :global(.dim-when-offline) {
-    opacity: 0.45;
+    min-width: 0;
   }
   header {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
-    gap: var(--space-3);
-    margin-bottom: var(--space-2);
+    gap: 12px;
+    min-height: var(--hit);
+    margin-bottom: 6px;
+  }
+  .titles {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    min-width: 0;
   }
   h2 {
-    font-size: var(--text-lg);
-    line-height: var(--leading-lg);
+    font-size: var(--t-section-sm);
+    font-weight: 680;
+    font-stretch: var(--head-stretch);
+    line-height: 1.25;
+  }
+  .note {
+    font-size: 13px;
+    color: var(--ink-3);
   }
   .extra {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
+    gap: 8px;
   }
-  @media (max-width: 479px) {
-    .card {
-      padding: var(--space-4);
+  /* Offline / unavailable: decorative parts fade, text keeps full contrast. */
+  .dimmed :global(.dim-when-offline) {
+    opacity: 0.45;
+  }
+  @media (min-width: 600px) {
+    h2 {
+      font-size: var(--t-section);
     }
   }
 </style>

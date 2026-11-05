@@ -1,18 +1,22 @@
 <script lang="ts">
-  import type { Component } from 'svelte'
-  import { router, type Route } from '../lib/state/router.svelte'
+  /**
+   * Phone tab bar (< 600 px): words only, no icons. The current tab is ink with a 4 px bar above
+   * its label; a 1.5 px ink rule separates the bar from the page. Sticks to the bottom of the
+   * viewport and clears the home indicator (safe area).
+   */
+  import type { HeaderTab } from './shell/types'
 
   interface Props {
-    tabs: { route: Route; label: string; icon: Component<{ size?: number }> }[]
+    tabs: HeaderTab[]
+    current: string
   }
-  let { tabs }: Props = $props()
+  let { tabs, current }: Props = $props()
 </script>
 
-<nav class="tabbar" aria-label="Sections">
-  {#each tabs as t (t.route)}
-    {@const Icon = t.icon}
-    <a href="#/{t.route}" class:active={router.route === t.route} aria-current={router.route === t.route ? 'page' : undefined}>
-      <Icon size={22} />
+<nav class="tabbar" aria-label="Sections" style="--n: {tabs.length}">
+  {#each tabs as t (t.label)}
+    <a href="#/{t.route}" class:on={t.label === current} aria-current={t.label === current ? 'page' : undefined}>
+      <i aria-hidden="true"></i>
       <span>{t.label}</span>
     </a>
   {/each}
@@ -20,36 +24,47 @@
 
 <style>
   .tabbar {
-    position: fixed;
-    z-index: var(--z-sticky);
-    left: 0;
-    right: 0;
+    position: sticky;
     bottom: 0;
+    z-index: var(--z-sticky);
     display: none;
-    grid-auto-flow: column;
-    grid-auto-columns: 1fr;
-    height: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
-    padding-bottom: env(safe-area-inset-bottom);
-    background: color-mix(in oklab, var(--color-surface-1) 92%, transparent);
-    backdrop-filter: blur(12px);
-    border-top: 1px solid var(--color-border);
+    grid-template-columns: repeat(var(--n), minmax(0, 1fr));
+    padding-bottom: max(env(safe-area-inset-bottom), 0px);
+    background: var(--chassis);
+    border-top: 1.5px solid var(--ink);
   }
   a {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 4px;
-    color: var(--color-text-subtle);
+    gap: 6px;
+    height: var(--tabbar-h);
+    padding: 0 2px;
+    color: var(--ink-2);
     text-decoration: none;
-    font-size: var(--text-2xs);
-    font-weight: var(--weight-medium);
+    font-size: 13px;
+    font-weight: 560;
+    white-space: nowrap;
     -webkit-tap-highlight-color: transparent;
   }
-  a.active {
-    color: var(--color-accent);
+  i {
+    display: block;
+    width: 18px;
+    height: 4px;
+    border-radius: 1px;
   }
-  @media (max-width: 1023px) {
+  a.on {
+    color: var(--ink);
+    font-weight: 700;
+  }
+  a.on i {
+    background: var(--ink);
+  }
+  a:focus-visible {
+    outline-offset: -4px;
+  }
+  @media (max-width: 599px) {
     .tabbar {
       display: grid;
     }

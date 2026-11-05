@@ -1,217 +1,390 @@
 /* ============================================================
-   Design tokens. Dark is the default theme.
+   Design tokens: "Instrument".
+   The app is the front panel of a piece of audio hardware: a light aluminium faceplate
+   ("Aluminium", the primary theme) or a graphite one ("Graphite", dark), divided by hairline
+   rules, with dark recessed display windows where the channel LEDs light up.
+
+   Theme selection
+   - No data-theme attribute: follows the system preference (light unless the OS asks for dark).
+   - data-theme="light" | "dark" on <html> (set by the pre-paint script in index.html and by
+     prefs.setTheme) forces a theme. Any element may carry data-theme to theme a subtree
+     (the style guide uses this).
+
+   Colour has one job: identity. --mic1 (purple) and --mic2 (yellow) are LED colours, fixed
+   across themes, and only ever sit inside a dark window or an LED bezel. Selection is ink.
+   Red is reserved for record, clip and the top 6 dB of the meter (and destructive actions).
    ============================================================ */
+
 :root {
-  color-scheme: dark;
+  /* ---- Identity LEDs (theme-independent). Override per element to follow device state,
+         e.g. an M2S with swapped identify colours: style="--mic1: …; --mic2: …". ---- */
+  --mic1: #9d6bff;
+  --mic2: #ffcc1a;
+  /* Readout text inside a window (meters, timeline): */
+  --mic1-w: #b99aff;
+  --mic2-w: #ffcc1a;
+  --hot: #f0544a; /* clip lamp, top 6 dB of the meter, playhead */
 
-  /* ---- Surfaces ---- */
-  --color-bg:            #0B0D10;   /* page */
-  --color-surface-1:     #13161B;   /* cards, strips, header */
-  --color-surface-2:     #1A1E24;   /* raised: inspector, sheet, popover */
-  --color-surface-3:     #232830;   /* inset: segmented track, inputs, hover */
-  --color-scrim:         rgb(5 6 8 / 0.64);
+  /* ---- Type ---- */
+  --f-sans: 'Archivo Variable', 'Archivo', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --f-mono: 'Martian Mono Variable', 'Martian Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --mono-stretch: 87.5%; /* Martian Mono is set slightly condensed everywhere */
+  --head-stretch: 108%; /* headings: slightly expanded Archivo, the engraved-panel feel */
+  --wordmark-stretch: 118%;
 
-  /* ---- Borders ---- */
-  --color-border:         #262B33;  /* hairline between surfaces (decorative) */
-  --color-border-strong:  #3A414B;  /* dividers needing visibility */
-  --color-border-control: #6E7785;  /* input/switch/segment outlines, >= 3:1 on surface-1/2/3 */
+  /* Scale (px on purpose: the panel is drawn to a fixed grid). Nothing below 12 px. */
+  --t-readout: 40px; /* meter readout, desktop (decimals at --t-readout-dec) */
+  --t-readout-dec: 22px;
+  --t-readout-sm: 28px; /* meter readout, phone */
+  --t-readout-sm-dec: 16px;
+  --t-timecode: 44px;
+  --t-page: 30px; /* page title, only on pages with no live data */
+  --t-channel: 26px; /* channel name */
+  --t-channel-sm: 22px;
+  --t-value: 24px; /* value at a module head, "6/6" */
+  --t-section: 15px; /* rail / section title (phone 18) */
+  --t-section-sm: 18px;
+  --t-control: 15px; /* control title (phone 16) */
+  --t-body: 14px;
+  --t-body-sm: 13px;
+  --t-foot: 12px;
+  --t-legend: 12px; /* mono legends, scales, status line */
+  --lh-tight: 1.1;
+  --lh-head: 1.25;
+  --lh-body: 1.45;
 
-  /* ---- Text ---- */
-  --color-text:          #ECEEF1;   /* 15.6:1 on surface-1 */
-  --color-text-muted:    #A6AFBB;   /*  8.2:1 on surface-1 */
-  --color-text-subtle:   #868F9C;   /*  5.5:1 on surface-1, 4.5:1 on surface-3 (hints, timestamps) */
-  --color-text-disabled: #5A626E;   /* disabled only (exempt from contrast) */
+  /* ---- Space (4 px base) ---- */
+  --s-1: 4px;
+  --s-1-5: 6px; /* gap between keys */
+  --s-2: 8px;
+  --s-2-5: 10px;
+  --s-3: 12px;
+  --s-3-5: 14px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-7: 28px;
+  --s-8: 32px;
+  --gutter: 16px; /* 24 >= 768, 32 >= 1280 (base.css) */
+  --rail-w: 168px;
+  --module-pad: 20px;
+  --channel-pad: 28px;
 
-  /* ---- Interactive accent (UI, focus, selection) ----
-     Sky blue: kept clear of the purple TX1 (OKLCH hue 233 vs 301, also for deuteranopes) and of success green. */
-  --color-accent:        #38BDF8;   /* 8.5:1 on surface-1 */
-  --color-accent-hover:  #7DD3FC;
-  --color-on-accent:     #0B0D10;   /* 9.1:1 on accent */
-  --color-accent-soft:   color-mix(in oklab, var(--color-accent) 16%, transparent);
-  --color-focus:         #38BDF8;
+  /* ---- Radius: four values, nothing larger than 6 ---- */
+  --r-win: 4px; /* display windows */
+  --r-key: 6px; /* keys, switch tracks */
+  --r-cap: 3px; /* fader cap, knob */
+  --r-plate: 3px; /* small plates: TX1 tag, battery body */
 
-  /* ---- Channel identity: the colours of the mics' own LEDs (TX1 purple, TX2 yellow) ---- */
-  --color-tx1:           #B37DFF;   /* purple - 6.3:1 on surface-1 */
-  --color-on-tx1:        #0B0D10;   /*          6.8:1 on tx1 */
-  --color-tx1-soft:      color-mix(in oklab, var(--color-tx1) 14%, transparent);
-  --color-tx2:           #F5D33D;   /* yellow - 12.3:1 on surface-1 */
-  --color-on-tx2:        #0B0D10;   /*          13.2:1 on tx2 */
-  --color-tx2-soft:      color-mix(in oklab, var(--color-tx2) 14%, transparent);
-  --color-rx:            #C3CBD6;   /* neutral silver */
-  --color-on-rx:         #0B0D10;
-
-  /* ---- Semantic (warning is orange so yellow stays unique to TX2) ---- */
-  --color-success:       #4ADE8A;
-  --color-warning:       #FF9F4A;
-  --color-danger:        #FF6B6B;
-  --color-on-danger:     #0B0D10;   /* 7.0:1 */
-  --color-info:          var(--color-accent);
-  --color-success-soft:  color-mix(in oklab, var(--color-success) 14%, transparent);
-  --color-warning-soft:  color-mix(in oklab, var(--color-warning) 14%, transparent);
-  --color-danger-soft:   color-mix(in oklab, var(--color-danger) 16%, transparent);
-
-  /* ---- Meter (same in both themes: the meter well is always dark) ---- */
-  --meter-well:          #15181D;
-  --meter-off:           #2A3038;   /* unlit segment */
-  --meter-ok:            #4ADE8A;   /* <= -12 dBFS */
-  --meter-hot:           #F5C451;   /* -12 .. -6 dBFS */
-  --meter-clip:          #FF6B6B;   /* > -6 dBFS and clip latch */
-  --meter-peak:          #ECEEF1;   /* peak-hold tick */
-  --meter-scale:         #818B98;   /* scale labels inside well */
-
-  /* ---- Typography ---- */
-  --font-sans: "Geist Variable", "Geist", "Inter", system-ui, -apple-system, "Segoe UI", Roboto,
-               "Helvetica Neue", Arial, sans-serif;
-  --font-mono: "Geist Mono Variable", "Geist Mono", "JetBrains Mono", ui-monospace, "SF Mono", Menlo,
-               Consolas, "Liberation Mono", monospace;
-
-  --text-2xs: 0.6875rem; --leading-2xs: 1rem;      /* 11px  meter scale, overlines */
-  --text-xs:  0.75rem;   --leading-xs:  1rem;      /* 12px  chips, captions */
-  --text-sm:  0.8125rem; --leading-sm:  1.25rem;   /* 13px  secondary, console */
-  --text-md:  0.9375rem; --leading-md:  1.375rem;  /* 15px  body (desktop) */
-  --text-lg:  1.0625rem; --leading-lg:  1.5rem;    /* 17px  body (touch), row titles */
-  --text-xl:  1.25rem;   --leading-xl:  1.75rem;   /* 20px  section titles */
-  --text-2xl: 1.625rem;  --leading-2xl: 2rem;      /* 26px  page titles */
-  --text-3xl: 2.25rem;   --leading-3xl: 2.5rem;    /* 36px  hero readouts (fw %, battery) */
-
-  --weight-regular: 400;
-  --weight-medium:  500;
-  --weight-semibold: 600;
-  --tracking-caps:  0.06em;     /* uppercase labels/chips */
-  --tracking-tight: -0.01em;    /* >= 20px headings */
-  --numeric: tabular-nums slashed-zero;   /* use with font-variant-numeric */
-
-  /* ---- Spacing (4px base) ---- */
-  --space-0-5: 2px;  --space-1: 4px;   --space-2: 8px;   --space-3: 12px;
-  --space-4: 16px;   --space-5: 20px;  --space-6: 24px;  --space-8: 32px;
-  --space-10: 40px;  --space-12: 48px; --space-16: 64px;
-
-  /* ---- Radii ---- */
-  --radius-xs: 4px;    /* meter segments, chips */
-  --radius-sm: 6px;    /* small buttons, badges, inputs */
-  --radius-md: 10px;   /* buttons, segmented track */
-  --radius-lg: 14px;   /* strips, cards, inspector sections */
-  --radius-xl: 20px;   /* sheets, modals */
-  --radius-full: 999px;
-
-  /* ---- Elevation (dark: mostly surface steps; shadows are subtle) ---- */
-  --shadow-1: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 1px 2px rgb(0 0 0 / 0.40);
-  --shadow-2: 0 8px 24px rgb(0 0 0 / 0.45);
-  --shadow-3: 0 24px 64px rgb(0 0 0 / 0.55);
-  --meter-inset: inset 0 1px 2px rgb(0 0 0 / 0.6);
+  /* ---- Sizes ---- */
+  --hit: 44px; /* minimum target */
+  --key-h: 44px;
+  --key-h-lg: 52px;
+  --key-h-tall: 74px; /* channel-mode keys with a routing glyph */
+  --header-h: 64px;
+  --header-h-sm: 56px;
+  --status-h: 36px;
+  --status-band-h: 32px;
+  --tabbar-h: 56px;
 
   /* ---- Motion ---- */
-  --dur-instant: 80ms;    /* press feedback */
-  --dur-fast:    140ms;   /* hover, segmented pill, toggles */
-  --dur-base:    220ms;   /* popovers, toasts, drawer */
-  --dur-slow:    320ms;   /* sheets, modals */
-  --dur-confirm: 600ms;   /* write-confirmed check flash */
-  --meter-peak-hold: 1500ms;
-  --meter-release-db-per-s: 20;   /* JS constant mirrored here for docs */
-  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
-  --ease-enter:    cubic-bezier(0.05, 0.7, 0.1, 1);
-  --ease-exit:     cubic-bezier(0.3, 0, 0.8, 0.15);
-
-  /* ---- Layout ---- */
-  --header-h: 56px;
-  --statusbar-h: 48px;
-  --tabbar-h: 64px;
-  --inspector-w: 360px;
-  --console-h: 280px;
-  --content-max: 1600px;
-  --gutter: 16px;          /* 24px >= 768, 32px >= 1280 (set in media queries) */
-
-  /* ---- Controls & targets ---- */
-  --control-h-sm: 32px;
-  --control-h-md: 40px;
-  --control-h-lg: 48px;
-  --hit-min: 44px;
-  --focus-width: 2px;
-  --focus-offset: 2px;
+  --dur-press: 80ms;
+  --dur-fast: 140ms;
+  --dur-base: 200ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --meter-peak-hold: 1500ms; /* mirrors MeterBallistics.peakHoldMs */
 
   /* ---- Layers ---- */
-  --z-sticky: 10; --z-drawer: 30; --z-sheet: 40; --z-modal: 50; --z-toast: 60; --z-tooltip: 70;
+  --z-sticky: 10;
+  --z-modal: 50;
+  --z-toast: 60;
 }
 
-/* ---------------- Light theme ---------------- */
-:root[data-theme="light"] {
+/* ---------------- Aluminium (light, primary) ---------------- */
+:root,
+[data-theme='light'] {
   color-scheme: light;
-  --color-bg:            #F5F6F8;
-  --color-surface-1:     #FFFFFF;
-  --color-surface-2:     #FFFFFF;
-  --color-surface-3:     #EEF0F3;
-  --color-scrim:         rgb(17 21 26 / 0.40);
-
-  --color-border:         #DDE1E7;
-  --color-border-strong:  #C5CBD3;
-  --color-border-control: #7A8390;  /* 3.8:1 on white, 3.4:1 on surface-3 */
-
-  --color-text:          #11151A;   /* 18.3:1 on white */
-  --color-text-muted:    #4B5563;   /*  7.6:1 */
-  --color-text-subtle:   #606A76;   /*  5.5:1 */
-  --color-text-disabled: #A3AAB4;
-
-  --color-accent:        #0B6399;   /*  6.4:1 on white, 5.1:1 on accent-soft */
-  --color-accent-hover:  #08527F;
-  --color-on-accent:     #FFFFFF;   /*  6.4:1 */
-  --color-focus:         #0B6399;
-
-  --color-tx1:           #8040D8;   /*  5.8:1 on white: deep violet */
-  --color-on-tx1:        #FFFFFF;
-  --color-tx2:           #EAB308;   /* yellow, like the LED. Fills only (badge, stripe, glyph), never text: 1.9:1 on white */
-  --color-on-tx2:        #11151A;   /*  9.6:1 on tx2 */
-  --color-rx:            #3B4450;
-  --color-on-rx:         #FFFFFF;
-
-  --color-success:       #14773A;   /* 5.6:1 */
-  --color-warning:       #9C4C00;   /* 6.1:1 on white, 5.0:1 on the warning-soft chip */
-  --color-danger:        #B42020;   /* 6.6:1 on white, 5.0:1 on the danger-soft chip */
-  --color-on-danger:     #FFFFFF;   /*  6.6:1 */
-
-  --shadow-1: 0 1px 2px rgb(16 24 40 / 0.06), 0 1px 1px rgb(16 24 40 / 0.04);
-  --shadow-2: 0 8px 24px rgb(16 24 40 / 0.10);
-  --shadow-3: 0 24px 64px rgb(16 24 40 / 0.18);
-  /* --meter-* intentionally unchanged: the meter well stays dark */
+  --chassis: #e8e7e2; /* faceplate */
+  --chassis-2: #dcdbd5; /* recessed tracks: switch track, fader slot, flat disabled face */
+  --key: #f6f5f1; /* key face */
+  --key-hover: #fbfaf7;
+  --key-edge: #7e7c73; /* key and switch outlines (3.38:1 on chassis) */
+  --key-hi: rgb(255 255 255 / 0.85); /* 1 px top highlight on raised parts */
+  --key-shadow: rgb(40 36 24 / 0.16); /* 1 px hard shadow under raised parts */
+  --press-shadow: inset 0 1px 3px rgb(0 0 0 / 0.45);
+  --rule: #bdbbb3; /* hairline dividers (decorative) */
+  --rule-soft: #d3d1ca;
+  --ink: #16161a; /* 14.6:1 */
+  --ink-2: #4a4a50; /* 7.1:1 */
+  --ink-3: #5e5e64; /* 5.2:1 on chassis, 4.6:1 on chassis-2 */
+  --sel: #16161a; /* selected key: pressed and backlit */
+  --sel-hover: #2a2a30;
+  --sel-ink: #f2f1ec;
+  --window: #111113; /* display windows */
+  --window-edge: #050506;
+  --window-lip: rgb(255 255 255 / 0.9); /* 1 px light lip below a recess */
+  --w-ink: #e9e8e3;
+  --w-ink-2: #8a8a90; /* 5.5:1 on window */
+  --w-unlit: #1d1d20; /* base of an unlit meter segment */
+  --w-rule: rgb(255 255 255 / 0.09);
+  --mic1-ink: #6b3fd0; /* purple as text on the panel, 5.2:1 */
+  --mic2-ink: #7a5a00; /* yellow-family text on the panel, 5.2:1 (the LED itself never is text here) */
+  --live: #168043; /* link lamp */
+  --rec: #c42b21; /* record, clip legend, destructive */
+  --rec-ink: #c42b21; /* red text on the panel, 5.2:1 on key face */
+  --on-rec: #ffffff; /* 5.65:1 */
+  --bezel: #16161a; /* ring around every LED */
+  --lamp-off: #2b2b2f;
+  --lamp-hollow: #77777d;
+  --focus: #16161a; /* 2 px outline at 3 px offset */
+  --scrim: rgb(22 22 26 / 0.42);
 }
 
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-  color-scheme: light;
-  --color-bg:            #F5F6F8;
-  --color-surface-1:     #FFFFFF;
-  --color-surface-2:     #FFFFFF;
-  --color-surface-3:     #EEF0F3;
-  --color-scrim:         rgb(17 21 26 / 0.40);
+/* ---------------- Graphite (dark) ---------------- */
+[data-theme='dark'] {
+  color-scheme: dark;
+  --chassis: #141416;
+  --chassis-2: #0d0d0f;
+  --key: #1f1f22;
+  --key-hover: #26262a;
+  --key-edge: #72727a; /* 3.86:1 */
+  --key-hi: rgb(255 255 255 / 0.06);
+  --key-shadow: rgb(0 0 0 / 0.55);
+  --press-shadow: inset 0 1px 3px rgb(0 0 0 / 0.35);
+  --rule: #2e2e33;
+  --rule-soft: #232327;
+  --ink: #ecebe6;
+  --ink-2: #a3a3a8;
+  --ink-3: #8a8a90;
+  --sel: #ecebe6; /* the selected key inverts to paper */
+  --sel-hover: #ffffff;
+  --sel-ink: #141416;
+  --window: #0a0a0b;
+  --window-edge: #2e2e33;
+  --window-lip: transparent;
+  --w-ink: #e9e8e3;
+  --w-ink-2: #8a8a90;
+  --w-unlit: #19191c;
+  --w-rule: rgb(255 255 255 / 0.08);
+  --mic1-ink: #b99aff;
+  --mic2-ink: #ffcc1a;
+  --live: #4cc27a;
+  --rec: #f0544a;
+  --rec-ink: #f0544a;
+  --on-rec: #141416;
+  --bezel: #000000;
+  --lamp-off: #2b2b2f;
+  --lamp-hollow: #77777d;
+  --focus: #ecebe6;
+  --scrim: rgb(0 0 0 / 0.6);
+}
 
-  --color-border:         #DDE1E7;
-  --color-border-strong:  #C5CBD3;
-  --color-border-control: #7A8390;  /* 3.8:1 on white, 3.4:1 on surface-3 */
-
-  --color-text:          #11151A;   /* 18.3:1 on white */
-  --color-text-muted:    #4B5563;   /*  7.6:1 */
-  --color-text-subtle:   #606A76;   /*  5.5:1 */
-  --color-text-disabled: #A3AAB4;
-
-  --color-accent:        #0B6399;   /*  6.4:1 on white, 5.1:1 on accent-soft */
-  --color-accent-hover:  #08527F;
-  --color-on-accent:     #FFFFFF;   /*  6.4:1 */
-  --color-focus:         #0B6399;
-
-  --color-tx1:           #8040D8;   /*  5.8:1 on white: deep violet */
-  --color-on-tx1:        #FFFFFF;
-  --color-tx2:           #EAB308;   /* yellow, like the LED. Fills only (badge, stripe, glyph), never text: 1.9:1 on white */
-  --color-on-tx2:        #11151A;   /*  9.6:1 on tx2 */
-  --color-rx:            #3B4450;
-  --color-on-rx:         #FFFFFF;
-
-  --color-success:       #14773A;   /* 5.6:1 */
-  --color-warning:       #9C4C00;   /* 6.1:1 on white, 5.0:1 on the warning-soft chip */
-  --color-danger:        #B42020;   /* 6.6:1 on white, 5.0:1 on the danger-soft chip */
-  --color-on-danger:     #FFFFFF;   /*  6.6:1 */
-
-  --shadow-1: 0 1px 2px rgb(16 24 40 / 0.06), 0 1px 1px rgb(16 24 40 / 0.04);
-  --shadow-2: 0 8px 24px rgb(16 24 40 / 0.10);
-  --shadow-3: 0 24px 64px rgb(16 24 40 / 0.18);
-  /* --meter-* intentionally unchanged: the meter well stays dark */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --chassis: #141416;
+    --chassis-2: #0d0d0f;
+    --key: #1f1f22;
+    --key-hover: #26262a;
+    --key-edge: #72727a;
+    --key-hi: rgb(255 255 255 / 0.06);
+    --key-shadow: rgb(0 0 0 / 0.55);
+    --press-shadow: inset 0 1px 3px rgb(0 0 0 / 0.35);
+    --rule: #2e2e33;
+    --rule-soft: #232327;
+    --ink: #ecebe6;
+    --ink-2: #a3a3a8;
+    --ink-3: #8a8a90;
+    --sel: #ecebe6;
+    --sel-hover: #ffffff;
+    --sel-ink: #141416;
+    --window: #0a0a0b;
+    --window-edge: #2e2e33;
+    --window-lip: transparent;
+    --w-ink: #e9e8e3;
+    --w-ink-2: #8a8a90;
+    --w-unlit: #19191c;
+    --w-rule: rgb(255 255 255 / 0.08);
+    --mic1-ink: #b99aff;
+    --mic2-ink: #ffcc1a;
+    --live: #4cc27a;
+    --rec: #f0544a;
+    --rec-ink: #f0544a;
+    --on-rec: #141416;
+    --bezel: #000000;
+    --lamp-off: #2b2b2f;
+    --lamp-hollow: #77777d;
+    --focus: #ecebe6;
+    --scrim: rgb(0 0 0 / 0.6);
   }
+}
+
+/* Display windows are always dark: anything placed inside one (keys, text, focus ring) takes the
+   Graphite palette. The window's own face (--window, --window-edge, --window-lip) still comes
+   from the surrounding theme, so it keeps its edge and lip on Aluminium. */
+.mc-window {
+  color-scheme: dark;
+  --chassis: #141416;
+  --chassis-2: #0d0d0f;
+  --key: #26262a;
+  --key-hover: #2e2e33;
+  --key-edge: #72727a;
+  --key-hi: rgb(255 255 255 / 0.06);
+  --key-shadow: rgb(0 0 0 / 0.55);
+  --press-shadow: inset 0 1px 3px rgb(0 0 0 / 0.35);
+  --rule: #2e2e33;
+  --rule-soft: #232327;
+  --ink: #ecebe6;
+  --ink-2: #c9c8c3;
+  --ink-3: #8a8a90;
+  --sel: #ecebe6;
+  --sel-hover: #ffffff;
+  --sel-ink: #141416;
+  --w-ink: #e9e8e3;
+  --w-ink-2: #8a8a90;
+  --w-unlit: #1d1d20;
+  --w-rule: rgb(255 255 255 / 0.09);
+  --mic1-ink: #b99aff;
+  --mic2-ink: #ffcc1a;
+  --live: #4cc27a;
+  --rec: #f0544a;
+  --rec-ink: #f0544a;
+  --on-rec: #141416;
+  --bezel: #000000;
+  --focus: #ecebe6;
+}
+
+/* ---------------- Derived tokens ----------------
+   Declared on every theme root so they resolve against that root's palette (custom properties
+   that reference other custom properties are computed where they are declared). */
+:root,
+[data-theme],
+.mc-window {
+  /* Elevation: three physical levels, no blur. */
+  --raised: inset 0 1px 0 var(--key-hi), 0 1px 0 var(--key-shadow);
+  --recessed: inset 0 1px 3px rgb(0 0 0 / 0.18), 0 1px 0 var(--window-lip);
+  --window-shadow: inset 0 1px 3px rgb(0 0 0 / 0.75), 0 0 0 1px var(--window-edge), 0 1px 0 1px var(--window-lip);
+
+  /* Confidence marks (see instrument.css): sent-but-unconfirmed = 2 px ink outline over this hatch. */
+  --hatch: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--ink) 16%, transparent) 0 1.5px,
+    transparent 1.5px 6px
+  );
+  --hatch-strong: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--ink) 34%, transparent) 0 1px,
+    transparent 1px 3px
+  );
+
+  /* ---- Legacy aliases ----
+     The pages written for the previous design use these names. They now resolve to the
+     Instrument palette, so those pages already sit on the faceplate. New code uses the
+     names above. */
+  --color-bg: var(--chassis);
+  --color-surface-1: var(--chassis);
+  --color-surface-2: var(--key);
+  --color-surface-3: var(--chassis-2);
+  --color-scrim: var(--scrim);
+  --color-border: var(--rule);
+  --color-border-strong: var(--key-edge);
+  --color-border-control: var(--key-edge);
+  --color-text: var(--ink);
+  --color-text-muted: var(--ink-2);
+  --color-text-subtle: var(--ink-3);
+  --color-text-disabled: var(--ink-3);
+  --color-accent: var(--ink); /* no accent colour: selection is ink */
+  --color-accent-hover: var(--ink-2);
+  --color-on-accent: var(--sel-ink);
+  --color-accent-soft: color-mix(in srgb, var(--ink) 8%, transparent);
+  --color-focus: var(--focus);
+  --color-tx1: var(--mic1-ink);
+  --color-on-tx1: #ffffff;
+  --color-tx1-soft: color-mix(in srgb, var(--mic1) 14%, transparent);
+  --color-tx2: var(--mic2); /* a fill, never text on the light panel */
+  --color-on-tx2: #16161a;
+  --color-tx2-soft: color-mix(in srgb, var(--mic2) 14%, transparent);
+  --color-rx: var(--ink-2);
+  --color-on-rx: var(--sel-ink);
+  --color-success: var(--live);
+  --color-warning: var(--ink); /* warnings are never yellow (yellow is Mic 2) */
+  --color-danger: var(--rec-ink);
+  --color-on-danger: var(--on-rec);
+  --color-info: var(--ink);
+  --color-success-soft: color-mix(in srgb, var(--live) 12%, transparent);
+  --color-warning-soft: color-mix(in srgb, var(--ink) 8%, transparent);
+  --color-danger-soft: color-mix(in srgb, var(--rec) 12%, transparent);
+  --meter-well: var(--window);
+  --meter-off: var(--w-unlit);
+  --meter-ok: var(--w-ink);
+  --meter-hot: var(--hot);
+  --meter-clip: var(--hot);
+  --meter-peak: var(--w-ink);
+  --meter-scale: var(--w-ink-2);
+  --meter-inset: inset 0 1px 3px rgb(0 0 0 / 0.75);
+  --shadow-1: none;
+  --shadow-2: 0 2px 0 var(--key-shadow);
+  --shadow-3: 0 2px 0 var(--key-shadow);
+}
+
+/* Legacy scale names (pages written for the previous design). */
+:root {
+  --font-sans: var(--f-sans);
+  --font-mono: var(--f-mono);
+  --text-2xs: 0.75rem; /* 12 px: nothing smaller */
+  --leading-2xs: 1rem;
+  --text-xs: 0.75rem;
+  --leading-xs: 1rem;
+  --text-sm: 0.8125rem;
+  --leading-sm: 1.25rem;
+  --text-md: 0.875rem;
+  --leading-md: 1.3rem;
+  --text-lg: 0.9375rem;
+  --leading-lg: 1.35rem;
+  --text-xl: 1.125rem;
+  --leading-xl: 1.5rem;
+  --text-2xl: 1.625rem;
+  --leading-2xl: 1.9rem;
+  --text-3xl: 2.25rem;
+  --leading-3xl: 2.5rem;
+  --weight-regular: 400;
+  --weight-medium: 520;
+  --weight-semibold: 660;
+  --tracking-caps: 0.02em;
+  --tracking-tight: -0.01em;
+  --numeric: tabular-nums slashed-zero;
+  --space-0-5: 2px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 6px;
+  --radius-xl: 6px;
+  --radius-full: 999px;
+  --dur-instant: var(--dur-press);
+  --dur-slow: 240ms;
+  --dur-confirm: 600ms;
+  --ease-standard: var(--ease);
+  --ease-enter: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --ease-exit: cubic-bezier(0.3, 0, 0.8, 0.15);
+  --statusbar-h: var(--status-h);
+  --content-max: 1600px;
+  --control-h-sm: 36px;
+  --control-h-md: 44px;
+  --control-h-lg: 52px;
+  --hit-min: 44px;
+  --focus-width: 2px;
+  --focus-offset: 3px;
+  --z-drawer: 30;
+  --z-sheet: 40;
+  --z-tooltip: 70;
 }

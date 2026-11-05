@@ -1,4 +1,10 @@
 <script lang="ts">
+  /**
+   * A list row: title and description on the left, the control on the right, hairline rules
+   * between rows, no boxes. `stacked` puts the control under the text (key rows on phones).
+   * `disabledReason` replaces the description with the reason, after a flat "disabled" swatch,
+   * and describes the control (aria-describedby through the field context).
+   */
   import type { Snippet } from 'svelte'
   import { getFieldContext, setFieldContext, uid } from './field'
 
@@ -7,7 +13,7 @@
     description?: string
     /** Shown instead of the description when the control is temporarily unavailable. */
     disabledReason?: string | null
-    /** Put the control below the label (for segmented controls) instead of to the right. */
+    /** Put the control below the label (for key rows) instead of to the right. */
     stacked?: boolean
     error?: string | null
     control: Snippet
@@ -17,7 +23,6 @@
   let { label, description, disabledReason = null, stacked = false, error = null, control, children }: Props =
     $props()
 
-  // The control (and anything in `children`) is described by the visible description or reason.
   const descId = uid('row-desc')
   const parent = getFieldContext()
   setFieldContext({
@@ -34,7 +39,9 @@
   <div class="text">
     <div class="label">{label}</div>
     {#if disabledReason}
-      <div class="desc reason" id={descId}>{disabledReason}</div>
+      <div class="desc reason" id={descId}>
+        <span class="mc-swatch mc-swatch--disabled" aria-hidden="true"></span><span>{disabledReason}</span>
+      </div>
     {:else if description}
       <div class="desc" id={descId}>{description}</div>
     {/if}
@@ -53,52 +60,57 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    column-gap: var(--space-4);
-    row-gap: var(--space-2);
-    padding: var(--space-3) 0;
+    column-gap: 20px;
+    row-gap: 10px;
+    padding: 14px 0;
+    min-width: 0;
   }
   .row + :global(.row) {
-    border-top: 1px solid var(--color-border);
+    border-top: 1px solid var(--rule);
   }
   .stacked {
     grid-template-columns: minmax(0, 1fr);
   }
   .label {
-    font-weight: var(--weight-medium);
+    font-size: var(--t-control);
+    font-weight: 620;
+    line-height: var(--lh-head);
   }
   .desc {
-    color: var(--color-text-muted);
-    font-size: var(--text-sm);
-    line-height: var(--leading-sm);
-    margin-top: 2px;
+    margin-top: 3px;
+    font-size: 13px;
+    line-height: var(--lh-body);
+    color: var(--ink-2);
   }
   .reason {
-    color: var(--color-warning);
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    color: var(--ink-2);
   }
-  .dimmed .label {
-    color: var(--color-text-muted);
+  .reason .mc-swatch {
+    margin-top: 3px;
   }
   .control {
     display: flex;
     justify-content: flex-end;
+    min-width: 0;
   }
   .stacked .control {
     display: block;
   }
   .error {
     grid-column: 1 / -1;
-    color: var(--color-danger);
-    font-size: var(--text-sm);
+    color: var(--rec-ink);
+    font-size: 13px;
   }
   .extra {
     grid-column: 1 / -1;
+    min-width: 0;
   }
-  @media (pointer: coarse) {
+  @media (max-width: 599px) {
     .label {
-      font-size: var(--text-lg);
-    }
-    .desc {
-      font-size: var(--text-md);
+      font-size: 16px;
     }
   }
 </style>

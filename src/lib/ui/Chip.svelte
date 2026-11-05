@@ -1,45 +1,58 @@
 <script lang="ts">
+  /**
+   * A short status word ("Connected", "Offline", "Unknown") as an outline tag in sentence case.
+   * The tone adds a lamp in front of the word; the word carries the meaning, not the colour.
+   */
   import type { Snippet } from 'svelte'
+  import Lamp from './Lamp.svelte'
 
   interface Props {
     tone?: 'neutral' | 'success' | 'warning' | 'danger' | 'accent'
+    /** Unknown / not read: dashed outline and a hollow lamp. */
+    unknown?: boolean
     children: Snippet
   }
-  let { tone = 'neutral', children }: Props = $props()
+  let { tone = 'neutral', unknown = false, children }: Props = $props()
 </script>
 
-<span class="chip {tone}">{@render children()}</span>
+<span class="chip {tone}" class:unknown>
+  {#if unknown}
+    <Lamp size="sm" state="hollow" />
+  {:else if tone === 'success'}
+    <Lamp size="sm" color="live" />
+  {:else if tone === 'danger'}
+    <Lamp size="sm" color="rec" />
+  {:else if tone === 'warning'}
+    <Lamp size="sm" state="hollow" />
+  {/if}
+  {@render children()}
+</span>
 
 <style>
   .chip {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 2px 8px;
-    border-radius: var(--radius-full);
-    font-size: var(--text-2xs);
-    line-height: var(--leading-2xs);
-    font-weight: var(--weight-semibold);
-    letter-spacing: var(--tracking-caps);
-    text-transform: uppercase;
+    gap: 6px;
+    min-height: 24px;
+    padding: 0 8px;
+    border: 1px solid var(--rule);
+    border-radius: var(--r-plate);
+    font-size: 12px;
+    line-height: 1.2;
+    font-weight: 540;
+    color: var(--ink-2);
     white-space: nowrap;
-    background: var(--color-surface-3);
-    color: var(--color-text-muted);
   }
-  .success {
-    background: var(--color-success-soft);
-    color: var(--color-success);
-  }
-  .warning {
-    background: var(--color-warning-soft);
-    color: var(--color-warning);
-  }
-  .danger {
-    background: var(--color-danger-soft);
-    color: var(--color-danger);
+  .success,
+  .danger,
+  .accent {
+    color: var(--ink);
   }
   .accent {
-    background: var(--color-accent-soft);
-    color: var(--color-accent);
+    border-color: var(--ink);
+  }
+  .unknown {
+    border-style: dashed;
+    border-color: var(--ink-3);
   }
 </style>

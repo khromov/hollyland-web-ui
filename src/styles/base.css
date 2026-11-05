@@ -1,4 +1,4 @@
-/* Base element styles. Tokens live in tokens.css. */
+/* Base element styles. Tokens live in tokens.css, shared primitive classes in instrument.css. */
 
 *,
 *::before,
@@ -7,12 +7,14 @@
 }
 
 html {
-  /* Keep the root at the browser default (16 px) so the rem tokens render at their documented
-     sizes; the body text size is set on body. */
+  /* Keyboard focus never lands under the sticky header or the status line / phone tab bar
+     (WCAG 2.4.11): scrolling into view keeps this much room at each edge. */
+  scroll-padding-top: calc(var(--header-h) + 8px);
+  scroll-padding-bottom: calc(var(--status-h) + 8px);
   font-size: 100%;
-  background: var(--color-bg);
-  color: var(--color-text);
-  font-family: var(--font-sans);
+  background: var(--chassis);
+  color: var(--ink);
+  font-family: var(--f-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -22,19 +24,25 @@ html {
 
 body {
   margin: 0;
-  font: var(--weight-regular) var(--text-md) / var(--leading-md) var(--font-sans);
+  font: 400 var(--t-body) / var(--lh-body) var(--f-sans);
   min-height: 100dvh;
-  background: var(--color-bg);
-  color: var(--color-text);
+  background: var(--chassis);
+  color: var(--ink);
+}
+
+/* A themed subtree (data-theme on any element) paints its own faceplate. */
+[data-theme] {
+  color: var(--ink);
 }
 
 #app {
   min-height: 100dvh;
 }
 
-@media (pointer: coarse) {
-  :root {
-    --hit-min: 48px;
+@media (max-width: 599px) {
+  html {
+    scroll-padding-top: calc(var(--header-h-sm) + env(safe-area-inset-top) + 8px);
+    scroll-padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 8px);
   }
 }
 
@@ -65,8 +73,10 @@ dd {
 h1,
 h2,
 h3 {
-  font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-tight);
+  font-weight: 660;
+  font-stretch: var(--head-stretch);
+  letter-spacing: -0.01em;
+  line-height: var(--lh-head);
 }
 
 button,
@@ -81,17 +91,20 @@ button {
   cursor: pointer;
 }
 
-button:disabled {
+button:disabled,
+[aria-disabled='true'] {
   cursor: not-allowed;
 }
 
 a {
-  color: var(--color-accent);
-  text-underline-offset: 2px;
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
 }
 
 a:hover {
-  color: var(--color-accent-hover);
+  text-decoration-thickness: 2px;
 }
 
 img,
@@ -100,16 +113,22 @@ svg {
   max-width: 100%;
 }
 
+/* Mono means a measured value or a hardware ID, nothing else. */
+code,
+kbd,
+samp,
+pre,
+.mono {
+  font-family: var(--f-mono);
+  font-stretch: var(--mono-stretch);
+  font-variant-numeric: tabular-nums slashed-zero;
+}
+
 code,
 kbd,
 samp,
 pre {
-  font-family: var(--font-mono);
-  font-size: 0.95em;
-}
-
-::selection {
-  background: var(--color-accent-soft);
+  font-size: 0.92em;
 }
 
 .readout {
@@ -117,18 +136,16 @@ pre {
   font-feature-settings: 'tnum', 'zero';
 }
 
-.mono {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums slashed-zero;
+::selection {
+  background: color-mix(in srgb, var(--ink) 18%, transparent);
 }
 
+/* Legacy: section overlines are sentence case now (uppercase is only for lamp legends). */
 .overline {
-  font-size: var(--text-2xs);
-  line-height: var(--leading-2xs);
-  font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-caps);
-  text-transform: uppercase;
-  color: var(--color-text-subtle);
+  font-size: var(--t-foot);
+  line-height: 1.35;
+  font-weight: 500;
+  color: var(--ink-3);
 }
 
 .visually-hidden {
@@ -143,23 +160,27 @@ pre {
   border: 0;
 }
 
+/* Keyboard focus: a 2 px ring standing 3 px off the control, so a gap of faceplate shows
+   between ring and edge. That gap is what tells it apart from the "sent" mark (a 2 px outline
+   drawn on the edge itself, over a hatch). It is never removed. */
 :focus-visible {
-  outline: var(--focus-width) solid var(--color-focus);
-  outline-offset: var(--focus-offset);
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
 }
 
 @media (prefers-reduced-motion: reduce) {
   :root {
+    --dur-press: 0ms;
     --dur-fast: 0ms;
     --dur-base: 0ms;
-    --dur-slow: 0ms;
-    --dur-confirm: 0ms;
   }
 
   *,
   *::before,
   *::after {
+    animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
 }

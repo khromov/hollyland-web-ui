@@ -1,117 +1,122 @@
 <script lang="ts">
-  import { AudioLines, AudioLinesOff } from '@lucide/svelte'
+  /**
+   * Why there are no live levels, and the key that fixes it, as a dark display window.
+   * Uses the shared audio.meterState, so it says the same as the meter windows:
+   * first run ("Show live levels"), waiting, permission blocked, no input, USB audio paused while
+   * the local bridge runs (macOS), or another error.
+   */
   import { audio } from '../../lib/state/audio.svelte'
-  import { session } from '../../lib/state/session.svelte'
-  import Button from '../../lib/ui/Button.svelte'
-  import Banner from '../../lib/ui/Banner.svelte'
+  import Lamp from '../../lib/ui/Lamp.svelte'
 
   interface Props {
     compact?: boolean
   }
   let { compact = false }: Props = $props()
 
-  const platform =
-    (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform ?? navigator.platform
-  const isMac = /mac/i.test(platform)
-  // On Linux the bridge only detaches the HID driver, so USB audio keeps working (docs/BRIDGE.md).
-  const isLinux = /linux/i.test(platform) && !/android/i.test(navigator.userAgent)
+  const mstate = $derived(audio.meterState)
+  const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform)
 
-  /** On macOS the bridge captures the whole receiver, so its USB audio input is gone until it stops. */
-  const audioHeldByBridge = $derived(
-    session.transportKind === 'bridge' &&
-      (session.phase === 'ready' || session.phase === 'lost' || session.phase === 'restarting') &&
-      !isLinux,
+  const title = $derived(
+    {
+      live: 'Live levels',
+      idle: 'Live levels and recording',
+      starting: 'Starting live audio',
+      denied: 'Microphone access blocked',
+      paused: 'USB audio paused',
+      nodevice: 'No audio input',
+      error: 'Live levels stopped',
+    }[mstate],
+  )
+  const text = $derived(
+    mstate === 'paused'
+      ? `The receiver's USB audio is paused while the local bridge holds it. Stop the bridge (Ctrl+C) to see levels and record on this ${isMac ? 'Mac' : 'computer'}.`
+      : mstate === 'denied'
+        ? 'Microphone access is blocked for this page. Allow it in the site settings next to the address bar, then try again.'
+        : mstate === 'nodevice'
+          ? (audio.error ?? 'No audio input was found. Plug in the receiver, then try again.')
+          : mstate === 'error'
+            ? (audio.meterMessage ?? 'Live levels stopped.')
+            : mstate === 'starting'
+              ? 'Waiting for microphone access…'
+              : 'The receiver is also a USB microphone. Allow microphone access to see live levels per channel, monitor, use voice effects and record. Audio stays on this computer.',
+  )
+  const action = $derived(
+    mstate === 'idle'
+      ? 'Show live levels'
+      : mstate === 'denied' || mstate === 'nodevice' || (mstate === 'error' && audio.supported)
+        ? 'Try again'
+        : null,
   )
 </script>
 
-{#if audioHeldByBridge}
-  <div class="start paused" class:compact role="note">
-    <div class="icon" aria-hidden="true"><AudioLinesOff size={compact ? 20 : 28} /></div>
-    <div class="text">
-      <div class="title">USB audio paused</div>
-      <p>
-        The receiver's USB audio is paused while the local bridge holds it. Stop the bridge (Ctrl+C) to record or
-        meter audio on this {isMac ? 'Mac' : 'computer'}.
+{#if mstate !== 'live'}
+  <div class="mc-window start" class:compact role="status">
+    <div class="msg">
+      <p class="title">
+        <span class="lamp" aria-hidden="true">
+          {#if mstate === 'starting'}
+            <span class="mc-spinner"></span>
+          {:else}
+            <Lamp color="rec" size="sm" state={mstate === 'denied' || mstate === 'error' || mstate === 'nodevice' ? 'on' : 'hollow'} />
+          {/if}
+        </span>
+        {title}
       </p>
+      <p class="text">{text}</p>
     </div>
-  </div>
-{:else}
-  <div class="start" class:compact>
-    <div class="icon" aria-hidden="true"><AudioLines size={compact ? 20 : 28} /></div>
-    <div class="text">
-      <div class="title">Live levels and recording</div>
-      <p>
-        The receiver is also a USB microphone. Allow microphone access to see live levels per mic, monitor, apply
-        voice effects and record WAV files. Audio stays on this computer.
-      </p>
-      {#if audio.state === 'error' && audio.error}
-        <Banner tone="danger">{audio.error}</Banner>
-      {/if}
-    </div>
-    <Button variant={compact ? 'secondary' : 'primary'} loading={audio.state === 'starting'} onclick={() => audio.start()}>
-      Enable audio
-    </Button>
+    {#if action}
+      <button type="button" class="mc-key mc-key--light {compact ? 'mc-key--sm' : ''}" onclick={() => audio.start()}>{action}</button>
+    {/if}
   </div>
 {/if}
 
 <style>
   .start {
     display: grid;
-    grid-template-columns: auto 1fr auto;
-    gap: var(--space-4);
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    padding: var(--space-5);
-    border-radius: var(--radius-lg);
-    border: 1px dashed var(--color-border-strong);
-    background: var(--color-surface-1);
+    column-gap: 14px;
+    row-gap: 12px;
+    padding: 18px 20px;
   }
   .compact {
-    padding: var(--space-3) var(--space-4);
+    padding: 12px 16px;
   }
-  .paused {
-    grid-template-columns: auto 1fr;
-  }
-  .icon {
-    display: grid;
+  .lamp {
+    display: inline-grid;
     place-items: center;
-    width: 48px;
-    height: 48px;
-    border-radius: var(--radius-md);
-    background: var(--color-accent-soft);
-    color: var(--color-accent);
+    width: 14px;
+    height: 14px;
+    margin-right: 8px;
+    vertical-align: -1px;
   }
-  .paused .icon {
-    background: var(--color-surface-3);
-    color: var(--color-text-muted);
+  .lamp .mc-spinner {
+    width: 14px;
+    height: 14px;
   }
-  .compact .icon {
-    width: 36px;
-    height: 36px;
+  .msg {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
   }
   .title {
-    font-weight: var(--weight-semibold);
+    font-size: 15px;
+    font-weight: 620;
+    line-height: 1.3;
+    color: var(--w-ink);
   }
-  p {
-    color: var(--color-text-muted);
-    font-size: var(--text-sm);
-    line-height: var(--leading-sm);
-    margin-bottom: var(--space-2);
-  }
-  .compact p {
-    display: none;
-  }
-  /* The bridge explanation is the whole message, so it stays visible in the compact card too. */
-  .paused p,
-  .compact.paused p {
-    display: block;
-    margin-bottom: 0;
+  .text {
+    max-width: 68ch;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--w-ink);
   }
   @media (max-width: 559px) {
     .start {
-      grid-template-columns: auto 1fr;
+      grid-template-columns: minmax(0, 1fr);
     }
-    .start > :global(.btn) {
-      grid-column: 1 / -1;
+    .start .mc-key {
+      justify-self: start;
     }
   }
 </style>

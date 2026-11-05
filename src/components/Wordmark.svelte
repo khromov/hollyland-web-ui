@@ -1,21 +1,26 @@
 <script lang="ts">
+  /**
+   * "▮▮ Mic Console  Unofficial": the 26 px window glyph (a purple and a yellow bar), the name in
+   * expanded Archivo, and the "Unofficial" note. Links home.
+   * - compact: name only (no "Unofficial"), e.g. in a crowded header
+   * - glyphOnly: the glyph alone (the name stays as the link's accessible name)
+   */
+  import BrandGlyph from '../lib/ui/BrandGlyph.svelte'
+
   interface Props {
-    /** Logo only on phones (the header also holds the connection status and buttons). */
     compact?: boolean
+    glyphOnly?: boolean
+    size?: 'md' | 'sm'
   }
-  let { compact = false }: Props = $props()
+  let { compact = false, glyphOnly = false, size = 'md' }: Props = $props()
 </script>
 
-<a class="wordmark" class:compact href="#/overview" aria-label="Mic Console home">
-  <svg viewBox="0 0 32 32" aria-hidden="true">
-    <rect width="32" height="32" rx="8" class="bg" />
-    <rect x="7" y="9" width="3" height="14" rx="1.5" class="tx1" />
-    <rect x="12.5" y="5" width="3" height="22" rx="1.5" class="fg" />
-    <rect x="18" y="11" width="3" height="10" rx="1.5" class="fg" />
-    <rect x="23.5" y="8" width="3" height="16" rx="1.5" class="tx2" />
-  </svg>
-  <span class="name">Mic Console</span>
-  <span class="tag">unofficial</span>
+<a class="wordmark {size}" href="#/overview" aria-label="Mic Console, unofficial. Home">
+  <BrandGlyph size={size === 'sm' ? 24 : 26} />
+  {#if !glyphOnly}
+    <span class="name">Mic Console</span>
+    {#if !compact}<span class="tag">Unofficial</span>{/if}
+  {/if}
 </a>
 
 <style>
@@ -24,58 +29,28 @@
     flex: none;
     align-items: center;
     gap: 10px;
-    min-height: var(--hit-min);
-    color: var(--color-text);
+    min-height: var(--hit);
+    color: var(--ink);
     text-decoration: none;
     white-space: nowrap;
   }
-  svg {
-    flex: none;
-    width: 28px;
-    height: 28px;
-    max-width: none;
-  }
-  .bg {
-    fill: var(--color-surface-3);
-  }
-  .fg {
-    fill: var(--color-text);
-  }
-  .tx1 {
-    fill: var(--color-tx1);
-  }
-  .tx2 {
-    fill: var(--color-tx2);
+  .wordmark:hover .name {
+    text-decoration: none;
   }
   .name {
-    font-weight: var(--weight-semibold);
-    letter-spacing: var(--tracking-tight);
+    font-size: 16px;
+    font-weight: 720;
+    font-stretch: var(--wordmark-stretch);
+    letter-spacing: -0.01em;
+    line-height: 1;
+  }
+  .sm .name {
+    font-size: 15px;
   }
   .tag {
-    font-size: var(--text-2xs);
-    letter-spacing: var(--tracking-caps);
-    text-transform: uppercase;
-    color: var(--color-text-subtle);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-full);
-    padding: 1px 6px;
-  }
-  @media (max-width: 1279px) {
-    .compact .tag {
-      display: none;
-    }
-  }
-  @media (max-width: 559px) {
-    .tag {
-      display: none;
-    }
-    .compact .name {
-      display: none;
-    }
-  }
-  @media (max-width: 380px) {
-    .name {
-      display: none;
-    }
+    margin-left: 2px;
+    padding-top: 1px;
+    font-size: 12px;
+    color: var(--ink-3);
   }
 </style>
