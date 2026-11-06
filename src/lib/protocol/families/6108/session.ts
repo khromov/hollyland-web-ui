@@ -20,7 +20,7 @@
  *  - the A1 never sends unsolicited data (a1-6108.md §2.1, every reply is pulled by GET_REPORT): a message that
  *    matches no pending request is a late or stale reply and is logged, never applied
  */
-import { UnsupportedError } from '../../device'
+import { UnsupportedError } from '../../device-errors'
 import { FamilyDevice } from '../../core/engine'
 import { TimeoutError } from '../../core/errors'
 import type {

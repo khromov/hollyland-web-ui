@@ -13,7 +13,7 @@
   import Panel from '../../lib/ui/Panel.svelte'
   import Modules from '../../lib/ui/Modules.svelte'
   import Key from '../../lib/ui/Key.svelte'
-  import type { MicUnit, UnitId } from '../../lib/protocol'
+  import type { MicUnit, UnitId } from '../../lib/protocol/app'
   import UntestedPlate from '../shell/UntestedPlate.svelte'
   import UnitPanel from './UnitPanel.svelte'
   import AboutCard from './AboutCard.svelte'

@@ -7,7 +7,7 @@
  *    browser delivers four); four mics on a two-channel output get one pair of USB L / R windows
  * USB windows are neutral (no mic colour) and say what the channel carries when it isn't one mic.
  */
-import type { FamilyCode } from '../../../lib/protocol'
+import type { FamilyCode } from '../../../lib/protocol/app'
 import type { MeterState } from '../../../lib/ui/types'
 
 export interface MicMeter {

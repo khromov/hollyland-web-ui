@@ -1,14 +1,16 @@
 /**
- * Driver registry (docs/FAMILIES.md §3.2): one FamilyDriver per family code, imported statically
- * from every family folder, so this file and index.ts never change when a family lands.
+ * Static driver registry (docs/FAMILIES.md §3.2): one FamilyDriver per family code, imported statically
+ * from every family folder, so this file and index.ts never change when a family lands. Every driver
+ * comes with its simulator and `?mock=` presets: this is the registry of tests, Node scripts and the dev
+ * server. The app opens devices through core/loader.ts instead (openMicDevice), which fetches a
+ * family's code with import() and carries no simulator; canConnect / unsupportedReason / allProducts /
+ * productsOf live there (they need no driver code) and are re-exported here.
  *
  *   const dev = createMicDevice(transport)            // picks the driver by VID/PID
  *   const { device } = createMockDevice('a2')          // dev presets (?mock=a2)
  */
-import { UnsupportedError } from '../device'
-import {
-  ALL_PRODUCTS, displayName, familyCodeOf, isConnectableProduct, resolveProduct, supportOf, type ProductInfo,
-} from '../models'
+import { UnsupportedError } from '../device-errors'
+import { familyCodeOf, resolveProduct, type ProductInfo } from '../models'
 import type { MockTransport } from '../mock'
 import type { Transport } from '../transport'
 import { driver as a1Driver } from '../families/6108'
@@ -17,8 +19,11 @@ import { driver as m3Driver } from '../families/6303'
 import { driver as max2Driver } from '../families/6701'
 import { LEGACY_DRIVERS } from '../families/legacy/driver'
 import type { FamilyCode } from './ids'
+import { unsupportedReason } from './loader'
 import { simulatedTransport } from './simulate'
 import type { DeviceSimulator, FamilyDriver, MicDevice, MicDeviceOptions, MockPreset, SimOptions } from './types'
+
+export { allProducts, canConnect, productsOf, unsupportedReason } from './loader'
 
 /** Every family driver by code. Legacy codes map to LegacyMicDevice drivers. */
 export const DRIVERS: Readonly<Record<FamilyCode, FamilyDriver>> = {
@@ -39,23 +44,10 @@ export function driverFor(product: ProductInfo): FamilyDriver | undefined {
   return code ? DRIVERS[code] : undefined
 }
 
-/** Whether a session can be opened: connectable row and a driver past the stub. */
-export function canConnect(product: ProductInfo): boolean {
-  const d = driverFor(product)
-  return !!d && d.status !== 'stub' && isConnectableProduct(product)
-}
-
-/** Why `canConnect` is false, for UI copy; null when it is true. */
-export function unsupportedReason(product: ProductInfo): string | null {
-  if (canConnect(product)) return null
-  const d = driverFor(product)
-  if (!d) return `${displayName(product)} is not a product this app knows`
-  return `${displayName(product)} is recognised but not supported yet (${supportOf(product).research})`
-}
-
 /**
  * The MicDevice for a transport: LegacyMicDevice for the `AA DD` families, the family's
  * FamilyDevice otherwise. Throws UnsupportedError for unknown, stub and recognised-only products.
+ * Synchronous twin of core/loader.ts openMicDevice (which the app uses).
  */
 export function createMicDevice(transport: Transport, o: MicDeviceOptions = {}): MicDevice {
   const info = transport.info
@@ -63,16 +55,6 @@ export function createMicDevice(transport: Transport, o: MicDeviceOptions = {}):
   const reason = unsupportedReason(product)
   if (reason) throw new UnsupportedError(reason)
   return driverFor(product)!.createDevice(transport, product, o)
-}
-
-/** Every product row (USB and app/BLE). */
-export function allProducts(): readonly ProductInfo[] {
-  return ALL_PRODUCTS
-}
-
-/** Rows of one family. */
-export function productsOf(code: FamilyCode): ProductInfo[] {
-  return ALL_PRODUCTS.filter((p) => familyCodeOf(p) === code)
 }
 
 /** Dev presets of every driver that can simulate (`?mock=<id>`). */

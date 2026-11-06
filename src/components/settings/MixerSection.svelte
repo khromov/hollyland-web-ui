@@ -13,7 +13,7 @@
   import MeterWindow from '../../lib/ui/MeterWindow.svelte'
   import ConfidenceNote from '../../lib/ui/ConfidenceNote.svelte'
   import { DB_FLOOR } from '../../lib/audio/levels'
-  import { controlKey, melo, type ControlSpec, type UnitId } from '../../lib/protocol'
+  import { controlKey, melo, type ControlSpec, type UnitId } from '../../lib/protocol/app'
   import { session } from '../../lib/state/session.svelte'
   import { micNames } from '../overview/family/names.svelte'
   import RangeSlider from './RangeSlider.svelte'

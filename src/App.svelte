@@ -18,7 +18,7 @@
   import { session, type ExtraPage } from './lib/state/session.svelte'
   import { router, type Route } from './lib/state/router.svelte'
   import { prefs } from './lib/state/prefs.svelte'
-  import { BridgeError, BridgeTransport, bridgeStartSentence, isWebHidSupported, pageContext, resolveBridgeUrl } from './lib/protocol'
+  import { BridgeError, BridgeTransport, bridgeStartSentence, isWebHidSupported, pageContext, resolveBridgeUrl } from './lib/protocol/app'
   import { link } from './components/shell/link.svelte'
   import { theme } from './components/shell/theme.svelte'
 

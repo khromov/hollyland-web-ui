@@ -12,6 +12,8 @@
  *   sim.ts            simulator (2 / 4-mic firmware, 17 / 22 / 23-byte heartbeats, ack codes, stale-reply fault)
  *   hardware-check.ts first-contact steps (§5.7), the LED write last
  *   driver.ts         createA1Driver() (the registered driver), mock presets, createA1WireDriver() (read-only)
+ *   runtime.ts        createA1Runtime() / A1_RUNTIME: the driver without the simulator (what the app loads, core/loader.ts)
+ *   ids.ts            control ids and the mic-slot rule the app uses without loading the driver
  *   transports/webhid-feature.ts  WebHidFeatureTransport (SET_REPORT + GET_REPORT on feature report 5)
  *
  * Status: experimental, hardware 'untested' (no A1 has been on the bench). Destructive and OTA ids (the 2↔4-mic
@@ -30,5 +32,6 @@ export * from './session'
 export * from './sim'
 export * from './hardware-check'
 export * from './driver'
+export * from './runtime'
 
 export const driver: FamilyDriver = /* @__PURE__ */ createA1Driver()

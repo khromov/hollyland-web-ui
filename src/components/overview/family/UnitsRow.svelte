@@ -6,7 +6,7 @@
    *  - charging case, earphones (L / R, only while one is connected), remote
    * Status exists only when replies arrive: nothing is drawn on a write-only link.
    */
-  import type { MicUnit, UnitId } from '../../../lib/protocol'
+  import type { MicUnit, UnitId } from '../../../lib/protocol/app'
   import BatteryCells from '../../../lib/ui/BatteryCells.svelte'
   import Lamp from '../../../lib/ui/Lamp.svelte'
   import Tag from '../../../lib/ui/Tag.svelte'

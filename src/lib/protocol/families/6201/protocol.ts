@@ -22,7 +22,7 @@
  *  - gates:     RX >= 3.0.7.9 per-mic gain, < 3.0.7.9 shared Near / Mid / Far; >= 4.0.0.1 V2 structures, noise
  *               gate hidden (commands.ts MELO_GATE).
  */
-import { UnsupportedError } from '../../device'
+import { UnsupportedError } from '../../device-errors'
 import { compareVersions, controlKey, versionGate } from '../../core/controls'
 import { ControlUnavailableError } from '../../core/errors'
 import type {

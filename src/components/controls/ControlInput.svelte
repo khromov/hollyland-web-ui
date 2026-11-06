@@ -13,7 +13,7 @@
    * one-sentence dialog first.
    */
   import { RotateCcw } from '@lucide/svelte'
-  import type { ControlSpec, ControlValue, UnitId } from '../../lib/protocol'
+  import type { ControlSpec, ControlValue, UnitId } from '../../lib/protocol/app'
   import { session, type ConfirmInfo } from '../../lib/state/session.svelte'
   import { audio } from '../../lib/state/audio.svelte'
   import KeyGroup from '../../lib/ui/KeyGroup.svelte'

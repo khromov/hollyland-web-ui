@@ -12,7 +12,7 @@
   import Dialog from '../../lib/ui/Dialog.svelte'
   import Button from '../../lib/ui/Button.svelte'
   import { uid } from '../../lib/ui/field'
-  import { max2 } from '../../lib/protocol'
+  import { max2 } from '../../lib/protocol/app'
   import { session, type ConfirmInfo } from '../../lib/state/session.svelte'
   import ControlModule from './ControlModule.svelte'
   import { sectionColumns } from './controls'

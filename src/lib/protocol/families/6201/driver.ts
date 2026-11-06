@@ -3,32 +3,18 @@
  * 'untested' (destructive and OTA commands refused by the engine, disruptive controls need a per-call confirm).
  *
  * Registered since Phase 3 (W9): index.ts exports MELO_DRIVER as the family's `driver`, and the receiver rows in
- * products.ts carry MELO_EXPERIMENTAL_SUPPORT.
+ * products.ts carry MELO_EXPERIMENTAL_SUPPORT. runtime.ts is the same driver without the simulator (what the app loads).
  *
  *   const d = createMeloDriver()
  *   const t = await WebBluetoothTransport.request()                 // MELO P1 RX: FFE0 / FFE1 / FFE2
  *   const mic = d.createDevice(t!, d.products[0]) as MeloDevice     // BLE profile picked from the transport
  */
-import { UnsupportedError } from '../../device'
-import { momaCommandOfFrame } from '../../moma/spec'
-import { MOMA_6201_BLE, MOMA_6201_IOS, MOMA_6201_USB } from '../../moma/profiles'
-import { displayName, type ProductInfo } from '../../models'
 import type { FamilyDriver, MockPreset } from '../../core/types'
-import { MELO_COMMANDS } from './commands'
-import { MELO_CONTROLS } from './controls'
-import { createMeloDevice } from './device'
-import { MELO_HARDWARE_CHECK } from './hardware-check'
-import { MELO_RESEARCH, MELO_RX_PRODUCT_IDS, meloExperimentalProducts } from './products'
+import type { ProductInfo } from '../../models'
+import { createMeloRuntime } from './runtime'
 import { MeloSimulator } from './sim'
 
-/** Command id of a MELO P1 request frame in any of the three framings (USB, BLE, iOS), or null. */
-export function meloCommandOfFrame(frame: Uint8Array): number | null {
-  for (const p of [MOMA_6201_USB, MOMA_6201_BLE, MOMA_6201_IOS]) {
-    const c = momaCommandOfFrame(p, frame, MELO_COMMANDS)
-    if (c !== null) return c
-  }
-  return null
-}
+export { meloCommandOfFrame } from './runtime'
 
 /**
  * Dev presets (`?mock=<id>` once registered). The default simulator is current firmware (4.0.1.2: V2 structures,
@@ -42,29 +28,8 @@ export const MELO_MOCK_PRESETS: readonly MockPreset[] = [
   { id: 'melo-sub', label: 'MELO P1 second-phone port (simulated)', family: '6201', productId: 1033 },
 ]
 
-function isReceiver(p: ProductInfo): boolean {
-  return MELO_RX_PRODUCT_IDS.includes(p.productId) && p.vendorId !== 0
-}
-
 export function createMeloDriver(o: { products?: readonly ProductInfo[] } = {}): FamilyDriver {
-  const products = o.products ?? meloExperimentalProducts()
-  return {
-    code: '6201',
-    name: 'MELO P1',
-    status: 'experimental',
-    products,
-    commands: MELO_COMMANDS,
-    controls: MELO_CONTROLS,
-    research: MELO_RESEARCH,
-    createDevice: (transport, product, opts) => {
-      if (!isReceiver(product)) throw new UnsupportedError(`${displayName(product)} is recognised but not supported yet: the official app only updates its firmware`)
-      return createMeloDevice(transport, product, opts)
-    },
-    createSimulator: (product, sim) => new MeloSimulator(product, sim),
-    commandOfFrame: meloCommandOfFrame,
-    mockPresets: MELO_MOCK_PRESETS,
-    hardwareCheck: MELO_HARDWARE_CHECK,
-  }
+  return { ...createMeloRuntime(o), createSimulator: (product, sim) => new MeloSimulator(product, sim), mockPresets: MELO_MOCK_PRESETS }
 }
 
 /** The Phase 2 driver instance (tests, Phase 3 integration). */

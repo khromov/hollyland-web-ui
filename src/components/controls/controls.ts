@@ -20,7 +20,7 @@ import {
   type MicState,
   type ProductInfo,
   type UnitId,
-} from '../../lib/protocol'
+} from '../../lib/protocol/app'
 import type { KeyOption } from '../../lib/ui/types'
 import { displayLabel } from '../../lib/state/labels'
 

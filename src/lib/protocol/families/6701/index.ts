@@ -8,6 +8,8 @@
  *   session.ts         ProtocolSpec for both links (probe, 3 s poll, start-up reads, correlation, writes) + createMax2Device
  *   sim.ts             simulator: USB poll mode and BLE push mode with MTU-sized notification chunks
  *   driver.ts          createMax2Driver(): the 'experimental' FamilyDriver, mock presets
+ *   runtime.ts         createMax2Runtime() / MAX2_RUNTIME: the driver without the simulator (what the app loads)
+ *   ids.ts             control / value ids, enums and per-product rules the app uses without loading the driver
  *   hardware-check.ts  first-contact steps (FAMILIES.md §5.7)
  *
  * Registered since Phase 3 (W9): `driver` is createMax2Driver() on the registry rows (rows 1026 / 1027 / 101
@@ -24,6 +26,7 @@ export * from './controls'
 export * from './session'
 export * from './sim'
 export * from './driver'
+export * from './runtime'
 export * from './hardware-check'
 
 export const driver: FamilyDriver = /* @__PURE__ */ createMax2Driver({ products: [...MAX2_PRODUCTS, ...MAX2_APP_PRODUCTS] })

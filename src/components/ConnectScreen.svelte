@@ -16,7 +16,7 @@
   import Disclosure from './connect/Disclosure.svelte'
   import CodeWindow from './connect/CodeWindow.svelte'
   import { bluetoothProductsLine, connectableModels, modelsLine } from './connect/models'
-  import { REPO_URL, bridgeStartHelp, pageContext } from '../lib/protocol'
+  import { REPO_URL, bridgeStartHelp, pageContext } from '../lib/protocol/app'
   import { session } from '../lib/state/session.svelte'
   import { reconnectUsb } from '../lib/state/links'
   import { DISCLAIMER, platform } from './shell/link.svelte'

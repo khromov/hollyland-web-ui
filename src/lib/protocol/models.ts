@@ -13,7 +13,8 @@
  * for every row here. Rows of FamilyDriver families live in families/<code>/products.ts and are
  * aggregated below (import rule: those files import types only from this module).
  */
-import { LARK_C1_VOLUME_WIRE, isNewerVersionAndroid, isNewerVersionIos, isVersionMissing, lastVersionComponent, type Family } from './commands'
+import type { Family } from './commands'
+import { LARK_C1_VOLUME_WIRE, isNewerVersionAndroid, isNewerVersionIos, isVersionMissing, lastVersionComponent } from './versions'
 import {
   EAGLESHERO_VENDOR_ID, FAMILY_RESEARCH, HOLLYLAND_VENDOR_ID, KNOWN_VENDOR_IDS, isLegacyFamilyCode,
   type FamilyCode, type UnitId,

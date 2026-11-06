@@ -314,7 +314,12 @@ export interface HardwareCheckStep {
   run?: (device: MicDevice) => Promise<HardwareCheckResult>
 }
 
-export interface FamilyDriver {
+/**
+ * What a connected session needs from a family: a FamilyDriver without its simulator and dev presets. The app loads
+ * one per family with import() (core/loader.ts `loadDriver`), so the production build carries no simulator code; the
+ * full FamilyDriver (core/registry.ts DRIVERS) serves tests, Node scripts and the dev server's `?mock=` presets.
+ */
+export interface FamilyRuntime {
   readonly code: FamilyCode
   /** Family display name, e.g. "LARK A1". */
   readonly name: string
@@ -328,11 +333,14 @@ export interface FamilyDriver {
   readonly controls: readonly ControlSpec[]
   readonly research: string
   createDevice(transport: Transport, product: ProductInfo, o?: MicDeviceOptions): MicDevice
-  createSimulator(product: ProductInfo, o?: SimOptions): DeviceSimulator
   /** Command id of an encoded request frame, or null (used by tests and the console). */
   commandOfFrame(frame: Uint8Array): number | null
-  readonly mockPresets: readonly MockPreset[]
   readonly hardwareCheck: readonly HardwareCheckStep[]
+}
+
+export interface FamilyDriver extends FamilyRuntime {
+  createSimulator(product: ProductInfo, o?: SimOptions): DeviceSimulator
+  readonly mockPresets: readonly MockPreset[]
 }
 
 // ----------------------------------------------------------------------------- engine contract

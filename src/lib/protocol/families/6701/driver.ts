@@ -1,6 +1,7 @@
 /**
  * The LARK MAX 2 FamilyDriver (W7): BLE charging case first, then the USB RX, on the shared Moma codec and the
- * generic engine. Registered since Phase 3 (W9): index.ts exports `createMax2Driver()` on the registry rows as `driver`.
+ * generic engine. Registered since Phase 3 (W9): index.ts exports `createMax2Driver()` on the registry rows as `driver`;
+ * runtime.ts is the same driver without the simulator (what the app loads).
  *
  *   const d = createMax2Driver()
  *   const t = await WebBluetoothTransport.request({ products: d.products })      // BOX 101
@@ -8,24 +9,10 @@
  */
 import { CONTROL } from '../../core/controls'
 import type { FamilyDriver, MockPreset } from '../../core/types'
-import type { ProductInfo } from '../../models'
-import { MOMA_6701_USB } from '../../moma/profiles'
-import { parseMomaRequest } from '../../moma/spec'
-import { MAX2_COMMANDS, max2CommandOf } from './commands'
-import { MAX2_CONTROLS } from './controls'
-import { MAX2_HARDWARE_CHECK } from './hardware-check'
-import { max2ExperimentalProducts, MAX2_RESEARCH } from './products'
-import { createMax2Device, type Max2SpecOptions } from './session'
+import { createMax2Runtime, type Max2DriverOptions } from './runtime'
 import { Max2Simulator } from './sim'
 
-/**
- * Catalogue key of an encoded request frame (FamilyDriver.commandOfFrame): every MAX 2 frame (USB targets 0/1/2,
- * BLE targets 2..11) has the same control byte 0x07 and no report id, so one profile parses them all.
- */
-export function max2CommandOfFrame(frame: Uint8Array): number | null {
-  const req = parseMomaRequest(MOMA_6701_USB, frame)
-  return req ? max2CommandOf(req) : null
-}
+export { max2CommandOfFrame, type Max2DriverOptions } from './runtime'
 
 /** `?mock=<id>` presets (FAMILIES.md §4.3). Ids are unique across drivers. */
 export const MAX2_MOCK_PRESETS: readonly MockPreset[] = [
@@ -46,27 +33,8 @@ export const MAX2_MOCK_PRESETS: readonly MockPreset[] = [
   { id: 'max2box-mtu185', label: 'LARK MAX 2 charging case (Web Bluetooth, MTU 185, simulated)', family: '6701', productId: 101, sim: { params: { mtu: 185 } } },
 ]
 
-export interface Max2DriverOptions extends Max2SpecOptions {
-  products?: readonly ProductInfo[]
-}
-
 export function createMax2Driver(o: Max2DriverOptions = {}): FamilyDriver {
-  const { products: rows, ...spec } = o
-  const products = rows ?? max2ExperimentalProducts()
-  return {
-    code: '6701',
-    name: 'LARK MAX 2',
-    status: 'experimental',
-    products,
-    commands: MAX2_COMMANDS,
-    controls: MAX2_CONTROLS,
-    research: MAX2_RESEARCH,
-    createDevice: (transport, product, opts) => createMax2Device(transport, product, opts, spec),
-    createSimulator: (product, sim) => new Max2Simulator(product, sim),
-    commandOfFrame: max2CommandOfFrame,
-    mockPresets: MAX2_MOCK_PRESETS,
-    hardwareCheck: MAX2_HARDWARE_CHECK,
-  }
+  return { ...createMax2Runtime(o), createSimulator: (product, sim) => new Max2Simulator(product, sim), mockPresets: MAX2_MOCK_PRESETS }
 }
 
 /** Canonical ids the MAX 2 shares with other families (for the UI's bespoke modules). */

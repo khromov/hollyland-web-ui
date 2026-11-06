@@ -3,7 +3,7 @@
  * "W0 creates the four folders with a stub driver (status: 'stub', products only)"). It names
  * the products and refuses to create devices or simulators.
  */
-import { UnsupportedError } from '../device'
+import { UnsupportedError } from '../device-errors'
 import { displayName, type ProductInfo } from '../models'
 import type { FamilyCode } from './ids'
 import type { FamilyDriver, HardwareCheckStep } from './types'

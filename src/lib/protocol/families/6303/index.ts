@@ -11,6 +11,8 @@
  *   sim.ts            simulator: multi-RX topology, primary / secondary, 4T4R / 2T2R, isRefreshCanto, BT events
  *   hardware-check.ts first-contact steps (§5.7)
  *   driver.ts         createM3Driver(): the Phase 2 'experimental' driver, mock presets
+ *   runtime.ts        createM3Runtime() / M3_RUNTIME: the driver without the simulator (what the app loads)
+ *   ids.ts            restart text and the M3Device check the app uses without loading the driver
  *
  * Registered since Phase 3 (W9): `driver` is createM3Driver() on the registry rows (M3_EXPERIMENTAL_SUPPORT in
  * products.ts: 'experimental', hardware 'untested', so destructive and OTA commands stay refused by the engine).
@@ -27,5 +29,6 @@ export * from './session'
 export * from './sim'
 export * from './hardware-check'
 export * from './driver'
+export * from './runtime'
 
 export const driver: FamilyDriver = /* @__PURE__ */ createM3Driver({ products: M3_PRODUCTS })

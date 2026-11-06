@@ -324,6 +324,9 @@ Every family below except the A2 is **untested on hardware**: destructive and OT
 ```
 src/lib/protocol/
   index.ts                 public exports (W0 adds core/, transports/, moma/, registry, family namespaces)
+  app.ts                   what the app imports: index.ts minus every module with driver code (main chunk)
+  device-errors.ts         error classes without the command catalogue (re-exported by device.ts)
+  versions.ts              firmware version rules, Lark C1 volume map (re-exported by commands.ts)
   transport.ts             Transport contract (generalized, §3.4)                         [W0]
   emitter.ts               unchanged
   codec.ts                 legacy codec, unchanged
@@ -342,11 +345,16 @@ src/lib/protocol/
     controls.ts            ControlSpec helpers, value validation, availability             [W0]
     registry.ts            DRIVERS (static imports of every family index.ts), driverFor(),
                            createMicDevice(), mockPresets()                                 [W0]
+    loader.ts              the app's lazy registry: openMicDevice(), loadDriver() (one import() per
+                           family), canConnect(), DRIVER_STATUS
+    control-errors.ts      ControlUnavailableError, ControlValueError (re-exported by errors.ts)
     conformance.ts         describeDriverConformance(driver): shared vitest suite           [W0]
   transports/
     fake-hid.ts            navigator.hid / HIDDevice test double (input, output, feature)  [W0]
     webhid-feature.ts      WebHidFeatureTransport (A1)                                     [W3]
+    feature-links.ts       feature-report link helpers and chooser filters (A1)
     web-bluetooth.ts       WebBluetoothTransport (generic GATT)                            [W4]
+    ble-links.ts           Web Bluetooth link helpers, requestDevice() options, requestBleDevice()
     fake-bluetooth.ts      navigator.bluetooth test double                                 [W4]
   moma/
     codec.ts               envelope encode/decode, MomaAssembler                           [W2]
@@ -364,6 +372,15 @@ src/lib/protocol/
 Each `families/<code>/index.ts` exports exactly one `driver: FamilyDriver` (plus family-specific helpers). W0 creates
 the four folders with a stub driver (`status: 'stub'`, products only), so the registry and `index.ts` never change
 again; family agents replace the stub content inside their own folder.
+
+Code splitting (app build). Every family folder also has `runtime.ts` (its driver without the simulator and `?mock=`
+presets: a `FamilyRuntime`) and `ids.ts` (the control ids and checks the UI needs before a product is opened);
+`legacy/runtime.ts` serves the four `AA DD` families. The app imports `app.ts`, never `index.ts`, and opens devices with
+`openMicDevice()` (core/loader.ts), which fetches the family's `runtime.ts` with import(): each family is its own chunk,
+loaded when a product of that family is opened (the legacy one is also prefetched when the page is idle and when a
+connect starts), and no simulator ships. The rows, links, support data and chooser filters stay in the main chunk, so
+`requestDevice()` still runs inside the click. `src/lib/protocol/__tests__/app-entry.test.ts` fails when the app reaches
+driver code statically. Tests, Node scripts and the dev server's `?mock=` presets keep the static registry.
 
 ### 3.3 Core contracts (sketch for W0)
 

@@ -3,7 +3,7 @@
  * §3.3) and one-sentence confirmations for restart / reset / destructive controls. Copy rule:
  * a few words, shown only while blocked; no protocol jargon, no model-specific claims.
  */
-import type { ControlAvailability, ControlSpec } from '../protocol'
+import type { ControlAvailability, ControlSpec } from '../protocol/app'
 
 /** Reason code → a few words. Unknown codes fall back to "Unavailable". */
 export const REASON_TEXT: Readonly<Record<string, string>> = {

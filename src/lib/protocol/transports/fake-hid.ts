@@ -32,11 +32,14 @@ export interface FakeHidDeviceOptions {
 }
 
 /** A report declaration of `bytes` data bytes (8-bit items), for building fake collections. */
+// The annotation lets bundlers drop the unused collection constants below (no app chunk needs these fakes).
+/* @__NO_SIDE_EFFECTS__ */
 export function declaredReport(reportId: number, bytes: number): HIDReportInfo {
   return { reportId, items: [{ reportSize: 8, reportCount: bytes, usages: [0xff000001] }] }
 }
 
 /** Vendor collection helper. */
+/* @__NO_SIDE_EFFECTS__ */
 export function vendorCollection(
   usagePage: number,
   o: { input?: HIDReportInfo[]; output?: HIDReportInfo[]; feature?: HIDReportInfo[]; usage?: number } = {},

@@ -11,7 +11,7 @@
  * (src/components/<page>/<Page>Page.svelte, see App.svelte), which render the Settings section
  * components (TimecodeSection, MonitoringSection, MixerSection).
  */
-import type { ControlId, ControlSpec, FamilyCode } from '../../lib/protocol'
+import type { ControlId, ControlSpec, FamilyCode } from '../../lib/protocol/app'
 import { pageOf, type ControlPage } from '../controls/controls'
 
 /** One module: a control, optionally with sub-controls drawn inside it. */

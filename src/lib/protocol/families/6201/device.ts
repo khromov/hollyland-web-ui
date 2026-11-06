@@ -13,7 +13,7 @@
  * C6201VuSubscriptionCoordinator keeps its owners across pages. MELO P1 meters work without microphone
  * permission, unlike the app-side meters of the other families (FAMILIES.md §4.1).
  */
-import { DisconnectedError } from '../../device'
+import { DisconnectedError } from '../../device-errors'
 import { FamilyDevice } from '../../core/engine'
 import type { MicDeviceOptions, MicState } from '../../core/types'
 import type { ProductInfo } from '../../models'
@@ -23,6 +23,8 @@ import type { Transport } from '../../transport'
 import { MELO_COMMANDS } from './commands'
 import { createMeloSpec, MeloSession, meloStructure, startMeloLevels, stopMeloLevels, type MeloLevelListener } from './protocol'
 import type { MeloLevels } from './status'
+
+export { hasMeloLevels } from './ids'
 
 export interface MeloDeviceOptions extends MicDeviceOptions {
   /** Default: 'ble' on a Web Bluetooth transport (kind 'web-bluetooth' or capabilities.link 'gatt'), else 'usb'. */
@@ -131,9 +133,4 @@ export class MeloDevice extends FamilyDevice<MomaRequest, MomaMessage> {
 
 export function createMeloDevice(transport: Transport, product: ProductInfo, o: MeloDeviceOptions = {}): MeloDevice {
   return new MeloDevice(transport, product, o)
-}
-
-/** Whether a MicDevice carries the MELO P1 level stream (for UI code that only holds a MicDevice). */
-export function hasMeloLevels(d: unknown): d is MeloDevice {
-  return d instanceof MeloDevice
 }

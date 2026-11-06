@@ -20,6 +20,8 @@ import type { CommandCatalogue, CommandSpec, Safety } from '../../core/types'
 import { decodeMomaFrame, type MomaItemInput } from '../../moma/codec'
 import { momaBatch, momaRequest, type MomaRequest } from '../../moma/spec'
 
+export { MAX2_TC_MODE, MAX2_TIMING } from './ids'
+
 // ------------------------------------------------------------------------------------- wire ids
 
 /** A blemic/operation/BleMicCommUtil CMD_APP_* / CMD_UAC_* (max2-6701.md §5). */
@@ -135,10 +137,6 @@ export const MAX2_NC_DEPTH_MAX = 20
 export const MAX2_NC_DEPTH_OFFSET_DB = 5
 /** A DeviceConnectVariable.VocalTractType: MONO 0, STEREO 1, AudioTrack (safety track) 2. */
 export const MAX2_CHANNEL = { MONO: 0, STEREO: 1, SAFETY: 2 } as const
-/** A DeviceConnectVariable.TcMode MODE_ONE 0, MODE_TWO 1, MODE_THREE 2. */
-export const MAX2_TC_MODE = { MODE_1: 0, MODE_2: 1, MODE_3: 2 } as const
-/** A DeviceConnectVariable.TimingMode FROM_ZERO 0, REAL_TIME 1, RESET 2. */
-export const MAX2_TIMING = { FROM_ZERO: 0, REAL_TIME: 1, RESET: 2 } as const
 /** A DeviceConnectVariable.InputFps FPS_23 0 … FPS_60 8; labels from R layout/activity_time_code.xml tv_fps_*. */
 export const MAX2_FPS_LABELS: readonly string[] = ['23.98', '24', '25', '29.97', '29.97 DF', '30', '30 DF', '50', '60']
 /** A DeviceConnectVariable.EarConnectStatus NOT_CONNECTED 0, LEFT 1, RIGHT 2, ALL 3. */

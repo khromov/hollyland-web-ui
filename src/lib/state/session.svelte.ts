@@ -1,9 +1,10 @@
 /**
  * Session store: the single binding between the UI and the connected product.
  *
- * The device is a MicDevice (core/registry.ts createMicDevice): LegacyMicDevice over HollylandDevice
- * for LARK A2 / A2S, Lark M2, LARK M2S and the 6501 group, or a family driver's FamilyDevice for the
- * LARK A1, LARK M3, LARK MAX 2 and MELO P1 (docs/FAMILIES.md §3). Two APIs sit on top:
+ * The device is a MicDevice (core/loader.ts openMicDevice, which fetches the family's driver chunk):
+ * LegacyMicDevice over HollylandDevice for LARK A2 / A2S, Lark M2, LARK M2S and the 6501 group, or a
+ * family driver's FamilyDevice for the LARK A1, LARK M3, LARK MAX 2 and MELO P1 (docs/FAMILIES.md §3).
+ * Two APIs sit on top:
  *
  *  - The legacy API (`state`, `device`, `caps`, `settings`, `units`, `gate()`, `blockReason()`,
  *    `write()` and the typed setters, the speaker-passthrough restart flow, custom buttons, pairing,
@@ -28,23 +29,21 @@ import {
   ControlValueError,
   DestructiveCommandError,
   DisconnectedError,
-  HollylandDevice,
-  LegacyMicDevice,
   RxUnavailableError,
   TimeoutError,
   UnsupportedError,
-  WebBluetoothTransport,
   a1,
   controlById,
   controlKey,
-  createMicDevice,
   displayName,
-  driverFor,
-  findMockPreset,
+  familyCodeOf,
+  isLegacyMicDevice,
+  loadDriver,
+  loadedDriverFor,
   m3,
   max2,
   melo,
-  simulatedTransport,
+  openMicDevice,
   supportOf,
   Target,
   type Capabilities,
@@ -57,6 +56,7 @@ import {
   type FamilyCode,
   type FeatureGateState,
   type GatedFeature,
+  type HollylandDevice,
   type MicDevice,
   type MicState,
   type MicTrafficEntry,
@@ -67,7 +67,8 @@ import {
   type SupportInfo,
   type Transport,
   type UnitId,
-} from '../protocol'
+  type WebBluetoothTransport,
+} from '../protocol/app'
 import { traffic } from './traffic.svelte'
 import { toasts } from '../ui/toast.svelte'
 import type { Confidence } from '../ui/types'
@@ -76,6 +77,7 @@ import {
   grantedUsbDevices,
   hidTransportFor,
   onUsbDeviceConnect,
+  productsFor,
   reconnectBluetooth,
   reconnectUsb,
   requestBluetooth,
@@ -217,6 +219,24 @@ function isOpened(r: Opened): r is { transport: Transport; kind?: string; produc
   return typeof (r as Transport).send !== 'function' && !!(r as { transport?: Transport }).transport
 }
 
+/**
+ * Fetch the driver chunks a connect of this kind most likely needs while the chooser is up, so opening the
+ * receiver does not wait for them: the legacy families (A2, M2, C1 group) for USB and the bridge, the MAX 2
+ * case and MELO P1 for Bluetooth. Other families load on demand in attach().
+ */
+function warmDrivers(kind: string): void {
+  if (kind === 'mock') return
+  const codes = new Set<FamilyCode>(['6118'])
+  if (kind === 'web-bluetooth') {
+    codes.clear()
+    for (const p of productsFor('bluetooth')) {
+      const c = familyCodeOf(p)
+      if (c) codes.add(c)
+    }
+  }
+  for (const c of codes) void loadDriver(c).catch(() => undefined)
+}
+
 class Session {
   phase: Phase = $state(connectPaths().usb || connectPaths().bluetooth ? 'idle' : 'unsupported')
   step: string | null = $state(null)
@@ -306,6 +326,12 @@ class Session {
       }
       void this.refreshKnown()
     })
+    // The legacy driver (A2, M2, C1 group: most receivers) is not in the main chunk; fetch it once the page is
+    // idle, so a connect without a chooser (Reconnect, replug) never waits for it either.
+    const idle = (globalThis as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback
+    const prefetch = () => void loadDriver('6118').catch(() => undefined)
+    if (idle) idle(prefetch, { timeout: 5000 })
+    else setTimeout(prefetch, 2000)
   }
 
   // ------------------------------------------------------------------ derived getters
@@ -326,7 +352,7 @@ class Session {
    * pages apply. Stays put while the link is lost or the receiver restarts.
    */
   get isLegacy(): boolean {
-    return this.shown instanceof LegacyMicDevice
+    return isLegacyMicDevice(this.shown)
   }
   get product(): ProductInfo | null {
     return this.micState?.product ?? this.state?.product ?? null
@@ -575,10 +601,10 @@ class Session {
     if (spec.safety === 'disruptive') return confirmInfo(spec, disruptiveKind(spec))
     // Legacy speaker passthrough: setControl() runs the official flow, which restarts the receiver.
     if (this.dev && id === CONTROL.SPEAKER) return confirmInfo(spec, 'restart', 'The receiver restarts.')
-    if (mic instanceof m3.M3Device && id === CONTROL.CHANNEL_MODE && typeof value === 'number' && mic.channelModeNeedsConfirm(value)) {
+    if (m3.isM3Device(mic) && id === CONTROL.CHANNEL_MODE && typeof value === 'number' && mic.channelModeNeedsConfirm(value)) {
       return confirmInfo(spec, 'restart', spec.confirmText ?? m3.M3_RESTART_TEXT)
     }
-    if (mic instanceof max2.Max2Device && id === max2.MAX2_CONTROL.TC_TIMING && typeof value === 'number' && mic.timingNeedsConfirm(value)) {
+    if (max2.isMax2Device(mic) && id === max2.MAX2_CONTROL.TC_TIMING && typeof value === 'number' && mic.timingNeedsConfirm(value)) {
       return confirmInfo(spec, 'reset', max2.MAX2_TC_RESET_TEXT)
     }
     return null
@@ -783,7 +809,10 @@ class Session {
     this.factory = factory
     this.transportKind = kind
     try {
-      const r = await factory()
+      // The factory runs first: a chooser's requestDevice() must stay inside the click's user gesture.
+      const pending = factory()
+      warmDrivers(kind)
+      const r = await pending
       if (!r) {
         this.phase = 'idle'
         this.step = null
@@ -828,14 +857,21 @@ class Session {
     try {
       const info = t.info
       const row = product ?? (info ? resolveUsbProduct(info.vendorId, info.productId) : undefined)
-      const mic = createMicDevice(t, { blindWrites: true, allowDestructive: true, ...(row ? { product: row } : {}) })
+      // Fetches the family's driver chunk the first time (warmDrivers() usually did already).
+      const mic = await openMicDevice(t, { blindWrites: true, allowDestructive: true, ...(row ? { product: row } : {}) })
+      if (epoch !== this.epoch) {
+        // Disconnected while the driver was fetched: nothing holds `t` yet.
+        await t.close().catch(() => {})
+        return
+      }
       const previous = this.product
       this.micDev = mic
       this.lastMic = mic
-      this.dev = mic instanceof LegacyMicDevice ? mic.legacy : null
-      if (t instanceof WebBluetoothTransport) {
-        this.bleDeviceId = t.deviceId
-        this.bleDevice = t.device
+      this.dev = isLegacyMicDevice(mic) ? mic.legacy : null
+      if (t.kind === 'web-bluetooth') {
+        const ble = t as WebBluetoothTransport
+        this.bleDeviceId = ble.deviceId
+        this.bleDevice = ble.device
       }
       if (!previous || previous.productId !== mic.product.productId || previous.vendorId !== mic.product.vendorId) {
         this.checkResults = {}
@@ -969,7 +1005,7 @@ class Session {
     if (!polls || !mic) return false
     if (e.direction === 'tx') {
       if (!e.bytes.length) return false
-      const cmd = driverFor(mic.product)?.commandOfFrame(e.bytes) ?? null
+      const cmd = loadedDriverFor(mic.product)?.commandOfFrame(e.bytes) ?? null
       return cmd !== null && polls.includes(cmd)
     }
     const cmd = (e.message as { cmd?: number } | undefined)?.cmd
@@ -1014,7 +1050,7 @@ class Session {
   private sentControlKey(): string | null {
     const p = this.product
     const mic = this.micDev
-    if (!p || !mic || mic instanceof LegacyMicDevice) return null
+    if (!p || !mic || isLegacyMicDevice(mic)) return null
     return `${SENT_CONTROL_KEY_PREFIX}${mic.family}.${p.productId.toString(16)}`
   }
 
@@ -1295,16 +1331,22 @@ class Session {
   /**
    * DEVELOPMENT ONLY: attach a protocol simulator from the registry's mock presets (`?mock=<id>`,
    * every family: a2, blind, a2s, m2s, m2scam, m2, a1, m3cam4, max2box, melo …; unknown ids fall back
-   * to a2). Not reachable in production builds.
+   * to a2). The static registry and the simulators are imported inside the DEV branch only, so a
+   * production build contains none of them.
    */
   async connectMock(id: string): Promise<void> {
-    if (!import.meta.env.DEV) return
-    const found = findMockPreset(id) ?? findMockPreset('a2')
-    if (!found) return
-    const { driver, preset, product } = found
-    const sim = driver.createSimulator(product, preset.sim)
-    ;(globalThis as Record<string, unknown>).__sim = (sim as { receiver?: unknown }).receiver ?? sim
-    await this.connectWith('mock', async () => ({ transport: simulatedTransport(sim, { latencyMs: 8 }), product }))
+    if (import.meta.env.DEV) {
+      const [{ findMockPreset }, { simulatedTransport }] = await Promise.all([
+        import('../protocol/core/registry'),
+        import('../protocol/core/simulate'),
+      ])
+      const found = findMockPreset(id) ?? findMockPreset('a2')
+      if (!found) return
+      const { driver, preset, product } = found
+      const sim = driver.createSimulator(product, preset.sim)
+      ;(globalThis as Record<string, unknown>).__sim = (sim as { receiver?: unknown }).receiver ?? sim
+      await this.connectWith('mock', async () => ({ transport: simulatedTransport(sim, { latencyMs: 8 }), product }))
+    }
   }
 
   /**
@@ -1327,7 +1369,8 @@ class Session {
   /** First-contact checklist of the product's driver (docs/FAMILIES.md §5.7). */
   get hardwareChecks() {
     const p = this.product
-    return (p && driverFor(p)?.hardwareCheck) || []
+    // The driver is loaded whenever a product is shown: attach() fetched it before creating the device.
+    return (p && loadedDriverFor(p)?.hardwareCheck) || []
   }
 
   /**

@@ -20,7 +20,7 @@
  * it: a SET is answered by a type 2 ack (A `cmdType == 2 → showSetResult`), a GET by type 3 data (or a type 0 push
  * of the same item); 0x600A replies echo the unit in payload[0].
  */
-import { DestructiveCommandError, DisconnectedError, UnsupportedError } from '../../device'
+import { DestructiveCommandError, DisconnectedError, UnsupportedError } from '../../device-errors'
 import { controlById, controlKey, validateControlValue } from '../../core/controls'
 import { FamilyDevice } from '../../core/engine'
 import { ControlUnavailableError } from '../../core/errors'
@@ -36,21 +36,17 @@ import { momaProfileFor, type MomaProfile } from '../../moma/profiles'
 import { createMomaSpecBase, describeMoma, momaRequest, type MomaMessage, type MomaRequest } from '../../moma/spec'
 import { toHex } from '../../codec'
 import {
-  isMax2Read, MAX2_BLE_TARGET, MAX2_CMD, MAX2_COMMANDS, MAX2_GAIN_LEVEL, MAX2_GAIN_TYPE, MAX2_TIMING, max2CommandOf, max2Get, max2GetAll, max2ItemKey,
+  isMax2Read, MAX2_BLE_TARGET, MAX2_CMD, MAX2_COMMANDS, MAX2_GAIN_LEVEL, MAX2_GAIN_TYPE, max2CommandOf, max2Get, max2GetAll, max2ItemKey,
   max2KeyName, max2KeysOf, max2Set, max2SystemTimePayload, max2Version, type Max2VersionUnit,
 } from './commands'
+import { max2Availability, max2BlindAvailability, max2Controls, max2LinkOf, MAX2_MIC_UNITS, type Max2Link } from './controls'
 import {
-  isMax2Box, isMax2Camera, isMax2Mobile, max2Availability, max2BlindAvailability, max2ChannelRefusal, max2Controls, max2LinkOf, MAX2_CONTROL, MAX2_MIC_UNITS, MAX2_TC_RESET_TEXT,
-  MAX2_VALUE, type Max2Link,
-} from './controls'
+  isMax2Box, isMax2Camera, isMax2Mobile, max2ChannelRefusal, MAX2_CONTROL, MAX2_STATUS_VALUE, MAX2_TC_RESET_TEXT, MAX2_TIMING,
+} from './ids'
 import { parseMax2Gain, parseMax2Heartbeat, parseMax2MicPush, parseMax2Noise, parseMax2TcTime, parseMax2Version, type Max2Heartbeat } from './status'
 
-/** Extra values kept in MicState.values (not controls). */
-export const MAX2_STATUS_VALUE = {
-  ...MAX2_VALUE,
-  /** Live timecode [h, m, s, frame] (GET 0x6014) or [min, sec, frame] from the heartbeat (bytes 34..36). */
-  TC_TIME: 'max2.tc.time',
-} as const
+export { isMax2Device, MAX2_STATUS_VALUE } from './ids'
+
 
 export interface Max2SpecOptions {
   /**

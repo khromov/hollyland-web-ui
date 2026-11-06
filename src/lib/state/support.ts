@@ -4,7 +4,7 @@
  * unavailable (private windows, blocked site data): every access is wrapped, and the notice then
  * simply shows again on the next connection.
  */
-import { familyCodeOf, type ProductInfo } from '../protocol'
+import { familyCodeOf, type ProductInfo } from '../protocol/app'
 
 const NOTICE_KEY_PREFIX = 'mc.untestedNotice.'
 

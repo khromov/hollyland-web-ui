@@ -17,14 +17,15 @@ import type { ControlSpec } from '../../core/types'
 import type { ProductInfo } from '../../models'
 import { M3_CAMERA_GAIN_DB, M3_SAMPLING, M3_SOUND_MODE, M3_TX_UNITS } from './commands'
 import { isM3PhoneRx } from './products'
+import { M3_RESTART_TEXT } from './ids'
 import { M3_CONTROL } from './status'
+
+export { M3_RESTART_TEXT } from './ids'
 
 const EQF = 'A larkc1/c6303/ui/equipment/controller/EquipmentFragment'
 const EQVM = 'A larkc1/c6303/viewmodel/EquipmentViewModel.handleUserIntent'
 const MORE = 'A larkc1/c6303/ui/setting/controller/MoreSetting6303Activity'
 const HB = 'heartbeat 0x6000'
-/** "Restart Device" / "This change requires a restart. Continue?" (R restart_device, restart_device_desc). */
-export const M3_RESTART_TEXT = 'This change requires a restart. Continue?'
 
 export const M3_NOISE_LEVELS = [
   { value: 1, label: 'Weak' }, // R noise_level_weak, wire 0

@@ -14,50 +14,22 @@
  *  - RX Pairing Mode: mobile RX 1026, RX ≥ 3.0.0.50 (clRxPair)
  *  - Wireless Monitoring (+ OWS page): mobile RX 1026, 2 Mic & 1 RX mode, RX ≥ 3.0.0.50 (clWirelessMonitor)
  */
-import { CONTROL, controlKey, versionGate } from '../../core/controls'
+import { controlKey, versionGate } from '../../core/controls'
 import type { ControlAvailability, ControlSpec, MicState, UnitId } from '../../core/types'
 import type { ProductInfo } from '../../models'
 import {
-  MAX2_FPS_LABELS, MAX2_GAIN_MAX, MAX2_GAIN_OFFSET_DB, MAX2_NC_DEPTH_MAX, MAX2_NC_DEPTH_OFFSET_DB, MAX2_SPEC_VERSION_USB, MAX2_TC_MODE,
+  MAX2_FPS_LABELS, MAX2_GAIN_MAX, MAX2_GAIN_OFFSET_DB, MAX2_NC_DEPTH_MAX, MAX2_NC_DEPTH_OFFSET_DB, MAX2_SPEC_VERSION_USB,
 } from './commands'
+import { MAX2_CONTROL, MAX2_TC_RESET_TEXT, isMax2Mobile } from './ids'
 
-/** Family-scoped control ids (canonical ids from core/controls.ts CONTROL where the meaning matches). */
-export const MAX2_CONTROL = {
-  SPEAKER: CONTROL.SPEAKER,
-  BIT_DEPTH: 'max2.bitDepth',
-  USB_OUTPUT: 'max2.usbOutput',
-  MIC_LOCK: 'max2.micLock',
-  NOISE_ENABLED: CONTROL.NOISE_ENABLED,
-  NOISE_DEPTH: 'max2.nc.depth',
-  GAIN_TYPE: 'max2.gain.type',
-  GAIN_DYNAMIC: 'max2.gain.dynamic',
-  MIC_GAIN: CONTROL.MIC_GAIN,
-  CHANNEL_MODE: CONTROL.CHANNEL_MODE,
-  TC_ENABLED: 'max2.tc.enabled',
-  TC_MODE: 'max2.tc.mode',
-  TC_FPS: 'max2.tc.fps',
-  TC_TIMING: 'max2.tc.timing',
-  MIC_RECOGNITION: CONTROL.MIC_RECOGNITION,
-  FOUR_MIC: 'max2.fourMic',
-  RX_PAIR: 'max2.rxPair',
-  WIRELESS: 'max2.wireless',
-  OWS_MONITOR: 'max2.ows.monitor',
-  OWS_VOLUME: 'max2.ows.volume',
-  OWS_PAIR: 'max2.ows.startPairing',
-} as const
-
-/** Values that are not controls (status the UI shows), kept in MicState.values. */
-export const MAX2_VALUE = {
-  /** OWS earphones paired (GET 0x6017: 0 = unpaired, else paired). */
-  OWS_PAIRED: 'max2.ows.paired',
-} as const
+export {
+  MAX2_CONTROL, MAX2_TC_RESET_TEXT, MAX2_VALUE, isMax2Box, isMax2Camera, isMax2Mobile, max2ChannelRefusal,
+} from './ids'
 
 export const MAX2_MIC_UNITS: readonly UnitId[] = ['tx1', 'tx2', 'tx3', 'tx4']
 
 const A = 'A blemic/device/HLBleDeviceActivity'
 const RESTART = 'The receiver restarts.'
-/** A TimeCodeActivity.confirmReset: R title_reset + msg_reset (same text as I "重置后时间码变为00:00:00:00并开始新录制"). */
-export const MAX2_TC_RESET_TEXT = 'Reset: After reset, timecode will be 00:00:00:00 and new recording will start.'
 
 /** Every MAX 2 control (the superset; max2Controls(product) filters per product). */
 export const MAX2_CONTROLS: readonly ControlSpec[] = [
@@ -178,9 +150,6 @@ export function max2LinkOf(p: ProductInfo): Max2Link {
   return p.productId === 101 ? 'ble' : 'usb'
 }
 
-export const isMax2Mobile = (p: ProductInfo): boolean => p.productId === 1026
-export const isMax2Camera = (p: ProductInfo): boolean => p.productId === 1027
-export const isMax2Box = (p: ProductInfo): boolean => p.productId === 101
 
 const USB_ONLY = new Set<string>([MAX2_CONTROL.MIC_RECOGNITION, MAX2_CONTROL.FOUR_MIC])
 const MOBILE_ONLY = new Set<string>([MAX2_CONTROL.RX_PAIR, MAX2_CONTROL.WIRELESS, MAX2_CONTROL.OWS_MONITOR, MAX2_CONTROL.OWS_VOLUME, MAX2_CONTROL.OWS_PAIR])
@@ -286,22 +255,3 @@ export function max2BlindAvailability(
   return out
 }
 
-/**
- * Why a channel mode is refused (A HLBleDeviceActivity initView lambdas 13/14), or null:
- *  - stereo / safety track while the timecode switch is on and the TC mode is not Mode 3, except on the mobile RX
- *  - safety track except through the charging case (productId 101)
- */
-export function max2ChannelRefusal(
-  product: ProductInfo,
-  mode: number,
-  v: MicState['values'],
-): { reason: string; message: string } | null {
-  if (mode === 0) return null
-  const tcOn = v[MAX2_CONTROL.TC_ENABLED] === true
-  const tcMode = v[MAX2_CONTROL.TC_MODE]
-  if (!isMax2Mobile(product) && tcOn && tcMode !== MAX2_TC_MODE.MODE_3) {
-    return { reason: 'timecode-on', message: mode === 1 ? 'Stereo not supported in Timecode Mode' : 'Safety track unavailable in Timecode Mode' }
-  }
-  if (mode === 2 && !isMax2Box(product)) return { reason: 'box-only', message: 'Supports mono and stereo modes only' }
-  return null
-}

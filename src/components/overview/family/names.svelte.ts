@@ -4,7 +4,7 @@
  * (4-mic kits) are kept here, in the same storage style. Defaults: the unit's display label
  * from the driver, else "Mic n".
  */
-import type { MicUnit, UnitId } from '../../../lib/protocol'
+import type { MicUnit, UnitId } from '../../../lib/protocol/app'
 import { prefs } from '../../../lib/state/prefs.svelte'
 
 const EXTRA_KEY = 'mc.micNames.extra'

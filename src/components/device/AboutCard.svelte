@@ -5,7 +5,7 @@
    * platform rows from the product's links: the tested legacy receivers keep their tested rows, the
    * others say "Untested" per link (USB, Bluetooth).
    */
-  import { bleLinkOf, featureLinkOf, webHidLinkOf } from '../../lib/protocol'
+  import { bleLinkOf, featureLinkOf, webHidLinkOf } from '../../lib/protocol/app'
   import Panel from '../../lib/ui/Panel.svelte'
   import Modules from '../../lib/ui/Modules.svelte'
   import Module from '../../lib/ui/Module.svelte'

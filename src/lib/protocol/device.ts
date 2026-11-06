@@ -35,7 +35,12 @@ import {
   type Capabilities, type FeatureGateState, type GatedFeature, type ProductInfo,
 } from './models'
 import { isLegacyFamilyCode } from './core/ids'
+import { DestructiveCommandError, DisconnectedError, PreconditionError, RxUnavailableError, TimeoutError, UnsupportedError } from './device-errors'
 import type { Transport } from './transport'
+
+export {
+  DestructiveCommandError, DisconnectedError, PreconditionError, RxUnavailableError, TimeoutError, UnsupportedError, type PreconditionReason,
+} from './device-errors'
 
 // ------------------------------------------------------------------------------------ types
 
@@ -228,29 +233,6 @@ export interface HollylandDeviceOptions {
   now?: () => number
 }
 
-export class TimeoutError extends Error {
-  readonly cmd: number
-  constructor(cmd: number, ms: number) {
-    super(`no reply to ${commandName(cmd)} within ${ms} ms`)
-    this.name = 'TimeoutError'
-    this.cmd = cmd
-  }
-}
-
-export class UnsupportedError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'UnsupportedError'
-  }
-}
-
-export class RxUnavailableError extends Error {
-  constructor(message = 'device replies are not delivered on this platform (see PROTOCOL.md §2.4); enable blindWrites to send unconfirmed') {
-    super(message)
-    this.name = 'RxUnavailableError'
-  }
-}
-
 /** A command that is not a catalogued read, refused because the device is read-only (HollylandDeviceOptions.readOnly). */
 export class ReadOnlyError extends Error {
   readonly cmd: number | null
@@ -258,38 +240,6 @@ export class ReadOnlyError extends Error {
     super(message ?? `${cmd === null ? 'unclassified bytes' : commandName(cmd)} refused: the device is read-only (developer profile)`)
     this.name = 'ReadOnlyError'
     this.cmd = cmd
-  }
-}
-
-export class DestructiveCommandError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'DestructiveCommandError'
-  }
-}
-
-export type PreconditionReason =
-  | 'mic-disconnected'
-  | 'all-mics-muted'
-  | 'noise-off'
-  | 'volume-locked'
-  | 'both-mics-required'
-  | 'led-off'
-
-/** A write the official apps refuse in the current device state (see enforcePreconditions). */
-export class PreconditionError extends Error {
-  readonly reason: PreconditionReason
-  constructor(reason: PreconditionReason, message: string) {
-    super(message)
-    this.name = 'PreconditionError'
-    this.reason = reason
-  }
-}
-
-export class DisconnectedError extends Error {
-  constructor(message = 'device disconnected') {
-    super(message)
-    this.name = 'DisconnectedError'
   }
 }
 
@@ -1014,7 +964,7 @@ export class HollylandDevice {
   private async read(frame: RequestFrame): Promise<DecodedFrame> {
     if (this._state.rx === 'unavailable') throw new RxUnavailableError()
     const f = await this.request(frame)
-    if (!f) throw new TimeoutError(frame.cmd, 0)
+    if (!f) throw new TimeoutError(frame.cmd, 0, commandName(frame.cmd))
     return f
   }
 
@@ -1169,7 +1119,7 @@ export class HollylandDevice {
           seq: ++this.seq, time: this.opts.now(), direction: 'rx', bytes: new Uint8Array(0), hex: '', frame: null,
           summary: `timeout waiting for ${commandName(job.frame.cmd)} (${job.timeoutMs} ms)`, note: 'timeout',
         })
-        reject(new TimeoutError(job.frame.cmd, job.timeoutMs))
+        reject(new TimeoutError(job.frame.cmd, job.timeoutMs, commandName(job.frame.cmd)))
       }, job.timeoutMs)
       this.awaiting = { job, resolve, reject, timer }
     })

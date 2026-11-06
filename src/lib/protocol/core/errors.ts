@@ -1,44 +1,19 @@
 /**
- * Errors of the generic engine. The legacy error classes from device.ts are reused where the
+ * Errors of the generic engine. The legacy error classes (device-errors.ts, re-exported by device.ts) are reused where the
  * meaning is the same, so UI code keeps one `instanceof` check per case:
  *   DisconnectedError, RxUnavailableError, DestructiveCommandError, UnsupportedError, TimeoutError.
  */
-import { TimeoutError } from '../device'
+import { TimeoutError } from '../device-errors'
 import { hex16 } from './bytes'
 
-export { DestructiveCommandError, DisconnectedError, RxUnavailableError, TimeoutError, UnsupportedError } from '../device'
+export { DestructiveCommandError, DisconnectedError, RxUnavailableError, TimeoutError, UnsupportedError } from '../device-errors'
+export { ControlUnavailableError, ControlValueError } from './control-errors'
 
 /** No reply within the timeout. Extends the legacy TimeoutError; the message names a 16-bit id. */
 export class RequestTimeoutError extends TimeoutError {
   constructor(cmd: number, ms: number, name?: string) {
-    super(cmd, ms)
+    super(cmd, ms, name ?? hex16(cmd))
     this.name = 'TimeoutError'
-    this.message = `no reply to ${name ?? hex16(cmd)} within ${ms} ms`
-  }
-}
-
-/**
- * A control the official app does not offer in the current state (firmware gate, precondition
- * such as "NC is off" or "secondary receiver"). `reason` is machine readable.
- */
-export class ControlUnavailableError extends Error {
-  readonly reason: string
-  readonly control: string
-  constructor(control: string, reason: string, message?: string) {
-    super(message ?? `${control} is not available right now (${reason})`)
-    this.name = 'ControlUnavailableError'
-    this.reason = reason
-    this.control = control
-  }
-}
-
-/** A value outside the control's options / range, or a missing / wrong unit. */
-export class ControlValueError extends Error {
-  readonly control: string
-  constructor(control: string, message: string) {
-    super(`${control}: ${message}`)
-    this.name = 'ControlValueError'
-    this.control = control
   }
 }
 

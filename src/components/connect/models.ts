@@ -5,7 +5,7 @@
  * Variants of one model (camera / phone receivers, 2nd gen, the OEM build, the charging case of a
  * model that also has a receiver) collapse into that model.
  */
-import { ALL_PRODUCTS, bleProducts, isConnectableProduct, type ProductInfo } from '../../lib/protocol'
+import { ALL_PRODUCTS, bleProducts, isConnectableProduct, type ProductInfo } from '../../lib/protocol/app'
 
 export interface ModelName {
   /** "LARK", "MELO". */

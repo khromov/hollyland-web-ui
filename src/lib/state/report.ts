@@ -7,8 +7,6 @@
  * last N traffic frames. No serial numbers are hidden: the user reads it before sharing.
  */
 import {
-  WebBluetoothTransport,
-  WebHidFeatureTransport,
   displayName,
   familyCodeOf,
   reportByteLength,
@@ -20,7 +18,9 @@ import {
   type ProductInfo,
   type SupportInfo,
   type Transport,
-} from '../protocol'
+  type WebBluetoothTransport,
+  type WebHidFeatureTransport,
+} from '../protocol/app'
 import type { TrafficEntry } from './traffic.svelte'
 
 /** One write sent from this page (kept for the report: the ack code shows which ack reading the firmware follows). */
@@ -98,15 +98,17 @@ function transportLines(kind: string | null, t: Transport | null): string[] {
     info ? `Device: ${info.productName ?? '?'} · ${hex4(info.vendorId)}:${hex4(info.productId)}${info.id ? ` · ${info.id}` : ''}` : 'Device: ?',
   ]
   const hid = (t as Transport & { device?: { collections?: readonly HIDCollectionInfo[] } }).device
-  if (t instanceof WebBluetoothTransport) {
-    lines.push(`GATT: ${json(t.diagnostics())}`)
+  // By kind, not instanceof: both transport classes are fetched only when such a link is opened (core/loader.ts).
+  if (t.kind === 'web-bluetooth') {
+    lines.push(`GATT: ${json((t as WebBluetoothTransport).diagnostics())}`)
   } else if (hid && Array.isArray(hid.collections)) {
     lines.push('HID collections:', ...describeCollections(hid.collections))
   }
-  if (t instanceof WebHidFeatureTransport) {
+  if (t.kind === 'webhid-feature') {
+    const f = t as WebHidFeatureTransport
     lines.push(
-      `Feature reports: declared data size ${t.declaredDataSize ?? 'not declared'} · stats ${json(t.stats)} · last reply layout ${json(t.lastReplyLayout)}`,
-      `Last feature report: ${t.lastReport ? toHex(t.lastReport) : '-'}`,
+      `Feature reports: declared data size ${f.declaredDataSize ?? 'not declared'} · stats ${json(f.stats)} · last reply layout ${json(f.lastReplyLayout)}`,
+      `Last feature report: ${f.lastReport ? toHex(f.lastReport) : '-'}`,
     )
   }
   return lines

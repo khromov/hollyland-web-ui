@@ -27,16 +27,18 @@
  *
  * Nothing here has run against an A1: the feature-report declaration is unverified (a1-6108.md §8 #1).
  */
-import { PRODUCTS, lookupProduct, linksOf, isConnectableProduct, isKnownVendorId, type ProductInfo } from '../models'
+import { isKnownVendorId } from '../models'
 import { BaseTransport, TransportError, type TransportCapabilities, type TransportDeviceInfo } from '../transport'
 import { featureReportSize, isWebHidSupported } from '../webhid'
 import type { WebHidFeatureLinkSpec } from '../core/types'
+import { A1_FEATURE_LINK, featureLinkFilters, featureLinkFor } from './feature-links'
+
+// The registry helpers live in feature-links.ts (the app builds the USB chooser filters before it loads this
+// transport); re-exported here unchanged.
+export { A1_FEATURE_LINK, featureLinkFilters, featureLinkFor, featureLinkOf } from './feature-links'
 
 export { FakeFeatureHidDevice, fakeFeatureDeviceFor } from './fake-hid-feature'
 export type { FakeFeatureHidDeviceOptions } from './fake-hid-feature'
-
-/** The A1 link (a1-6108.md §2.1), used when neither the options nor the registry give one. */
-export const A1_FEATURE_LINK: WebHidFeatureLinkSpec = { kind: 'webhid-feature', reportId: 5, size: 64, otaReportId: 6 }
 
 /** Android's timeouts for PID 1031 (A USBHIDService.onEventMainThread: CommandExecutionConfig(3000L, 1000L)). */
 export const FEATURE_WRITE_TIMEOUT_MS = 3000
@@ -79,27 +81,6 @@ export interface FeatureTransferStats {
   droppedReplies: number
   /** GETs that failed or timed out. */
   failedGets: number
-}
-
-/** The registry's feature link of a VID/PID, if any. */
-export function featureLinkFor(vendorId: number, productId: number): WebHidFeatureLinkSpec | undefined {
-  const p = lookupProduct(vendorId, productId)
-  return p ? featureLinkOf(p) : undefined
-}
-
-/** A product row's feature-report link, if any. */
-export function featureLinkOf(p: ProductInfo): WebHidFeatureLinkSpec | undefined {
-  return linksOf(p).find((l): l is WebHidFeatureLinkSpec => l.kind === 'webhid-feature')
-}
-
-/**
- * `{ vendorId, productId }` chooser filters for rows with a feature-report link. By default only connectable rows
- * (their driver is past the stub); `includeRecognised` adds recognised-only rows (hardware checks, diagnostics).
- */
-export function featureLinkFilters(products: readonly ProductInfo[] = PRODUCTS, o: { includeRecognised?: boolean } = {}): HIDDeviceFilter[] {
-  return products
-    .filter((p) => p.idKind !== 'app' && !!featureLinkOf(p) && (o.includeRecognised || isConnectableProduct(p)))
-    .map((p) => ({ vendorId: p.vendorId, productId: p.productId }))
 }
 
 function isFeatureDevice(d: { vendorId: number; productId: number }): boolean {

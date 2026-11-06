@@ -3,12 +3,14 @@
  * chooser for every connectable HID product (interrupt reports and the A1's feature reports), the
  * matching transport for the chosen device, silent reconnects, and the Web Bluetooth chooser (MAX 2
  * charging case, MELO P1). Every filter comes from the registry rows of connectable products.
+ *
+ * The choosers run from main-chunk code, so `requestDevice()` is called inside the click's user
+ * gesture; the feature-report and Web Bluetooth transports are fetched with import() only once a
+ * device of theirs is chosen (core/loader.ts).
  */
 import {
   CONTROL_USAGE_PAGE,
   PRODUCTS,
-  WebBluetoothTransport,
-  WebHidFeatureTransport,
   WebHidTransport,
   bleCandidates,
   defaultFilters,
@@ -19,12 +21,16 @@ import {
   isConnectableProduct,
   isWebBluetoothSupported,
   isWebHidSupported,
+  loadWebBluetoothTransport,
+  loadWebHidFeatureTransport,
   lookupProduct,
   outputReportSize,
+  requestBleDevice,
   webHidLinkOf,
   type ProductInfo,
   type Transport,
-} from '../protocol'
+  type WebBluetoothTransport,
+} from '../protocol/app'
 
 /** How the session reaches the product ('mock' = the development simulator). */
 export type LinkKind = 'webhid' | 'webhid-feature' | 'web-bluetooth' | 'bridge' | 'mock'
@@ -93,18 +99,31 @@ export function pickHidDevice(devices: readonly HIDDevice[]): HIDDevice | undefi
   return declared ?? known[0] ?? devices[0]
 }
 
-/** The transport for a HID interface: feature reports for the A1, interrupt reports otherwise. */
-export function hidTransportFor(device: HIDDevice): { transport: Transport; kind: 'webhid' | 'webhid-feature'; product: ProductInfo | undefined } {
+/** A HID interface opened as a transport, with the link kind and the registry row. */
+export interface HidOpened {
+  transport: Transport
+  kind: 'webhid' | 'webhid-feature'
+  product: ProductInfo | undefined
+}
+
+/**
+ * The transport for a HID interface: feature reports for the A1 (WebHidFeatureTransport, fetched on
+ * first use), interrupt reports otherwise.
+ */
+export async function hidTransportFor(device: HIDDevice): Promise<HidOpened> {
   const product = resolveUsbProduct(device.vendorId, device.productId)
   const feature = product ? featureLinkOf(product) : undefined
-  if (feature) return { transport: new WebHidFeatureTransport(device, { link: feature }), kind: 'webhid-feature', product }
+  if (feature) {
+    const WebHidFeatureTransport = await loadWebHidFeatureTransport()
+    return { transport: new WebHidFeatureTransport(device, { link: feature }), kind: 'webhid-feature', product }
+  }
   // Legacy rows: exactly as before (the transport looks its link up itself).
   if (!product || product.family) return { transport: new WebHidTransport(device), kind: 'webhid', product }
   return { transport: new WebHidTransport(device, { link: webHidLinkOf(product) }), kind: 'webhid', product }
 }
 
 /** Show the USB chooser (user gesture). `anyDevice`: list every HID device (M3 / MELO P1 vendor id unconfirmed). */
-export async function requestUsb(o: { anyDevice?: boolean } = {}): Promise<ReturnType<typeof hidTransportFor> | null> {
+export async function requestUsb(o: { anyDevice?: boolean } = {}): Promise<HidOpened | null> {
   if (!isWebHidSupported()) throw new Error('WebHID is not available in this browser')
   const devices = await navigator.hid.requestDevice({ filters: o.anyDevice ? [] : usbChooserFilters() })
   const d = pickHidDevice(devices)
@@ -133,7 +152,7 @@ export function sameReceiver(device: Pick<HIDDevice, 'vendorId' | 'productId'>, 
  * showing (lost link, restart): only that kind of receiver is reopened, so another granted receiver
  * that happens to be plugged in (an A2 next to an M3) never takes over the session.
  */
-export async function reconnectUsb(previous?: ProductInfo | null): Promise<ReturnType<typeof hidTransportFor> | null> {
+export async function reconnectUsb(previous?: ProductInfo | null): Promise<HidOpened | null> {
   const granted = await grantedUsbDevices()
   const d = pickHidDevice(previous ? granted.filter((g) => sameReceiver(g, previous)) : granted)
   return d ? hidTransportFor(d) : null
@@ -144,9 +163,21 @@ export function onUsbDeviceConnect(listener: (device: HIDDevice) => void): () =>
   return WebHidTransport.onDeviceConnect(listener)
 }
 
-/** Show the Bluetooth chooser (user gesture), connect GATT and identify the product. */
+/**
+ * Show the Bluetooth chooser (user gesture), connect GATT and identify the product. The chooser opens
+ * before anything is awaited; WebBluetoothTransport is fetched while it is up.
+ */
 export async function requestBluetooth(): Promise<WebBluetoothTransport | null> {
-  return WebBluetoothTransport.request()
+  const choice = requestBleDevice()
+  const transportClass = loadWebBluetoothTransport()
+  // A cancelled chooser never awaits the class: keep a failed fetch from surfacing as an unhandled rejection.
+  transportClass.catch(() => undefined)
+  const chosen = await choice
+  if (!chosen) return null
+  const WebBluetoothTransportClass = await transportClass
+  const t = new WebBluetoothTransportClass(chosen.device, chosen.candidates)
+  await t.open()
+  return t
 }
 
 /**
@@ -160,7 +191,8 @@ export async function reconnectBluetooth(
   device?: WebBluetoothTransport['device'] | null,
 ): Promise<WebBluetoothTransport | null> {
   try {
-    return await WebBluetoothTransport.reconnect({ deviceId, advertisementTimeoutMs, devices: device ? [device] : [] })
+    const WebBluetoothTransportClass = await loadWebBluetoothTransport()
+    return await WebBluetoothTransportClass.reconnect({ deviceId, advertisementTimeoutMs, devices: device ? [device] : [] })
   } catch {
     return null
   }

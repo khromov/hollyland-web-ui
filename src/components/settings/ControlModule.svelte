@@ -25,7 +25,7 @@
   import ConfidenceNote from '../../lib/ui/ConfidenceNote.svelte'
   import { uid } from '../../lib/ui/field'
   import { confidenceNote } from '../../lib/ui/confidence'
-  import { controlKey, type ControlSpec, type ControlValue, type UnitId } from '../../lib/protocol'
+  import { controlKey, type ControlSpec, type ControlValue, type UnitId } from '../../lib/protocol/app'
   import { session, type ConfirmInfo } from '../../lib/state/session.svelte'
   import { audio } from '../../lib/state/audio.svelte'
   import RangeSlider from './RangeSlider.svelte'

@@ -9,7 +9,7 @@
   import Module from '../../lib/ui/Module.svelte'
   import BatteryCells from '../../lib/ui/BatteryCells.svelte'
   import Lamp from '../../lib/ui/Lamp.svelte'
-  import { max2, type ControlSpec, type MicUnit } from '../../lib/protocol'
+  import { max2, type ControlSpec, type MicUnit } from '../../lib/protocol/app'
   import { session } from '../../lib/state/session.svelte'
   import ControlModule from './ControlModule.svelte'
   import { sectionColumns } from './controls'

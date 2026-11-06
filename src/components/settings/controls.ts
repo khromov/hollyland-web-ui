@@ -2,7 +2,7 @@
  * Pure helpers for drawing a ControlSpec (docs/FAMILIES.md §3.3, §4.1): printed values, stop
  * counts, scale marks. No state; the Settings modules and the family sections share them.
  */
-import type { ControlSpec, ControlValue, UnitId } from '../../lib/protocol'
+import type { ControlSpec, ControlValue, UnitId } from '../../lib/protocol/app'
 
 /** "−4", "+4", "0" with a real minus sign (signed ranges), or the plain number. */
 export function signedNumber(n: number, signed: boolean): string {

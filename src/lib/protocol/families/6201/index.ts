@@ -12,6 +12,8 @@
  *   sim.ts             MeloSimulator (VU push timer, batch replies, XOR on / off by control byte)
  *   hardware-check.ts  first-contact steps (FAMILIES.md §5.7)
  *   driver.ts          createMeloDriver() / MELO_DRIVER: the Phase 2 driver ('experimental')
+ *   runtime.ts         createMeloRuntime() / MELO_RUNTIME: the driver without the simulator (what the app loads)
+ *   ids.ts             control ids and the level-stream check the app uses without loading the driver
  *
  * Registered since Phase 3 (W9): `driver` is MELO_DRIVER (receivers 1032 / 1033 'experimental', hardware
  * 'untested'; mic, case and earphones stay recognised only).
@@ -28,5 +30,6 @@ export * from './device'
 export * from './sim'
 export * from './hardware-check'
 export * from './driver'
+export * from './runtime'
 
 export const driver: FamilyDriver = MELO_DRIVER

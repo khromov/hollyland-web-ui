@@ -10,7 +10,7 @@
    */
   import { ChevronDown, Info, X } from '@lucide/svelte'
   import Key from '../lib/ui/Key.svelte'
-  import { bridgeStartHelp, webHidLinkOf } from '../lib/protocol'
+  import { bridgeStartHelp, webHidLinkOf } from '../lib/protocol/app'
   import { session } from '../lib/state/session.svelte'
   import { PLATFORM_NAME, platform } from './shell/link.svelte'
   import { FORGET_LABEL, FORGET_TIP, forgetRemembered } from './settings/sent.svelte'

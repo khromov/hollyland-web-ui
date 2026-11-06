@@ -23,7 +23,8 @@
  *  - traffic log with the driver's `describe()`
  */
 import { toHex } from '../codec'
-import { DestructiveCommandError, DisconnectedError, RxUnavailableError, TimeoutError, UnsupportedError, type SetResult } from '../device'
+import type { SetResult } from '../device'
+import { DestructiveCommandError, DisconnectedError, RxUnavailableError, TimeoutError, UnsupportedError } from '../device-errors'
 import { Emitter } from '../emitter'
 import { displayName, supportOf, unitsOf, type ProductInfo } from '../models'
 import type { Transport } from '../transport'

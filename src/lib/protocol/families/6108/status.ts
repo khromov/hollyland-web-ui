@@ -16,6 +16,9 @@
 import { CONTROL, compareVersions, controlKey } from '../../core/controls'
 import type { ControlValue, MicUnit } from '../../core/types'
 import { A1_TX_UNITS, a1TxOfIndex, a1UnitOfByte, type A1TxUnitId, type A1UnitId } from './commands'
+import { A1_CONTROL } from './ids'
+
+export { A1_CONTROL, a1MicSlotsOfVersion, isA1FourMicFirmware } from './ids'
 
 // ------------------------------------------------------------------------------- heartbeat
 
@@ -166,17 +169,6 @@ export function isA1NewDevice(rxVersion: string | undefined): boolean {
   return !!rxVersion && compareVersions(rxVersion, A1_NEW_DEVICE_MIN_VERSION) >= 0
 }
 
-/**
- * 4 Mic & 1 RX firmware: the RX version's second part is 1 (A larkc1/HLDevice6302Activity.onResGetVersion:
- * split('.') size >= 4 and Integer.parseInt(split[1]) == 1 → is6108FourMicOneRx). Undefined when unknown.
- */
-export function isA1FourMicFirmware(rxVersion: string | undefined): boolean | undefined {
-  if (!rxVersion) return undefined
-  const parts = rxVersion.trim().split('.')
-  if (parts.length < 4) return undefined
-  return parseInt(parts[1], 10) === 1
-}
-
 /** A application/common/util/NumberUtil.bytesToAsciiString: drop 0x00 and 0xFF bytes, decode UTF-8. */
 export function a1AsciiString(bytes: Uint8Array): string {
   const kept = bytes.filter((b) => b !== 0x00 && b !== 0xff)
@@ -246,33 +238,6 @@ export function parseA1PerformanceMode(body: Uint8Array): boolean | null {
 // ------------------------------------------------------------------------------- MicState mapping
 
 /**
- * Family-scoped control ids for A1 settings without a canonical id (core/controls.ts CONTROL). The value domains
- * below are what the session writes into MicState.values; the A1 controls (Phase 2, W5) use the same ids.
- */
-export const A1_CONTROL = {
-  /** "EQ Adjustment": 1 Low, 2 Bright, 3 Equalization (wire values). */
-  EQ: 'a1.eq',
-  /** "Reverb Adjustment" switch. */
-  REVERB_ENABLED: 'a1.reverb.enabled',
-  /** Reverb size: 0 Small, 1 Medium, 2 Large (wire values). */
-  REVERB_LEVEL: 'a1.reverb.level',
-  /** "Mode setting": 0 Normal, 1 Performance (wire values). */
-  SIGNAL_MODE: 'a1.signalMode',
-  /**
-   * Hidden cloud-driven performance flag (0x45 / 0x46). A value only, read at start-up (0x46) for the console: no
-   * control, because neither app lets the user set it (A HLDevice6302ViewModel.handlePerformanceMode syncs it from
-   * the cloud config EnhancedModeSwitch; I -[HL6108DeviceInfoSync checkEnhanceStatus:] @0x100204e1c).
-   */
-  PERFORMANCE: 'a1.performance',
-  /**
-   * "Wireless settings": 2 = "2 Mic & 1 RX", 4 = "4 Mic & 1 RX", from the RX version's second part (A
-   * HLDevice6302Activity.onResGetVersion is6108FourMicOneRx). The switch re-flashes RX and mics: catalogued as a
-   * destructive control, never implemented (controls.ts).
-   */
-  WIRELESS_MODE: 'a1.wirelessMode',
-} as const
-
-/**
  * MicState values of a heartbeat, keyed like the legacy adapter (families/legacy/controls.ts conventions):
  *  - noise.enabled boolean; noise.level 1-based (wire 0 Weak → 1, 1 Medium → 2, 2 Strong → 3)
  *  - volume 0..5; channel.mode 0 Mono / 1 Stereo; led true = on; autoOff true = "15min" (wire 0), false = "Never"
@@ -300,12 +265,6 @@ export function a1HeartbeatValues(hb: A1Heartbeat): Record<string, ControlValue>
     if (t) v[controlKey(CONTROL.MIC_MUTE, A1_TX_UNITS[i])] = t.muted
   })
   return v
-}
-
-/** Mic slots of a firmware mode: 4 for 4 Mic & 1 RX (RX version x.1.x.x), 2 otherwise; undefined while unknown. */
-export function a1MicSlotsOfVersion(rxVersion: string | undefined): 2 | 4 | undefined {
-  const four = isA1FourMicFirmware(rxVersion)
-  return four === undefined ? undefined : four ? 4 : 2
 }
 
 /**

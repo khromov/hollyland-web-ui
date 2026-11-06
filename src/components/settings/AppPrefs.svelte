@@ -12,7 +12,7 @@
   import Tag from '../../lib/ui/Tag.svelte'
   import { FORGET_LABEL, FORGET_TIP, forgetRemembered } from './sent.svelte'
   import { micNames } from '../overview/family/names.svelte'
-  import type { UnitId } from '../../lib/protocol'
+  import type { UnitId } from '../../lib/protocol/app'
 
   /** One field per mic the Overview draws (2 or 4); Mic 1 and Mic 2 are the browser-wide names. */
   const mics = $derived<UnitId[]>(session.micSlots.length ? session.micSlots : ['tx1', 'tx2'])

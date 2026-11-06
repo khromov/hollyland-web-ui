@@ -8,7 +8,7 @@
  * The session hands these display specs to the pages (session.controls); the hardware report keeps
  * the drivers' own labels.
  */
-import type { ControlSpec } from '../protocol'
+import type { ControlSpec } from '../protocol/app'
 
 /** Whole labels replaced (matched before the suffixes are dropped). */
 const LABEL: Readonly<Record<string, string>> = {

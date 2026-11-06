@@ -23,7 +23,8 @@
  * (M3_INFO.PROFILES_CHANGED) and M3Device.acknowledgeVoiceProfileRefresh() sends 0x6015 on request. The 0x0039
  * earphone poll (5 s in 2T2R) belongs to wireless monitoring (later extra).
  */
-import { DestructiveCommandError, UnsupportedError, type SetResult } from '../../device'
+import type { SetResult } from '../../device'
+import { DestructiveCommandError, UnsupportedError } from '../../device-errors'
 import { CONTROL, controlKey, controlById, validateControlValue } from '../../core/controls'
 import { FamilyDevice } from '../../core/engine'
 import { ControlUnavailableError, TimeoutError } from '../../core/errors'
@@ -44,6 +45,8 @@ import {
   parseM3DevValue, parseM3DeviceInfo, parseM3FirmwareVersions, parseM3Heartbeat, parseM3Noise, parseM3SettingInfo, isM3VersionKnown,
   type M3DeviceInfo, type M3FirmwareItem, type M3Heartbeat,
 } from './status'
+
+export { isM3Device } from './ids'
 
 /** Status poll interval of both apps (see the header). */
 export const M3_HEARTBEAT_INTERVAL_MS = 1500

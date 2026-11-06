@@ -16,7 +16,7 @@
    * receiver strip takes the spare height so its rules run down to the status line.
    */
   import { untrack } from 'svelte'
-  import { CONTROL, type ControlSpec } from '../../../lib/protocol'
+  import { CONTROL, type ControlSpec } from '../../../lib/protocol/app'
   import Panel from '../../../lib/ui/Panel.svelte'
   import Modules from '../../../lib/ui/Modules.svelte'
   import MeterWindow from '../../../lib/ui/MeterWindow.svelte'

@@ -10,7 +10,7 @@
    */
   import { tick } from 'svelte'
   import { Pencil } from '@lucide/svelte'
-  import { CONTROL, type UnitId } from '../../../lib/protocol'
+  import { CONTROL, type UnitId } from '../../../lib/protocol/app'
   import Lamp from '../../../lib/ui/Lamp.svelte'
   import Tag from '../../../lib/ui/Tag.svelte'
   import BatteryCells from '../../../lib/ui/BatteryCells.svelte'

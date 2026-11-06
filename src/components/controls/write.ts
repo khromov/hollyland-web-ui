@@ -3,7 +3,7 @@
  * "Setup successful" toast on a live link (failures already toast from the session), and the
  * session-backed context the pure helpers in controls.ts take.
  */
-import { controlKey, type ControlSpec, type ControlValue, type UnitId } from '../../lib/protocol'
+import { controlKey, type ControlSpec, type ControlValue, type UnitId } from '../../lib/protocol/app'
 import { session } from '../../lib/state/session.svelte'
 import { toasts } from '../../lib/ui/toast.svelte'
 import type { Confidence } from '../../lib/ui/types'

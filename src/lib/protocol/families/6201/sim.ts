@@ -15,7 +15,7 @@
  *  - params.replyControl   force the reply control byte (e.g. 0x00: no XOR even for Android requests)
  *  - params.bgm            BGM source connected (heartbeat byte 12, default true)
  */
-import { UnsupportedError } from '../../device'
+import { UnsupportedError } from '../../device-errors'
 import { i32 } from '../../core/bytes'
 import type { DeviceSimulator, SimFaults, SimOptions, UnitId } from '../../core/types'
 import type { ProductInfo } from '../../models'

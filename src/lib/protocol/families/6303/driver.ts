@@ -1,21 +1,17 @@
 /**
  * The LARK M3 FamilyDriver (Phase 2, W6). Registered since Phase 3 (W9): index.ts exports
- * `createM3Driver({ products: M3_PRODUCTS })` as the family's `driver`.
+ * `createM3Driver({ products: M3_PRODUCTS })` as the family's `driver`; runtime.ts is the same driver without the
+ * simulator (what the app loads).
  *
  *   const d = createM3Driver()
  *   const mic = d.createDevice(new WebHidTransport(hidDevice), d.products[2])     // phone RX 2CH
  *   const { device } = createMockDevice('m3cam')                                  // core/registry.ts
  */
 import type { FamilyDriver, MockPreset } from '../../core/types'
-import type { ProductInfo } from '../../models'
-import { MOMA_6303 } from '../../moma/profiles'
-import { momaCommandOfFrame } from '../../moma/spec'
-import { M3_COMMANDS } from './commands'
-import { M3_ALL_CONTROLS } from './controls'
-import { M3_HARDWARE_CHECK } from './hardware-check'
-import { M3_RESEARCH, m3ExperimentalProducts } from './products'
-import { createM3Device } from './session'
+import { createM3Runtime, type M3DriverOptions } from './runtime'
 import { M3Simulator } from './sim'
+
+export type { M3DriverOptions } from './runtime'
 
 const ALL_TX = ['rx', 'tx1', 'tx2', 'tx3', 'tx4'] as const
 
@@ -30,25 +26,6 @@ export const M3_MOCK_PRESETS: readonly MockPreset[] = [
   { id: 'm3-2t2r', label: 'LARK M3 phone RX in 2TX&2RX (wireless monitoring, simulated)', family: '6303', productId: 1038, sim: { profile: '2t2r' } },
 ]
 
-export interface M3DriverOptions {
-  /** Default: the four M3 rows with support.level 'experimental' (hardware 'untested'). */
-  products?: readonly ProductInfo[]
-}
-
 export function createM3Driver(o: M3DriverOptions = {}): FamilyDriver {
-  const products = o.products ?? m3ExperimentalProducts()
-  return {
-    code: '6303',
-    name: 'LARK M3',
-    status: 'experimental',
-    products,
-    commands: M3_COMMANDS,
-    controls: M3_ALL_CONTROLS,
-    research: M3_RESEARCH,
-    createDevice: (transport, product, opts) => createM3Device(transport, product, opts),
-    createSimulator: (product, sim) => new M3Simulator(product, sim),
-    commandOfFrame: (f) => momaCommandOfFrame(MOMA_6303, f, M3_COMMANDS),
-    mockPresets: M3_MOCK_PRESETS,
-    hardwareCheck: M3_HARDWARE_CHECK,
-  }
+  return { ...createM3Runtime(o), createSimulator: (product, sim) => new M3Simulator(product, sim), mockPresets: M3_MOCK_PRESETS }
 }

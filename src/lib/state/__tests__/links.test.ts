@@ -8,7 +8,8 @@ import {
   createMockDevice, lookupAppProduct, lookupProduct, vendorCollection,
 } from '../../protocol'
 import {
-  connectPaths, hidTransportFor, pickHidDevice, productsFor, reconnectUsb, requestUsb, resolveUsbProduct, sameReceiver, usbChooserFilters,
+  connectPaths, hidTransportFor, pickHidDevice, productsFor, reconnectUsb, requestBluetooth, requestUsb, resolveUsbProduct, sameReceiver,
+  usbChooserFilters,
 } from '../links'
 import { confirmInfo, oneSentence, reasonText } from '../reasons'
 import { buildHardwareReport } from '../report'
@@ -58,19 +59,38 @@ describe('links', () => {
     expect(r?.kind).toBe('webhid-feature')
     expect(r?.transport).toBeInstanceOf(WebHidFeatureTransport)
     const m3 = new FakeHidDevice({ vendorId: H, productId: 1038, collections: M3_COLLECTIONS_63 })
-    const t = hidTransportFor(m3.hid)
+    const t = await hidTransportFor(m3.hid)
     expect(t.kind).toBe('webhid')
     expect((t.transport as WebHidTransport).link?.reportId).toBe(8)
   })
 
-  it('keeps the legacy interface choice and prefers the declared interface for the other families', () => {
+  it('keeps the legacy interface choice and prefers the declared interface for the other families', async () => {
     const control = new FakeHidDevice({ vendorId: H, productId: 0x0411, collections: A2_COLLECTIONS })
     const other = new FakeHidDevice({ vendorId: H, productId: 0x0411, collections: [vendorCollection(0xff90, {})] })
     expect(pickHidDevice([other.hid, control.hid])).toBe(control.hid)
     const m3Plain = new FakeHidDevice({ vendorId: H, productId: 1038, collections: [vendorCollection(0x000c, {})] })
     const m3Ctl = new FakeHidDevice({ vendorId: H, productId: 1038, collections: M3_COLLECTIONS_63 })
     expect(pickHidDevice([m3Plain.hid, m3Ctl.hid])).toBe(m3Ctl.hid)
-    expect(hidTransportFor(control.hid).transport).toBeInstanceOf(WebHidTransport)
+    expect((await hidTransportFor(control.hid)).transport).toBeInstanceOf(WebHidTransport)
+  })
+})
+
+describe('choosers', () => {
+  // requestDevice() needs the click's user activation: both choosers must call it before anything is awaited
+  // (the transports they may need are fetched with import(), after or alongside the chooser).
+  it('call requestDevice() synchronously', async () => {
+    const hid = install([])
+    const hidRequest = vi.spyOn(hid.hidApi, 'requestDevice')
+    const usb = requestUsb()
+    expect(hidRequest).toHaveBeenCalledTimes(1)
+    expect(await usb).toBeNull()
+
+    const cancel = Object.assign(new Error('User cancelled the requestDevice() chooser.'), { name: 'NotFoundError' })
+    const bleRequest = vi.fn(() => Promise.reject(cancel))
+    install([], { bluetooth: Object.assign(new EventTarget(), { requestDevice: bleRequest }) })
+    const ble = requestBluetooth()
+    expect(bleRequest).toHaveBeenCalledTimes(1)
+    expect(await ble).toBeNull()
   })
 })
 

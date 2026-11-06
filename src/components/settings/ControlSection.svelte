@@ -10,7 +10,7 @@
   import Panel from '../../lib/ui/Panel.svelte'
   import Modules from '../../lib/ui/Modules.svelte'
   import Module from '../../lib/ui/Module.svelte'
-  import type { ControlSpec, UnitId } from '../../lib/protocol'
+  import type { ControlSpec, UnitId } from '../../lib/protocol/app'
   import { session } from '../../lib/state/session.svelte'
   import { micNames } from '../overview/family/names.svelte'
   import ControlModule from './ControlModule.svelte'

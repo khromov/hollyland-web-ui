@@ -17,6 +17,11 @@
  *   const mic = createMicDevice(t!)                      // LegacyMicDevice or a family's FamilyDevice
  *   await mic.connect()
  *   await mic.set(CONTROL.NOISE_LEVEL, 2)
+ *
+ * The app opens devices with `await openMicDevice(t!)` (core/loader.ts) instead: it fetches the family's driver
+ * with import(), so each family is its own chunk in the production build and no simulator code ships. Everything
+ * the app needs before a product is chosen (rows, links, support, chooser filters, control ids) has no driver
+ * imports; core/registry.ts (DRIVERS, createMicDevice, the `?mock=` presets) imports every driver statically.
  */
 export * from './codec'
 export * from './commands'
@@ -35,6 +40,7 @@ export type * from './core/types'
 export * from './core/controls'
 export * from './core/engine'
 export * from './core/registry'
+export * from './core/loader'
 export * from './core/simulate'
 export { stubDriver, type StubDriverInit } from './core/stub'
 export { appProduct, recognised, usbProduct } from './core/product-rows'

@@ -2,7 +2,7 @@
  * ControlSpec helpers: canonical control ids, value validation, availability and the
  * untested-product filter (FAMILIES.md §2.3, §4.3).
  */
-import { ControlUnavailableError, ControlValueError } from './errors'
+import { ControlUnavailableError, ControlValueError } from './control-errors'
 import type { ControlAvailability, ControlId, ControlSpec, ControlValue, MicState, SupportInfo, UnitId } from './types'
 
 /**

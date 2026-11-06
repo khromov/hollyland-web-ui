@@ -24,7 +24,7 @@
  * The engine enforces them through MicState.availability (requireAvailable; `enforcePreconditions: false` and
  * `ignoreFirmwareGates` relax them as for every family).
  */
-import { UnsupportedError } from '../../device'
+import { UnsupportedError } from '../../device-errors'
 import { CONTROL, controlKey, requireAvailable, versionGate } from '../../core/controls'
 import type {
   ControlAvailability, ControlId, ControlSpec, ControlValue, EngineContext, MicState, UnitId, WritePlan,
@@ -34,9 +34,10 @@ import type { A1Reply } from './codec'
 import {
   A1Eq, A1NoiseLevel, A1ReverbLevel, A1Requests, A1_TX_UNITS, A1_VOLUME_STEPS, type A1Request, type A1TxUnitId,
 } from './commands'
-import {
-  A1_CONTROL, A1_NEW_DEVICE_MIN_VERSION, a1MicSlotsOfVersion, isA1FourMicFirmware, type A1Heartbeat,
-} from './status'
+import { A1_CONTROL, isA1FourMicFirmware } from './ids'
+import { A1_NEW_DEVICE_MIN_VERSION, type A1Heartbeat } from './status'
+
+export { a1MicSlots } from './ids'
 
 const ACT = 'A larkc1/HLDevice6302Activity'
 const MSG = 'A usbmic/messenger/UsbMessengerV2'
@@ -221,18 +222,6 @@ const R_CONNECT_MIC = 'Mic1 and Mic2 are not connected; the current function can
 export function a1LastHeartbeat(state: MicState): A1Heartbeat | undefined {
   const r = state.raw as Partial<A1Heartbeat> | undefined
   return r && typeof r === 'object' && typeof r.layout === 'string' && Array.isArray(r.tx) ? (r as A1Heartbeat) : undefined
-}
-
-/**
- * Mic slots of the kit, for the 2- or 4-mic layout: from the RX version (A HLDevice6302Activity.onResGetVersion), else
- * 4 when a heartbeat reports TX3 or TX4 online, else undefined (the app assumes 2 until the version arrives).
- */
-export function a1MicSlots(state: MicState): 2 | 4 | undefined {
-  const v = state.values[A1_CONTROL.WIRELESS_MODE]
-  if (v === 2 || v === 4) return v
-  const fromVersion = a1MicSlotsOfVersion(state.units.rx.version)
-  if (fromVersion) return fromVersion
-  return state.units.tx3?.online || state.units.tx4?.online ? 4 : undefined
 }
 
 /**

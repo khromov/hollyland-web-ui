@@ -1,7 +1,7 @@
 /**
  * Pure helpers for the Overview page: labels and rules from docs/research/features.md §4, §12, §16.
  */
-import type { Family } from '../../lib/protocol'
+import type { Family } from '../../lib/protocol/app'
 import type { BlockReason } from '../../lib/state/session.svelte'
 import type { KeyOption, SegmentOption } from '../../lib/ui/types'
 import { toasts } from '../../lib/ui/toast.svelte'
