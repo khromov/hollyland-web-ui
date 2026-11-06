@@ -9,8 +9,18 @@ import type { ProductInfo } from '../../models'
 
 export const MELO_RESEARCH = 'docs/research/families/melo-6201.md'
 
-/** Phase 0 stub. Codec high, settings medium-high, DSP medium (FAMILIES.md §1.2). */
+/**
+ * Registered rows: still recognised only, because the registry's shared tests pin the 6201 driver as a stub
+ * (core/__tests__/registry.test.ts). The Phase 2 driver (driver.ts, createMeloDriver) runs on the copies below.
+ * Codec high, settings medium-high, DSP medium (FAMILIES.md §1.2).
+ */
 export const MELO_SUPPORT = recognised(MELO_RESEARCH, 'medium', 'codec high, settings medium-high, DSP medium')
+
+/** Phase 2 (W8) driver subset: connectable, never run on hardware. */
+export const MELO_EXPERIMENTAL_SUPPORT = { ...MELO_SUPPORT, level: 'experimental' as const }
+
+/** RX product ids the driver connects to (A C6201HomeClassifier.isHomeProduct: 1032 or 1033). */
+export const MELO_RX_PRODUCT_IDS: readonly number[] = [1032, 1033]
 /** Firmware-update devices: the app only updates them (melo-6201.md §1.1). Skipped. */
 export const MELO_ACCESSORY_SUPPORT = recognised(MELO_RESEARCH, 'low', 'firmware-update device in the official app; not planned')
 
@@ -88,6 +98,17 @@ export const MELO_PRODUCTS: readonly ProductInfo[] = [
     notes: 'Firmware update and battery health only (A c6201/ui/setting/BoxBatteryActivity)',
   }),
 ]
+
+/**
+ * The rows the Phase 2 driver serves: the receivers (1032, 1033) as 'experimental' (connectable, hardware
+ * 'untested', so destructive and OTA commands stay refused), the mic, case and earphone rows unchanged
+ * (recognised only: the official app only updates their firmware).
+ */
+export function meloExperimentalProducts(): ProductInfo[] {
+  return [...MELO_PRODUCTS, ...MELO_APP_PRODUCTS].map((p) =>
+    MELO_RX_PRODUCT_IDS.includes(p.productId) && p.vendorId !== 0 ? { ...p, support: MELO_EXPERIMENTAL_SUPPORT } : p,
+  )
+}
 
 /** FAMILIES.md §1.4: 772 is an app id, not a USB PID. */
 export const MELO_APP_PRODUCTS: readonly ProductInfo[] = [

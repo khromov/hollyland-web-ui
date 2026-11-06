@@ -222,9 +222,13 @@ describe('normalizeFeatureReport', () => {
 })
 
 describe('WebHidFeatureTransport: chooser and registry', () => {
-  it('derives filters from the registry: none while the A1 is recognised-only, unless asked', () => {
-    expect(featureLinkFilters()).toEqual([])
+  it('derives filters from the registry: the A1 since its driver is past the stub (Phase 2)', () => {
+    expect(featureLinkFilters()).toEqual([{ vendorId: 0x3547, productId: 1031 }])
     expect(featureLinkFilters(PRODUCTS, { includeRecognised: true })).toEqual([{ vendorId: 0x3547, productId: 1031 }])
+    // a recognised-only row with a feature link is offered only when asked
+    const recognisedRow = { ...PRODUCTS.find((p) => p.productId === 1031)!, support: { ...PRODUCTS.find((p) => p.productId === 1031)!.support!, level: 'recognised' as const } }
+    expect(featureLinkFilters([recognisedRow])).toEqual([])
+    expect(featureLinkFilters([recognisedRow], { includeRecognised: true })).toEqual([{ vendorId: 0x3547, productId: 1031 }])
     expect(featureLinkFor(0x3547, 1031)).toMatchObject({ reportId: 5, size: 64, otaReportId: 6 })
     expect(featureLinkFor(0x3547, 1041)).toBeUndefined() // the A2 uses interrupt reports
     expect(A1_FEATURE_LINK).toMatchObject({ reportId: 5, size: 64 })
@@ -234,9 +238,9 @@ describe('WebHidFeatureTransport: chooser and registry', () => {
     const a1Audio = new FakeFeatureHidDevice({ collections: [vendorCollection(0x000c, {})] }) // consumer-control interface
     const a1Vendor = new FakeFeatureHidDevice()
     const hid = install([a1Audio, a1Vendor])
-    await expect(WebHidFeatureTransport.request()).rejects.toThrow(/no connectable product/)
+    await expect(WebHidFeatureTransport.request([])).rejects.toThrow(/no connectable product/)
     hid.choose = (_f, devs) => [...devs]
-    const t = await WebHidFeatureTransport.request(featureLinkFilters(PRODUCTS, { includeRecognised: true }))
+    const t = await WebHidFeatureTransport.request()
     expect(t?.device).toBe(a1Vendor.hid)
     expect(hid.requests[0]).toEqual([{ vendorId: 0x3547, productId: 1031 }])
   })

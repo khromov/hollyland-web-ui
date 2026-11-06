@@ -15,7 +15,14 @@
  *
  * Profiles (SimOptions.profile): '2mic' (default: RX 1.0.1.3, 17-byte heartbeat), '2mic-android' (23-byte heartbeat
  * with TX3/TX4 offline, the layout Android assumes), '4mic' (RX 1.1.1.3, 23 bytes), '4mic-old' (RX 1.1.0.9, 22 bytes).
- * `params.heartbeatLength` overrides the body length (6..23).
+ * Params (SimOptions.params), all [I] models of what a firmware might do:
+ *  - heartbeatLength (6..23) overrides the body length
+ *  - ackOk / ackFail: the set-ack bytes (default 0 / 1, Android's DeviceConnectVariable.CmdSetResult). `ackOk: 1`
+ *    models a firmware that follows the iOS reading (any byte but 0xFF is success, a1-6108.md §3.2)
+ *  - muted: mics (tx1..tx4) that start muted
+ * Firmware model [I]: a heartbeat without the signal-mode byte (any length but 17 or 23) is a firmware without
+ * "Mode setting", so 0x3F and 0x40 get no reply; 0x16 for a mic slot the firmware mode lacks (TX3/TX4 on 2 Mic & 1 RX)
+ * is refused.
  */
 import { chunkBytes, padBytes } from '../../core/bytes'
 import type { DeviceSimulator, SimFaults, SimOptions, UnitId } from '../../core/types'
@@ -89,6 +96,12 @@ export class A1Simulator implements DeviceSimulator {
   signalMode = 0
   performance = false
   modeFailReason = 0
+  /** Mic slots of the firmware mode (2 Mic & 1 RX or 4 Mic & 1 RX). */
+  readonly micSlots: number
+  /** Set-ack byte for an accepted value (params.ackOk, default 0). */
+  ackOk: number
+  /** Set-ack byte for a refused value (params.ackFail, default 1). */
+  ackFail: number
   /** Every request frame received. */
   readonly received: Uint8Array[] = []
   /** Disruptive / destructive / OTA frames received (never answered). */
@@ -99,18 +112,28 @@ export class A1Simulator implements DeviceSimulator {
     this.faults = { dropReplies: o.dropReplies, duplicateReplies: o.duplicateReplies, chunkSize: o.chunkSize, staleFeatureReply: o.staleFeatureReply }
     this.profile = isProfile(o.profile) ? o.profile : '2mic'
     const p = PROFILES[this.profile]
+    this.micSlots = p.mics
     const len = o.params?.heartbeatLength
     this.heartbeatLength = typeof len === 'number' && Number.isInteger(len) && len >= 6 && len <= 23 ? len : p.heartbeatLength
     this.rxVersion = (o.rxVersion ?? p.rxVersion).split('.').map((x) => parseInt(x, 10) || 0)
+    const byte = (x: unknown, d: number) => (typeof x === 'number' && Number.isInteger(x) && x >= 0 && x <= 0xff ? x : d)
+    this.ackOk = byte(o.params?.ackOk, 0)
+    this.ackFail = byte(o.params?.ackFail, 1)
+    const muted = Array.isArray(o.params?.muted) ? (o.params.muted as unknown[]) : []
     const online: readonly UnitId[] = o.online ?? ['rx', ...A1_TX_UNITS.slice(0, p.mics)]
     this.mics = A1_TX_UNITS.map((u, i) => ({
       online: i < p.mics && online.includes(u),
       battery: [85, 60, 72, 40][i],
-      muted: false,
+      muted: muted.includes(u),
       version: [1, p.mics === 4 ? 1 : 0, 0, 7],
       serial: `A1TX000000${i + 1}`,
       mac: [0x50, 0xc0, 0xf0, 0x11 + i, 0x22, 0x33],
     }))
+  }
+
+  /** Whether this firmware has "Mode setting": its heartbeat carries the signal-mode byte (17 or 23 bytes) [I]. */
+  get supportsSignalMode(): boolean {
+    return this.heartbeatLength === 17 || this.heartbeatLength === 23
   }
 
   /** The heartbeat body the device would send now (a1-6108.md §4.2). */
@@ -156,8 +179,8 @@ export class A1Simulator implements DeviceSimulator {
 
   /** Reply body for a request, or null for no reply. */
   private handle(cmd: number, p: Uint8Array): number[] | null {
-    const ok = [0]
-    const refused = [1]
+    const ok = [this.ackOk]
+    const refused = [this.ackFail]
     const valid = (v: number | undefined, max: number, min = 0) => v !== undefined && v >= min && v <= max
     switch (cmd) {
       case A1Cmd.GET_HEART_INFO:
@@ -211,7 +234,7 @@ export class A1Simulator implements DeviceSimulator {
       case A1Cmd.GET_REVERB:
         return [this.reverbOn ? 1 : 0, this.reverbLevel]
       case A1Cmd.SET_TX_MUTE: {
-        const m = this.mic(p[0] ?? -1)
+        const m = (p[0] ?? -1) < this.micSlots ? this.mic(p[0] ?? -1) : undefined
         if (!m || !valid(p[1], 1)) return refused
         m.muted = p[1] === 1
         return ok
@@ -229,11 +252,12 @@ export class A1Simulator implements DeviceSimulator {
         this.shutdownTime = p[0]
         return ok
       case A1Cmd.SET_SIGNAL_MODE:
+        if (!this.supportsSignalMode) return null
         if (!valid(p[0], 1)) return refused
         this.signalMode = p[0]
         return ok
       case A1Cmd.GET_SIGNAL_MODE:
-        return [this.signalMode]
+        return this.supportsSignalMode ? [this.signalMode] : null
       case A1Cmd.GET_MODE_FAIL_REASON:
         return [this.modeFailReason]
       case A1Cmd.SET_PERFORMANCE_MODE:

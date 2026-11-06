@@ -214,6 +214,15 @@ export class LegacyMicDevice implements MicDevice {
   }
 
   /**
+   * Resolves once the wrapped device has no queued or in-flight request, e.g. after the start-up
+   * reads (tests, hardware checks; same role as FamilyDevice.idle). Gives up after `timeoutMs`.
+   */
+  async idle(timeoutMs = 5000): Promise<void> {
+    const end = Date.now() + timeoutMs
+    while (this.legacy.pendingRequests > 0 && Date.now() < end) await new Promise<void>((r) => setTimeout(r, 1))
+  }
+
+  /**
    * 'status' is the heartbeat. On a product whose heartbeat carries no settings (Lark C1,
    * Capabilities.heartbeatSettings false) it also reads 0x11 and 0x04, where both apps take the NC
    * level and the volume from (legacy-6501.md §4).

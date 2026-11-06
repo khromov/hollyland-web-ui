@@ -2,26 +2,43 @@
  * MELO P1 (family 6201): Moma framing with XOR (Android) / none (iOS), over USB HID and BLE GATT.
  * Spec: docs/research/families/melo-6201.md. Owner: W8 (docs/FAMILIES.md §3.7).
  *
- * Phase 0 stub: products only. Replace `driver` with the real FamilyDriver (status
- * 'experimental') and set the receiver rows' `support.level` to 'experimental' in products.ts.
+ *   products.ts        registry rows (receivers, mic, case, earphones) + the experimental copies the driver serves
+ *   commands.ts        command catalogue (every A Command6201 id + iOS-only 0x131B / 0x131C, safety classes, sources),
+ *                      device types, firmware gates, request builders
+ *   status.ts          heartbeat (31 B), device info (20 B, byte-reversed versions), VU levels, mixer / settings structs
+ *   controls.ts        ControlSpecs: More Settings, track faders, outputs, LED, work mode
+ *   protocol.ts        ProtocolSpec (start-up reads, gates, preconditions, read-modify-write setters), MeloSession
+ *   device.ts          MeloDevice (FamilyDevice + VU level stream: startLevels / onLevels / stopLevels)
+ *   sim.ts             MeloSimulator (VU push timer, batch replies, XOR on / off by control byte)
+ *   hardware-check.ts  first-contact steps (FAMILIES.md §5.7)
+ *   driver.ts          createMeloDriver() / MELO_DRIVER: the Phase 2 driver ('experimental')
+ *
+ * The registered `driver` below stays a stub (receivers recognised only; see driver.ts for why) but carries the
+ * real catalogue and frame classifier, so sendRaw classification and the console can name every MELO P1 frame.
  */
 import { stubDriver } from '../../core/stub'
 import type { FamilyDriver } from '../../core/types'
+import { MELO_COMMANDS } from './commands'
+import { meloCommandOfFrame } from './driver'
+import { MELO_HARDWARE_CHECK } from './hardware-check'
 import { MELO_APP_PRODUCTS, MELO_PRODUCTS, MELO_RESEARCH } from './products'
 
 export * from './products'
+export * from './commands'
+export * from './status'
+export * from './controls'
+export * from './protocol'
+export * from './device'
+export * from './sim'
+export * from './hardware-check'
+export * from './driver'
 
-export const driver: FamilyDriver = /* @__PURE__ */ stubDriver({
-  code: '6201',
-  name: 'MELO P1',
-  products: [...MELO_PRODUCTS, ...MELO_APP_PRODUCTS],
-  research: MELO_RESEARCH,
-  // FAMILIES.md §5.7, row 6201.
-  hardwareCheck: [
-    { id: 'ble-advertising', title: 'BLE advertising', kind: 'descriptor', detail: 'Advertised name; FFE0 visible; service data 0xBBBB layout.' },
-    { id: 'ble-fragmentation', title: 'Notification fragmentation', kind: 'observe', detail: 'Notification sizes; are long writes accepted?' },
-    { id: 'device-info', title: 'Device info 0x600A [0]', kind: 'read', detail: 'Sound-card master firmware version (gates the V2 structures).' },
-    { id: 'heartbeat', title: 'Status 0x600B', kind: 'read', detail: 'Payload length (31 B); does the reply carry XOR when the request had control 0x00?' },
-    { id: 'led', title: 'LED 0x2000 and back', kind: 'write-reversible', detail: 'Change the mixer LED brightness and restore it.' },
-  ],
-})
+function partialStub(): FamilyDriver {
+  return {
+    ...stubDriver({ code: '6201', name: 'MELO P1', products: [...MELO_PRODUCTS, ...MELO_APP_PRODUCTS], research: MELO_RESEARCH, hardwareCheck: MELO_HARDWARE_CHECK }),
+    commands: MELO_COMMANDS,
+    commandOfFrame: meloCommandOfFrame,
+  }
+}
+
+export const driver: FamilyDriver = /* @__PURE__ */ partialStub()

@@ -1,9 +1,10 @@
 /**
  * First-contact checklist for a LARK A1 (docs/FAMILIES.md §5.7 row 6108, a1-6108.md §7 "first hardware session",
- * §8 open questions). Read-only steps run automatically against a connected device; the one reversible write
- * (LED 0x21 and back) waits for the A1 LED control (Phase 2).
+ * §8 open questions). Read-only steps first; the one reversible write last: the indicator LED (0x21) and back,
+ * which also records which set-ack reading the firmware follows (Android body[0] == 0, iOS != 0xFF).
  */
-import type { HardwareCheckResult, HardwareCheckStep, MicDevice } from '../../core/types'
+import { CONTROL } from '../../core/controls'
+import type { HardwareCheckResult, HardwareCheckStep, MicDevice, SetResult } from '../../core/types'
 import { WebHidFeatureTransport } from '../../transports/webhid-feature'
 import { A1_END_MARKER, A1_HEADER_SIZE, A1_OTA_REPORT_ID, A1_REPORT_ID, A1_REPORT_SIZE } from './codec'
 import { isA1FourMicFirmware, type A1Heartbeat } from './status'
@@ -91,6 +92,34 @@ export const A1_HARDWARE_CHECK: readonly HardwareCheckStep[] = [
     id: 'led', title: 'LED 0x21 and back', kind: 'write-reversible',
     detail: 'Toggle the indicator LED (0x21 [0 on / 1 off]), confirm body[11] in the next heartbeat, restore it. ' +
       'Record the ack byte: Android reads body[0] == 0 as success, iOS anything but 0xFF (status.ts parseA1Ack). ' +
-      'Manual until the A1 LED control lands (Phase 2).',
+      'If the ack byte is not 0 but the heartbeat shows the change, the firmware follows the iOS reading.',
+    run: (device) => guarded(() => ledRoundTrip(device)),
   },
 ]
+
+/** iOS's reading of a set-ack byte (I -[HL6108DeviceInfoSync handleEvent:] @0x1002040e8: `cmp x0, #0xff; cset ne`). */
+const iosOk = (r: SetResult) => r.code !== null && r.code !== 0xff
+
+/** The 'led' step: flip the LED, read the heartbeat, flip it back, read again. */
+async function ledRoundTrip(device: MicDevice): Promise<HardwareCheckResult> {
+  if (typeof device.state.values[CONTROL.LED] !== 'boolean') await device.refresh('status')
+  const before = device.state.values[CONTROL.LED]
+  if (typeof before !== 'boolean') return { ok: false, summary: 'LED state unknown: no heartbeat decoded' }
+  const onOff = (b: boolean) => (b ? 'on' : 'off')
+  const flip = await device.set(CONTROL.LED, !before)
+  await device.refresh('status')
+  const seen = device.state.values[CONTROL.LED]
+  const back = await device.set(CONTROL.LED, before)
+  await device.refresh('status')
+  const restored = device.state.values[CONTROL.LED] === before
+  const changed = seen === !before
+  const reading = flip.ok ? 'Android and iOS agree' : changed && iosOk(flip) ? 'the firmware follows the iOS reading' : 'the write was refused'
+  return {
+    ok: flip.ok && changed && back.ok && restored,
+    summary:
+      `LED ${onOff(before)} → ${onOff(!before)}: ack byte ${flip.code ?? 'none'} (Android ${flip.ok ? 'success' : 'failure'}, ` +
+      `iOS ${iosOk(flip) ? 'success' : 'failure'}; ${reading}); heartbeat body[11] ${changed ? 'confirmed' : 'did not change'}; ` +
+      `restored: ${restored ? 'yes' : 'no'} (ack byte ${back.code ?? 'none'})`,
+    data: { before, flip, seen, back, restored },
+  }
+}

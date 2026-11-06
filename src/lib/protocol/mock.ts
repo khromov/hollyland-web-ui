@@ -150,6 +150,10 @@ export class SimulatedReceiver {
   constructor(o: SimulatorOptions = {}) {
     this.family = o.family ?? '6118'
     this.camera = o.camera ?? false
+    // A2S (camera RX, PID 1042): 3 volume steps, 0..2 (A larkc1/c6118/ui/home/C6118DeviceActivityKt.homeRxVolumeStepCount
+    // `i == 1042 ? 3 : 6`; I HLLark6118View setTotalCount:3 @0x1006666e0; PROTOCOL.md 0x05 "0–2 on A2S"). The default 3
+    // of the other models is out of that range (found by the conformance check "populated after connect").
+    if (this.family === '6118' && this.camera) this.volume = 1
     if (this.family !== '6118') {
       this.rxVersion = [2, 0, 0, 32, 0, 0]
       for (const t of this.tx) t.version = [2, 0, 0, 20, 0, 0]

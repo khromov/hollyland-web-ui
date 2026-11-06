@@ -1,6 +1,6 @@
 # Product families: compatibility matrix, implementation plan and library architecture
 
-Status: plan, 2026-11-05; Phase 0/1 status and review fixes in §2.4. Nothing in here has been run against hardware except where a row says "hardware-tested".
+Status: plan, 2026-11-05; Phase 0/1 and Phase 2 status and review fixes in §2.4 (2026-11-06). Nothing in here has been run against hardware except where a row says "hardware-tested".
 It turns the five family research docs into one decision document:
 
 | Group | Research doc | Products |
@@ -209,25 +209,50 @@ Enforced in the engine (`core/engine.ts`) from `ProductInfo.support` and each dr
   wrapped `HollylandDevice` (`.legacy`), which the current UI console uses, keeps its looser rules for hardware
   exploration.
 
-### 2.4 Phase 0/1 status (review of 2026-11-05)
+### 2.4 Status after Phase 2 (reviews of 2026-11-05 and 2026-11-06)
 
-Phase 0 (W0) and Phase 1 (W1–W4) are in the tree. A two-lens review (Android 3.1.0 jadx, iOS `larkSound` binary)
-found and fixed: the forced-`sendRaw` gaps above (engine and legacy adapter), the 6303 padding of a packet of exactly
+**Phase 0/1 (review of 2026-11-05).** Phase 0 (W0) and Phase 1 (W1–W4) are in the tree. A two-lens review (Android
+3.1.0 jadx, iOS `larkSound` binary) found and fixed: the forced-`sendRaw` gaps above (engine and legacy adapter), the 6303 padding of a packet of exactly
 64 bytes (Android pads it to 512: `len < 64` → 64, `len < 512` → 512), an unhandled rejection when a reply timed out
 during a failing `send()` (engine and `HollylandDevice`), the 6501 heartbeat NC byte (ignored when ≥ 4, as iOS
 `isHeartbeatNoiseLevelValid:`), the Lark Mini flag (iOS reads `0x16` body[0] only for `lark m1 pro`, PIDs 12/13), the
 MELO P1 BLE chooser filter (prefixes `04 01` / `04 02`; `04 03` is the TWS earphones), and documentation of three
 app disagreements (A1 set ack: Android `body[0] == 0`, iOS `!= 0xFF`; MAX 2 BOX: iOS polls `0x600B` to target 2 every
-3 s over BLE, Android does not; MELO P1 FFE1: Android writes with response, iOS without). Driver status:
+3 s over BLE, Android does not; MELO P1 FFE1: Android writes with response, iOS without).
 
-| Family | Driver today | Tested on hardware | Next (Phase 2) |
+**Phase 2 (W5–W8) and its two-lens review (2026-11-06).** All four drivers are in their family folders and pass the
+shared conformance suite (§5.3) including check 10, against their simulators and, for the BLE products, through
+`WebBluetoothTransport` and the fake GATT stack. Only the A1 driver is registered (`DRIVERS['6108']`, products
+`experimental`); the M3, MAX 2 and MELO P1 drivers are exported (`createM3Driver`, `createMax2Driver`, `MELO_DRIVER`)
+while the registry keeps their stubs (catalogue and frame classifier only), so `createMicDevice` still refuses those
+PIDs. The review (Android 3.1.0 jadx, iOS `larkSound` disassembly) found and fixed:
+- MAX 2: heartbeat byte 18 is `deviceType`, **2 = camera RX** (iOS `initEntityWithData:` `cmp #0x2` → `setIsCamera:`),
+  so a camera RX through the BOX is no longer shown as a phone RX; "USB Output" (`0x8043`) restarts the RX (iOS confirm
+  dialog + "device will automatically restart"), now `disruptive`; Timing Method "Reset" needs `{ confirm: true }`
+  (`Max2Device`, A `confirmReset()`) and is refused in Real-time Timing (the row is hidden there); NC depth no longer
+  needs a mic online (only the NC switch checks `isAllowSet`).
+- MELO P1: Output Bit Depth no longer needs a mic online (only the mic bit-depth buttons check); the noise-gate
+  threshold needs the gate on (`noise-gate-off`); LED brightness needs that LED on (`led-off`, Android hides the tabs)
+  and keeps the switch state (iOS); `0x1304` rxSlave follows iOS (output change copies the depth, mic change keeps the
+  `0x1305` value, now read at start-up as iOS does) instead of Android's constant 0.
+- M3: Bit Depth 32-bit float is refused (`apple-only`, as Android and as the MAX 2 "USB Output"); 24-bit when already
+  24-bit sends nothing (Android).
+- Documented app disagreements, behaviour unchanged: MAX 2 BLE NC fan-out (Android: targets 3, 4, 10, 11, online or
+  not, 200 ms apart; iOS: online TXs only, targets 3, 4, 5, 5; the library: Android targets, iOS online filter, one ack
+  apart) and the NC GET on a TX coming online (Android TX1, iOS that TX), max2-6701.md §9 #7; MELO P1 VU interval
+  (Android 100 ms, kept; iOS 150 ms, and a VU GET poll over External Accessory), melo-6201.md §10 #8.
+
+Every family below except the A2 is **untested on hardware**: destructive and OTA commands are refused by the engine
+(and hidden), disruptive controls need a per-call confirm, toggles are never sent blind.
+
+| Family | What the library does today | Tested on hardware | What Phase 3 (W9 UI) needs |
 |---|---|---|---|
-| 6118 / 6301 / 6302 | `HollylandDevice` + `LegacyMicDevice` adapter | A2 tested (fw 3.0.2.008); A2S sibling; M2 / M2S untested (units on hand) | M2 / M2S test (§5.6), then promote `support.hardware` |
-| 6501 | same engine, 6501 rules (W1) | untested (M2 is the proxy) | M2 test step 4 (§5.6) |
-| 6108 | wire layer (codec, catalogue, heartbeat, read-only session, simulator, `WebHidFeatureTransport`); registered driver still a stub | untested | W5: controls, writes, gates; settle the set-ack reading on hardware |
-| 6303 | Moma profile, codec, vectors; driver stub | untested | W6 |
-| 6701 | Moma profiles, codec, vectors, `WebBluetoothTransport`; driver stub | untested | W7: BLE path with pushes **and** the iOS 3 s `0x600B` poll to target 2 |
-| 6201 | Moma profiles, codec, vectors, `WebBluetoothTransport`, corrected chooser filters; driver stub | untested | W8: BLE first; decide write type / chunking from the hardware check |
+| 6118 / 6301 / 6302 | `HollylandDevice` + `LegacyMicDevice`: heartbeat, identity, NC, volume, channel, LED, lock, auto-off, voice presets, meters from USB audio | **A2 tested** (fw 3.0.2.008, write-only on macOS, full via the bridge); **M2 (PID 7) tested** (volume / NC read on connect, PROTOCOL.md §11.6–§11.8); A2S sibling; M2S untested | session on `MicDevice` via `createMicDevice`; keep today's pages |
+| 6501 (C1, C1 2nd gen, M1 2nd gen, Mini) | same engine with the 6501 rules (heartbeat link-only on PID 1, volume wire map, Mic1/Mic2 swap, NC-on precondition) | untested (the tested M2 is the proxy) | "Same protocol as Lark M2 (tested)" plate; NC level only while NC is on; no LED / lock / channel rows |
+| 6108 LARK A1 | **registered** driver: feature-report transport, 1 s poll, 13 controls (per-mic mute, NC + level, volume, Mono/Stereo, EQ, reverb + level, Mic Recognition, auto-off, LED, Mode setting; 2↔4-mic "Wireless settings" catalogued as destructive, hidden), RX ≥ 1.0.1.3 mute gate, 2/4-mic firmware, 5 mock presets | untested | `WebHidFeatureTransport` connect path; 2 or 4 mic modules with writable mute; Audio page EQ / reverb; untested plate + first-connect notice; set-ack reading (Android `0` vs iOS `!= 0xFF`) shown in the diagnostic report |
+| 6303 LARK M3 | `createM3Driver()` (not registered): report-ID-8 WebHID, 1.5 s `0x6000` poll, 16 controls (mute, NC + level, phone volume, camera 3-level dB gains, Mono/Stereo/4-track with per-value restart confirm in `M3Device`, smart mix, TX recognition, LED, hot-shoe sync, playback without unplugging and Bit Depth (24-bit only) as disruptive, TX button lock, auto-off), primary/secondary RX gating, 4T4R/2T2R, 7 mock presets | untested (VID unconfirmed) | register the driver; chooser fallback for the unconfirmed VID; up to 4 mic modules; receivers list (primary badge, secondary read-only); restart dialogs from `confirmText` and `M3Device.channelModeNeedsConfirm`; 4-channel USB audio meters. Later (W10): voice profiles, wireless monitoring |
+| 6701 LARK MAX 2 | `createMax2Driver()` (not registered): USB RX 1026/1027 (`0x600B` 3 s poll) and BLE BOX 101 (pushes + iOS 3 s `0x600B` to target 2), 21 controls (Phone Speaker, internal / USB bit depth, Lock Mic, NC + depth, dynamic / per-mic gain, channel incl. safety track (BOX only), timecode switch / mode / fps / timing with Reset confirm in `Max2Device`, Mic Recognition, 4 Mic & 1 RX, RX pairing, Wireless Monitoring + OWS play / volume / pairing), RX ≥ 3.0.0.50 gates, 9 mock presets; system time on connect only with `syncTimeOnConnect` | untested | register the driver; "Connect over Bluetooth" (BOX); Timecode and Monitoring pages; BOX / earphone battery cards; 2/4 mic modules; restart dialogs (Phone Speaker, USB Output, Wireless Monitoring, 4-mic) and the Reset dialog (`MAX2_TC_RESET_TEXT`, `Max2Device.timingNeedsConfirm`); a decision on `syncTimeOnConnect`. USB path still waits for a HID descriptor (> 64-byte reports) |
+| 6201 MELO P1 | `MELO_DRIVER` (not registered): BLE (FFE0/FFE1/FFE2, target 1) and USB framings, 3 s `0x600B` poll, start-up GETs incl. `0x1305`, 25 controls (NC + depth, noise gate + threshold (< 4.0.0.1), Near/Mid/Far or per-mic gain (≥ 3.0.7.9), mic / output bit depth and auto speaker output as disruptive, 3.5 mm I/O, LED + brightness per unit, scenario, mic / instrument / BGM faders and mutes, wireless / wired / USB output volumes and mutes), VU stream via `0x11E0` + `0x6048` (`startLevels`, not `MicState.values`), 5 mock presets | untested | register the driver; "Connect over Bluetooth" (works on Android Chrome); new Mixer page (faders, mutes, output volumes) fed by `onLevels`; battery cards for RX, mics, case, earphones, remote; version-gated rows (`firmware-too-old` / `firmware-too-new`); restart dialogs. Later (W10): Easy/Pro Tuning DSP |
 
 ---
 
@@ -485,7 +510,7 @@ package; family research corrections go to that family's doc in `docs/research/f
 | legacy (6501 rows) | heartbeat `0x10`; PID 1 applies link/battery only; PID 11 swaps Mic1/Mic2 **for display only** | NC level needs NC on (11/12/13); PID 1 volume allowed without a mic (Android) | short 6-byte heartbeat (PID 1), 14-byte (others), `0x16` body | 
 | 6108 A1 | `0x1F` heartbeat: tx1..tx4 online/battery/mute, NC on+level, volume, channel, auto-off, LED, EQ, reverb, mic recognition, signal mode; branch on LEN 17 / 22 / 23 as iOS does | mute row needs RX ≥ 1.0.1.3 (inclusive); 4 units when the RX version's 2nd part is 1; NC blocked when all online mics are muted; mic recognition needs both mics in 2-mic mode | SET→GET pairing, ack `0` = OK, 2/4-mic firmware, stale-reply fault |
 | 6303 M3 | `0x6000` (30 B): TX/RX bitmasks, batteries (0xFF = phone RX), mute mask, NC, volume, channel (incl. 4-track), smart mix, LED, recognition, primary/secondary, 4T4R/2T2R, lock, hot shoe, refresh flag | global settings only on the primary RX; 4-track only in 4T4R; camera-only controls by PID; restart-causing: bit depth, 4-track, work mode | multi-RX topology, `isRefreshCanto`, 64/512 padding, unsolicited BT events |
-| 6701 MAX 2 | USB `0x600B` (49 B: batteries incl. RX/BOX/earphones, charging, NC depth, gain, channel, TC, OWS, 4-mic); BLE pushes `0x6000`–`0x6002` + `0x600A` per unit, and (as iOS does) `0x600B` to target 2 every 3 s through the BOX | 4-mic, RX pairing, wireless monitoring need RX ≥ 3.0.0.50; safety track only via the BOX; stereo/safety refused with TC on unless TC mode 3; phone speaker and wireless monitoring restart the RX | USB poll vs BLE push modes, start/end items, XOR, MTU-sized notification chunks |
+| 6701 MAX 2 | USB `0x600B` (49 B: batteries incl. RX/BOX/earphones, charging, NC depth, gain, channel, TC, OWS, 4-mic); BLE pushes `0x6000`–`0x6002` + `0x600A` per unit, and (as iOS does) `0x600B` to target 2 every 3 s through the BOX | 4-mic, RX pairing, wireless monitoring need RX ≥ 3.0.0.50; safety track only via the BOX; stereo/safety refused with TC on unless TC mode 3; phone speaker, USB Output (iOS) and wireless monitoring restart the RX; timecode Reset needs a confirm; heartbeat byte 18 = 2 is a camera RX (iOS) | USB poll vs BLE push modes, start/end items, XOR, MTU-sized notification chunks |
 | 6201 MELO P1 | `0x600B` (31 B: RX/box/mic/ear batteries, charging, links, 3.5 mm, NC, gain, remote), `0x600A` per unit (20 B, reversed version bytes), pushed VU `0x11EB` | V2 structures from RX 4.0.0.1; per-mic gain from 3.0.7.9; Pro Tuning USB-only; auto speaker output restarts | VU push timer after `0x6048`, batch replies, XOR on/off by control byte |
 
 ---
@@ -509,7 +534,7 @@ package; family research corrections go to that family's doc in `docs/research/f
 - **Meters:** app-side from USB audio as today, but the Audio page must handle 4-channel USB audio (M3 4CH PIDs) and,
   for MELO P1, device-pushed VU levels that work without microphone permission.
 - **Restart flow:** reused for every disruptive control (A1 none; M3 bit depth / 4-track / wireless monitoring; MAX 2
-  phone speaker / wireless monitoring; MELO P1 auto speaker output), driven by `ControlSpec.confirmText`.
+  phone speaker / USB Output / wireless monitoring, plus the timecode Reset confirm; MELO P1 auto speaker output), driven by `ControlSpec.confirmText`.
 
 ### 4.2 New controls per family
 
@@ -586,6 +611,66 @@ family simulator it checks:
 7. `duplicateReplies` and stale replies are ignored; chunked replies (every split point) give identical messages.
 8. No `destructive`/`ota` command is ever sent for an untested product, even with `allowDestructive`.
 9. Unknown commands get no reply and time out cleanly; disconnect rejects pending requests.
+10. **Populated after connect**: every readable control has a value once the start-up reads have settled (below).
+
+#### Check 10: populated after connect (added 2026-11-06)
+
+Why: on a real Lark M2 (PID 7) the volume stayed unknown after every reconnect. The mobile M2 ignores heartbeat
+volume (A `larkc1/HLDeviceActivity.onEvent` cmd 16: `productId >= 8`), and the library read `0x04` at start-up only
+for the 6501 group (fixed in `device.ts` `fetchExtraSettings`, PROTOCOL.md §11.8). Check 10 fails on the pre-fix
+`device.ts` and stops the same class of bug in every driver.
+
+What it does (`core/conformance.ts`, per product and per mock preset that sets simulator options):
+- connects to the simulator with the **default start-up reads** (`fetchIdentity` / `fetchSettings` on, whatever
+  `deviceOptions` says; fast timing; no status poll, so only `connect()` and its start-up reads count), waits
+  `settleMs` and then until the device is idle (`FamilyDevice.idle()`, `LegacyMicDevice.idle()`);
+- for every **readable** control, `isReadableControl(c)`: `c.readBack` is `'status'`, `'get'` or `'push'` and
+  `c.kind !== 'action'`. `ControlSpec.readBack` is the only declaration; `'none'` means write-only;
+- requires a value in `MicState.values[controlKey(id, unit)]` for every online unit in `perUnit` (offline units are
+  listed, not checked), and that the value passes `validateControlValue` (the A2S simulator's volume 3 outside
+  0..2 was found this way);
+- accepts a missing value only when `MicState.availability` says why (`ok: false` with a reason: firmware too old, a
+  precondition such as `noise-off`) or the driver declares an exception. `'version-unknown'` is **not** a reason:
+  once the start-up identity reads have run, the RX version must be known;
+- inversely, with every reply dropped (and no packet from the device) no readable control may have a value, so a
+  driver cannot pass by filling in defaults.
+
+Exceptions are explicit, with a reason, and are themselves checked:
+
+```ts
+describeDriverConformance(driver, {
+  // Illustrative keys and reasons; a real reason cites where the apps (do not) read the value.
+  notReadOnConnect: {
+    'family.control': 'why the value stays unknown after connect (source)',                  // every product and run
+    'mic.mute:tx3': { reason: 'why TX3 has no mute state here (source)', runs: ['default'] }, // one unit, one run
+    [CONTROL.VOLUME]: { reason: 'why this PID has no volume read (source)', productIds: [1027] }, // one product
+  },
+})
+```
+
+Keys are a control id (every unit) or a per-unit key (`'mic.mute:tx3'`); `runs` takes `'default'` or a mock
+preset id. The suite fails on a reason under 10 characters, a key that is not a readable control of the driver, an
+unknown product or run, and on a **stale** exception (it applies to a run but the value is known there, or `availability` already explains it). Reasons are
+printed in the test name. `checkPopulatedAfterConnect(driver, product, o)` returns the full report (populated,
+unavailable, excepted, offline, missing with a hint, invalid, stale, values) for family-specific tests.
+
+How Phase 2 drivers (W5–W8) satisfy it:
+1. Give every control an honest `readBack`: where the official app reads the value (heartbeat field, GET command,
+   push). Use `'none'` only when neither app can read it back; cite the source as for every other field.
+2. Map the status reply in `onMessage` for every field the product's app reads there, per PID where the app
+   branches (as the M2 does on `productId`).
+3. Send the GET of every GET-backed control from `ProtocolSpec.onConnected` when `ctx.options.fetchSettings`, in
+   the official app's start-up order, and the identity reads under `fetchIdentity`, so firmware gates resolve.
+4. Push-backed values (MAX 2 BOX `0x6000`–`0x6002`, MELO P1 VU): the simulator's `attach()` pushes what the device
+   pushes after connect (or `onConnected` sends the subscription, 6201 `0x6048`).
+5. Report a firmware gate or precondition in `availability` with a reason; a value that stays unknown for another
+   reason goes into `notReadOnConnect` with the reason and the narrowest scope.
+
+Status on 2026-11-06: legacy 6118/6301/6302/6501 (every row, through `LegacyMicDevice`; per-product pins and the
+M2 regression in `families/legacy/__tests__/populated.test.ts`), the toy drivers (engine, Moma, BLE) and the A1
+read-only wire driver pass. Since Phase 2 the four family drivers pass it too, with their controls, for every product
+and every mock preset with simulator options: the registered A1 driver, and `createM3Driver()`, `createMax2Driver()`
+and `MELO_DRIVER` (the registry still holds stubs for 6201/6303/6701, which pass trivially; §2.4).
 
 ### 5.4 Transport fakes and property tests
 

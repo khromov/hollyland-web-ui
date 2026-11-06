@@ -165,11 +165,28 @@ describe('A1 safety (untested family, FAMILIES.md §2.3)', () => {
     await h.device.disconnect()
   })
 
-  it('offers no controls yet and refuses set() (Phase 2)', async () => {
-    const h = await overFeatureLink()
+  it('the read-only session offers no controls and refuses set()', async () => {
+    const h = await overFeatureLink(new A1Simulator(), QUIET, createA1Spec({ readOnly: true, unitIdentityDelayMs: 0 }))
     await h.device.connect()
     expect(h.device.controls).toEqual([])
+    expect(h.device.state.availability).toEqual({})
     await expect(h.device.set(CONTROL.LED, false)).rejects.toBeInstanceOf(UnsupportedError)
+    await h.device.disconnect()
+  })
+
+  it('sets a control end to end over the feature link (SET_REPORT, ack via GET_REPORT, heartbeat read-back)', async () => {
+    const h = await overFeatureLink()
+    await h.device.connect()
+    expect(h.device.state.values[CONTROL.LED]).toBe(true)
+    const r = await h.device.set(CONTROL.LED, false)
+    expect(r).toEqual({ ok: true, confirmed: true, code: 0 })
+    expect(h.sim.light).toBe(1) // wire 1 = off
+    expect(h.dev.sent.at(-1)).toMatchObject({ reportId: 5 })
+    expect([...h.dev.sent.at(-1)!.data.subarray(0, 8)]).toEqual([0x03, 0xaa, 0xdd, 0x21, 0x00, 0x01, 0x01, 0xef])
+    await sleep(200) // heartbeat read-back 150 ms later
+    expect(cmds(h.dev.sent.map((x) => Uint8Array.of(5, ...x.data))).at(-1)).toBe(0x1f)
+    expect(h.device.state.values[CONTROL.LED]).toBe(false)
+    expect(h.sim.dangerous).toEqual([])
     await h.device.disconnect()
   })
 
@@ -189,8 +206,8 @@ describe('A1 hardware check (FAMILIES.md §5.7)', () => {
     await h.device.connect()
     const results: Record<string, { ok: boolean; summary: string }> = {}
     for (const step of A1_HARDWARE_CHECK) {
-      if (step.kind !== 'write-reversible') expect(step.run, step.id).toBeDefined()
-      if (step.run) results[step.id] = await step.run(h.device)
+      expect(step.run, step.id).toBeDefined()
+      results[step.id] = await step.run!(h.device)
     }
     expect(results['feature-reports']).toMatchObject({ ok: true, summary: 'report 5: 63 B; report 6: 159 B' })
     expect(results.heartbeat).toMatchObject({ ok: true, summary: '23-byte body, layout 4mic' })
@@ -198,6 +215,11 @@ describe('A1 hardware check (FAMILIES.md §5.7)', () => {
     expect(results['reply-bytes'].summary).toMatch(/^bytes 0–6: 05 03 bb dd .*; EF after payload: yes$/)
     expect(results['report-id-byte']).toMatchObject({ ok: true })
     expect(results['report-id-byte'].summary).toMatch(/^64 bytes, with the id byte/)
+    // the one reversible write, over SET_REPORT / GET_REPORT: LED off and back on
+    expect(results.led).toMatchObject({ ok: true })
+    expect(results.led.summary).toMatch(/^LED on → off: ack byte 0 .*restored: yes/)
+    expect(h.sim.light).toBe(0)
+    expect(h.dev.sent.filter((r) => r.data[3] === 0x21).map((r) => r.data[6])).toEqual([1, 0])
     expect(h.sim.dangerous).toEqual([])
     await h.device.disconnect()
   })

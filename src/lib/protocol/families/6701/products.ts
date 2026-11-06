@@ -9,7 +9,10 @@ import type { ProductInfo } from '../../models'
 
 export const MAX2_RESEARCH = 'docs/research/families/max2-6701.md'
 
-/** Phase 0 stub. USB RX: medium (report layout unknown); BOX over BLE: medium-high (FAMILIES.md §1.2). */
+/**
+ * Registry support: recognised until the registry switches to createMax2Driver() (index.ts). USB RX: medium (report
+ * layout unknown); BOX over BLE: medium-high (FAMILIES.md §1.2). max2ExperimentalProducts() gives the connectable rows.
+ */
 export const MAX2_SUPPORT = recognised(MAX2_RESEARCH, 'medium', 'USB report layout unknown; replies > 64 B')
 export const MAX2_BOX_SUPPORT = recognised(MAX2_RESEARCH, 'medium', 'medium-high: BLE GATT path read in both apps')
 export const MAX2_OWS_SUPPORT = recognised(MAX2_RESEARCH, 'low', 'not planned: state comes through the RX (FAMILIES.md §2.1)')
@@ -81,3 +84,13 @@ export const MAX2_APP_PRODUCTS: readonly ProductInfo[] = [
     notes: 'Android: Classic BT SPP 0xE003; iOS: BLE E49A25F8-… (max2-6701.md §2.3). Not planned.',
   }),
 ]
+
+/**
+ * The rows createMax2Driver() serves: USB RX 1026 / 1027 and the BOX 101 at `support.level` 'experimental'
+ * (connectable), hardware still 'untested'; the OWS earphone (102) stays recognised (no control link, FAMILIES.md §2.1).
+ */
+export function max2ExperimentalProducts(): ProductInfo[] {
+  return [...MAX2_PRODUCTS, ...MAX2_APP_PRODUCTS].map((p) =>
+    p.productId === 102 ? p : { ...p, support: { ...p.support!, level: 'experimental' as const } },
+  )
+}

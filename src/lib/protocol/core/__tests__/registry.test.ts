@@ -83,7 +83,9 @@ describe('registry rows (FAMILIES.md §1.1)', () => {
     expect(supportOf(lookupProduct(H, 1041)!).testedOn?.join(' ')).toMatch(/3\.0\.2\.008/)
     expect(supportOf(lookupProduct(H, 1042)!).hardware).toBe('sibling-tested')
     expect(supportOf(lookupProduct(H, 1029)!)).toMatchObject({ level: 'supported', hardware: 'untested' })
-    for (const p of PRODUCTS.filter((x) => !x.family)) {
+    // The A1 driver is registered since Phase 2 (W5, families/6108/products.ts A1_SUPPORT); never on hardware.
+    expect(supportOf(lookupProduct(H, 1031)!)).toMatchObject({ level: 'experimental', hardware: 'untested' })
+    for (const p of PRODUCTS.filter((x) => !x.family && x.productId !== 1031)) {
       expect(supportOf(p).level, displayName(p)).toBe('recognised')
       expect(supportOf(p).hardware).toBe('untested')
       expect(supportOf(p).research).toMatch(/^docs\//)
@@ -113,13 +115,14 @@ describe('drivers', () => {
     }
     expect(DRIVERS['6118'].status).toBe('supported')
     expect(DRIVERS['6501'].status).toBe('experimental') // Phase 1 (W1)
-    for (const code of ['6108', '6201', '6303', '6701'] as const) expect(DRIVERS[code].status).toBe('stub')
+    expect(DRIVERS['6108'].status).toBe('experimental') // Phase 2 (W5)
+    for (const code of ['6201', '6303', '6701'] as const) expect(DRIVERS[code].status).toBe('stub')
   })
 
-  it('only legacy rows are connectable (the 6501 group since Phase 1)', () => {
+  it('only legacy rows (the 6501 group since Phase 1) and the A1 (Phase 2) are connectable', () => {
     const connectable = ALL_PRODUCTS.filter(canConnect).map((p) => p.productId).sort((a, b) => a - b)
-    expect(connectable).toEqual([1, 7, 8, 11, 12, 13, 32, 33, 1029, 1030, 1041, 1042])
-    expect(ALL_PRODUCTS.filter(isConnectableProduct)).toHaveLength(12)
+    expect(connectable).toEqual([1, 7, 8, 11, 12, 13, 32, 33, 1029, 1030, 1031, 1041, 1042])
+    expect(ALL_PRODUCTS.filter(isConnectableProduct)).toHaveLength(13)
     expect(unsupportedReason(lookupProduct(H, 2)!)).toMatch(/Lark MAX is recognised but not supported yet .*legacy-6501\.md/)
     expect(unsupportedReason(lookupProduct(H, 1036)!)).toMatch(/recognised but not supported yet .*m3-6303\.md/)
   })
@@ -139,9 +142,11 @@ describe('drivers', () => {
   })
 
   it('mock presets come from the drivers and build working devices', async () => {
-    expect(mockPresets().map((p) => p.id)).toEqual(['a2', 'a2s', 'blind', 'm2', 'm2cam', 'm2s', 'm2scam', 'c1', 'c1g2', 'm1g2', 'mini'])
+    expect(mockPresets().map((p) => p.id)).toEqual([
+      'a1', 'a1-4mic', 'a1-4mic-old', 'a1-oldfw', 'a1-blind', 'a2', 'a2s', 'blind', 'm2', 'm2cam', 'm2s', 'm2scam', 'c1', 'c1g2', 'm1g2', 'mini',
+    ])
     expect(findMockPreset('nope')).toBeUndefined()
-    expect(() => createMockDevice('nope')).toThrow(/available: a2, a2s/)
+    expect(() => createMockDevice('nope')).toThrow(/available: a1, a1-4mic, .*a2, a2s/)
     const { device, transport } = createMockDevice('m2s', { heartbeatIntervalMs: null, fetchIdentity: false, fetchSettings: false })
     const s = await device.connect()
     expect(s.rx).toBe('available')

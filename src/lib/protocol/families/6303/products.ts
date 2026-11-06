@@ -3,13 +3,24 @@
  * Import rule (FAMILIES.md §3.6): runtime imports from core/ only, types only from models.ts.
  */
 import { recognised, usbProduct } from '../../core/product-rows'
-import type { WebHidLinkSpec } from '../../core/types'
+import type { SupportInfo, WebHidLinkSpec } from '../../core/types'
 import type { ProductInfo } from '../../models'
 
 export const M3_RESEARCH = 'docs/research/families/m3-6303.md'
 
-/** Phase 0 stub: recognised only. Framing high, transport and VID medium (FAMILIES.md §1.2). */
+/**
+ * Registered rows: recognised only, so the registry keeps the M3 unconnectable until the UI integration (Phase 3)
+ * switches the registered driver (index.ts). Framing high, transport and VID medium (FAMILIES.md §1.2).
+ */
 export const M3_SUPPORT = recognised(M3_RESEARCH, 'medium', 'framing high; transport and vendor id medium (VID never checked by the app)')
+
+/** The Phase 2 driver's rows: built from the official app's code, never run against hardware. */
+export const M3_EXPERIMENTAL_SUPPORT: SupportInfo = {
+  ...M3_SUPPORT,
+  level: 'experimental',
+  hardware: 'untested',
+  note: 'framing high (generated serializers, iOS id table); semantics medium (from UI use); transport and vendor id unverified',
+}
 
 /**
  * A Protocol6303Provider.createCommandPostBuilder().setReportId(8), new CommandStanderParser(8);
@@ -46,3 +57,26 @@ export const M3_PRODUCTS: readonly ProductInfo[] = ROWS.map((r) =>
     notes: `Moma framing, report id 8, no checksum (${r.constant}; m3-6303.md §3)`,
   }),
 )
+
+/** The M3 rows with `support.level` 'experimental' (connectable through the Phase 2 driver), hardware still 'untested'. */
+export function m3ExperimentalProducts(): ProductInfo[] {
+  return M3_PRODUCTS.map((p) => ({ ...p, support: M3_EXPERIMENTAL_SUPPORT }))
+}
+
+/** A larkc1/c6303/ui/Device6303DataManager.isPhoneRx(): `HlDevice.getProductId() == 1038 || == 1039`. */
+export function isM3PhoneRx(p: Pick<ProductInfo, 'productId'>): boolean {
+  return p.productId === 1038 || p.productId === 1039
+}
+
+/** A Device6303DataManager.isCameraRx() = !isPhoneRx() (battery, hot shoe, 3-level volume dialog). */
+export function isM3CameraRx(p: Pick<ProductInfo, 'productId'>): boolean {
+  return !isM3PhoneRx(p)
+}
+
+/**
+ * 4CH PIDs re-enumerate with a 4-channel USB audio interface [I]; no UI gate uses 2CH / 4CH (the 4-track option
+ * follows the heartbeat RF mode, m3-6303.md §1.1). Used only for simulator defaults and labels.
+ */
+export function isM3FourChannelPid(p: Pick<ProductInfo, 'productId'>): boolean {
+  return p.productId === 1037 || p.productId === 1039
+}

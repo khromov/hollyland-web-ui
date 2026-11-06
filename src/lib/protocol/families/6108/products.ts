@@ -2,13 +2,24 @@
  * LARK A1 (family 6108 / A6108) registry rows. docs/research/families/a1-6108.md §1–2.
  * Import rule (FAMILIES.md §3.6): runtime imports from core/ only, types only from models.ts.
  */
-import { recognised, usbProduct } from '../../core/product-rows'
+import { usbProduct } from '../../core/product-rows'
+import type { SupportInfo } from '../../core/types'
 import type { ProductInfo } from '../../models'
 
 export const A1_RESEARCH = 'docs/research/families/a1-6108.md'
 
-/** Phase 0 stub: recognised only. Commands and heartbeat agree between Android and iOS; the transport is inferred (§1.2). */
-export const A1_SUPPORT = recognised(A1_RESEARCH, 'medium', 'commands high, feature-report transport medium (descriptor not captured)')
+/**
+ * Phase 2 (W5): connectable, driver from app code only, never on hardware. Commands, payloads and the heartbeat agree
+ * between Android and iOS (high); the feature-report transport and reply bytes 1–3 are inferred (medium, FAMILIES.md
+ * §1.2); the set-ack byte beyond 0 differs between the apps (a1-6108.md §3.2).
+ */
+export const A1_SUPPORT: SupportInfo = {
+  level: 'experimental',
+  hardware: 'untested',
+  confidence: 'medium',
+  research: A1_RESEARCH,
+  note: 'commands high, feature-report transport medium (descriptor not captured); set ack: Android 0 = OK, iOS != 0xFF',
+}
 
 export const A1_PRODUCTS: readonly ProductInfo[] = [
   // A Product.PRODUCT_6108 = 1031 (VID 0x3547 via USBHIDService.VENDOR_ID); R product_6108 "LARK A1";
