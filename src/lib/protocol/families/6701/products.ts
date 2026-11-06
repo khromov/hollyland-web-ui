@@ -4,17 +4,17 @@
  * Import rule (FAMILIES.md §3.6): runtime imports from core/ only, types only from models.ts.
  */
 import { appProduct, recognised, usbProduct } from '../../core/product-rows'
-import type { WebBluetoothLinkSpec, WebHidLinkSpec } from '../../core/types'
+import type { SupportInfo, WebBluetoothLinkSpec, WebHidLinkSpec } from '../../core/types'
 import type { ProductInfo } from '../../models'
 
 export const MAX2_RESEARCH = 'docs/research/families/max2-6701.md'
 
 /**
- * Registry support: recognised until the registry switches to createMax2Driver() (index.ts). USB RX: medium (report
- * layout unknown); BOX over BLE: medium-high (FAMILIES.md §1.2). max2ExperimentalProducts() gives the connectable rows.
+ * Registry support: 'experimental' since Phase 3 (W9), when the registry switched to createMax2Driver() (index.ts);
+ * hardware 'untested'. USB RX: medium (report layout unknown); BOX over BLE: medium-high (FAMILIES.md §1.2).
  */
-export const MAX2_SUPPORT = recognised(MAX2_RESEARCH, 'medium', 'USB report layout unknown; replies > 64 B')
-export const MAX2_BOX_SUPPORT = recognised(MAX2_RESEARCH, 'medium', 'medium-high: BLE GATT path read in both apps')
+export const MAX2_SUPPORT: SupportInfo = { ...recognised(MAX2_RESEARCH, 'medium', 'USB report layout unknown; replies > 64 B'), level: 'experimental' }
+export const MAX2_BOX_SUPPORT: SupportInfo = { ...recognised(MAX2_RESEARCH, 'medium', 'medium-high: BLE GATT path read in both apps'), level: 'experimental' }
 export const MAX2_OWS_SUPPORT = recognised(MAX2_RESEARCH, 'low', 'not planned: state comes through the RX (FAMILIES.md §2.1)')
 
 /**

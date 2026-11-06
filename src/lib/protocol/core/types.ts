@@ -435,6 +435,14 @@ export interface ProtocolSpec<Req, Msg> {
   refresh?(ctx: EngineContext<Req, Msg>, what: 'status' | 'identity' | 'settings'): Promise<void>
   /** Translate a control write into requests. Throw ControlUnavailableError / UnsupportedError to refuse. */
   encodeSet(ctx: EngineContext<Req, Msg>, id: ControlId, value: ControlValue, o: { unit?: UnitId }): WritePlan<Req>
+  /**
+   * Availability while replies are not delivered (rx 'unavailable'): the controls encodeSet would refuse because
+   * it needs a value or a firmware version it cannot read ('state-unknown', 'version-unknown'). Pure (no
+   * requests, no driver state changes). The engine applies it when rx is decided 'unavailable' and again after
+   * every blind write (an optimistic value can make a control writable), and drops it once replies arrive, so a
+   * UI shows those controls as blocked instead of letting them fail. Absent: nothing is blocked up front.
+   */
+  blindAvailability?(ctx: EngineContext<Req, Msg>): Partial<Record<ControlId, ControlAvailability>>
   /** Controls this product offers (before the engine removes destructive/OTA ones for untested products). */
   controls(product: ProductInfo): readonly ControlSpec[]
   timing: { replyTimeoutMs: number; probeTimeoutMs: number; interFrameDelayMs: number }

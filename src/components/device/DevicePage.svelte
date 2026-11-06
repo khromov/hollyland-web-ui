@@ -17,9 +17,15 @@
   import UnitPanel from './UnitPanel.svelte'
   import PairedDevices from './PairedDevices.svelte'
   import AboutCard from './AboutCard.svelte'
+  import HardwareReport from './HardwareReport.svelte'
+  import UntestedPlate from '../shell/UntestedPlate.svelte'
   import { serialText, versionText } from './identity'
+  import FamilyDevicePage from './FamilyDevicePage.svelte'
 
   const resetDescId = uid('reset-desc')
+
+  /** Products on the family drivers (A1, M3, MAX 2, MELO P1) get the unit list from MicState. */
+  const generic = $derived(!!session.family && !session.isLegacy)
 
   const live = $derived(session.live)
   const writeOnly = $derived(session.writeOnly)
@@ -127,6 +133,9 @@
   }
 </script>
 
+{#if generic}
+<FamilyDevicePage />
+{:else}
 <div class="device">
   <h1 class="visually-hidden">Device</h1>
 
@@ -151,6 +160,7 @@
         <dd>
           <span class="mono model-name">{session.displayName || '–'}</span>
           {#if product?.family === '6118' && session.isCameraVariant}<span class="variant">Camera receiver</span>{/if}
+          {#if session.untested}<UntestedPlate />{/if}
         </dd>
       </div>
       <div class="spec-item">
@@ -186,6 +196,11 @@
   </Panel>
 
   <PairedDevices />
+
+  <!-- Untested products: the read-only check and "Copy hardware report" (docs/FAMILIES.md §4.3). -->
+  {#if session.untested}
+    <HardwareReport />
+  {/if}
 
   {#if showManual}
     <Panel title="User Manual">
@@ -245,6 +260,7 @@
     <Button variant="danger" loading={resetting} disabled={!typedOk} onclick={doReset}>Confirm</Button>
   {/snippet}
 </Dialog>
+{/if}
 
 <style>
   .device {

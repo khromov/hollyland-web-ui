@@ -20,14 +20,31 @@
     charging?: boolean
     serial: string | null
     version: string | null
+    /** Plate instead of the channel's (TX3, CASE …), with its expansion. */
+    plate?: string
+    plateTitle?: string
+    /** Draw the mic's identity LED (purple / yellow). */
+    identity?: boolean
   }
-  let { channel, name, sub = null, status: unitStatus, battery, charging = false, serial, version }: Props = $props()
+  let {
+    channel,
+    name,
+    sub = null,
+    status: unitStatus,
+    battery,
+    charging = false,
+    serial,
+    version,
+    plate,
+    plateTitle,
+    identity = true,
+  }: Props = $props()
 
   const headingId = uid('unit')
 </script>
 
 <section class="unit" aria-labelledby={headingId}>
-  <UnitTitle {channel} {name} {sub} id={headingId} led={unitStatus === 'offline' ? 'off' : 'on'}>
+  <UnitTitle {channel} {name} {sub} {plate} {plateTitle} {identity} id={headingId} led={unitStatus === 'offline' ? 'off' : 'on'}>
     {#snippet status()}<UnitStatus status={unitStatus} />{/snippet}
   </UnitTitle>
   <dl>

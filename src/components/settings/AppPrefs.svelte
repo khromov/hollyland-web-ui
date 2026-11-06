@@ -11,8 +11,13 @@
   import Lamp from '../../lib/ui/Lamp.svelte'
   import Tag from '../../lib/ui/Tag.svelte'
   import { FORGET_LABEL, FORGET_TIP, forgetRemembered } from './sent.svelte'
+  import { micNames } from '../overview/family/names.svelte'
+  import type { UnitId } from '../../lib/protocol'
 
-  const MICS = [0, 1] as const
+  /** One field per mic the Overview draws (2 or 4); Mic 1 and Mic 2 are the browser-wide names. */
+  const mics = $derived<UnitId[]>(session.micSlots.length ? session.micSlots : ['tx1', 'tx2'])
+  /** The identity lamps of the tested receivers (the A2 mics' LED colours); other models have none. */
+  const lamps = $derived(session.isLegacy)
   const THEMES: { value: ThemePref; label: string }[] = [
     { value: 'system', label: 'System' },
     { value: 'light', label: 'Light' },
@@ -25,19 +30,21 @@
     <Modules min="250px">
       <Module title="Mic names" description="Shown in this app only">
         <div class="fields">
-          {#each MICS as i (i)}
+          {#each mics as unit, i (unit)}
+            {@const u = session.micState?.units[unit]}
+            {@const fallback = micNames.defaultName(unit, u)}
             <label class="field">
-              <Lamp color={i === 0 ? 'mic1' : 'mic2'} />
+              {#if lamps && i < 2}<Lamp color={i === 0 ? 'mic1' : 'mic2'} />{/if}
               <Tag title="Transmitter {i + 1}">TX{i + 1}</Tag>
-              <span class="visually-hidden">Name for Mic {i + 1}</span>
+              <span class="visually-hidden">Name for {fallback}</span>
               <input
                 type="text"
                 maxlength="32"
                 autocomplete="off"
                 spellcheck="false"
-                placeholder="Mic {i + 1}"
-                value={prefs.micNames[i]}
-                oninput={(e) => prefs.setMicName(i, e.currentTarget.value)}
+                placeholder={fallback}
+                value={micNames.raw(unit)}
+                oninput={(e) => micNames.set(unit, e.currentTarget.value, { asTyped: true })}
               />
             </label>
           {/each}

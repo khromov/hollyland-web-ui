@@ -10,9 +10,9 @@ import type { ProductInfo } from '../../models'
 export const MELO_RESEARCH = 'docs/research/families/melo-6201.md'
 
 /**
- * Registered rows: still recognised only, because the registry's shared tests pin the 6201 driver as a stub
- * (core/__tests__/registry.test.ts). The Phase 2 driver (driver.ts, createMeloDriver) runs on the copies below.
- * Codec high, settings medium-high, DSP medium (FAMILIES.md §1.2).
+ * Research-only support record (recognised). Since Phase 3 (W9) the receiver rows (1032, 1033) use
+ * MELO_EXPERIMENTAL_SUPPORT: the registered driver is MELO_DRIVER (index.ts). Codec high, settings medium-high,
+ * DSP medium (FAMILIES.md §1.2).
  */
 export const MELO_SUPPORT = recognised(MELO_RESEARCH, 'medium', 'codec high, settings medium-high, DSP medium')
 
@@ -69,7 +69,7 @@ export const MELO_BLE_LINK: WebBluetoothLinkSpec = {
 export const MELO_PRODUCTS: readonly ProductInfo[] = [
   // A Product.PRODUCT_6201_RX_MAIN = 1032 / RX_SUB = 1033; R product_6201 "MELO P1"; I EA `melo p1` → type 11.
   ...[1032, 1033].map((pid) =>
-    usbProduct('6201', MELO_SUPPORT, {
+    usbProduct('6201', MELO_EXPERIMENTAL_SUPPORT, {
       productId: pid, name: 'MELO P1', label: pid === 1033 ? 'MELO P1 (second phone port)' : undefined, code: '6201',
       txCount: 2, channels: 2, eaModel: 'melo p1',
       // Heartbeat 0x600B every 3 s (melo-6201.md §4.3).

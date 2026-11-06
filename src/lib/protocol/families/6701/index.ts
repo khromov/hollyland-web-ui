@@ -10,18 +10,12 @@
  *   driver.ts          createMax2Driver(): the 'experimental' FamilyDriver, mock presets
  *   hardware-check.ts  first-contact steps (FAMILIES.md §5.7)
  *
- * The registered `driver` below stays a stub (products recognised only, createDevice refuses) but carries the real
- * catalogue, frame classifier and hardware check, so sendRaw classification and the console name every MAX 2 frame.
- * Switching the registry to the real driver is a shared change (core/__tests__/registry.test.ts pins the stub status,
- * the connectable PIDs and the preset list): `export const driver = createMax2Driver()` plus `support.level:
- * 'experimental'` on rows 1026 / 1027 / 101 in products.ts.
+ * Registered since Phase 3 (W9): `driver` is createMax2Driver() on the registry rows (rows 1026 / 1027 / 101
+ * 'experimental', hardware 'untested'; the OWS earphone 102 stays recognised).
  */
-import { stubDriver } from '../../core/stub'
 import type { FamilyDriver } from '../../core/types'
-import { MAX2_COMMANDS } from './commands'
-import { max2CommandOfFrame } from './driver'
-import { MAX2_HARDWARE_CHECK } from './hardware-check'
-import { MAX2_APP_PRODUCTS, MAX2_PRODUCTS, MAX2_RESEARCH } from './products'
+import { createMax2Driver } from './driver'
+import { MAX2_APP_PRODUCTS, MAX2_PRODUCTS } from './products'
 
 export * from './products'
 export * from './commands'
@@ -32,12 +26,4 @@ export * from './sim'
 export * from './driver'
 export * from './hardware-check'
 
-function partialStub(): FamilyDriver {
-  return {
-    ...stubDriver({ code: '6701', name: 'LARK MAX 2', products: [...MAX2_PRODUCTS, ...MAX2_APP_PRODUCTS], research: MAX2_RESEARCH, hardwareCheck: MAX2_HARDWARE_CHECK }),
-    commands: MAX2_COMMANDS,
-    commandOfFrame: max2CommandOfFrame,
-  }
-}
-
-export const driver: FamilyDriver = /* @__PURE__ */ partialStub()
+export const driver: FamilyDriver = /* @__PURE__ */ createMax2Driver({ products: [...MAX2_PRODUCTS, ...MAX2_APP_PRODUCTS] })

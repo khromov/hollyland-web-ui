@@ -27,7 +27,7 @@ import { DestructiveCommandError, UnsupportedError, type SetResult } from '../..
 import { CONTROL, controlKey, controlById, validateControlValue } from '../../core/controls'
 import { FamilyDevice } from '../../core/engine'
 import { ControlUnavailableError, TimeoutError } from '../../core/errors'
-import type { ControlId, ControlValue, EngineContext, MicDeviceOptions, MicSetOptions, ProtocolSpec, UnitId } from '../../core/types'
+import type { ControlAvailability, ControlId, ControlValue, EngineContext, MicDeviceOptions, MicSetOptions, ProtocolSpec, UnitId } from '../../core/types'
 import type { ProductInfo } from '../../models'
 import type { Transport } from '../../transport'
 import { MOMA_TYPE } from '../../moma/codec'
@@ -406,6 +406,22 @@ export function createM3Spec(product: ProductInfo, session: M3Session = createM3
         default:
           throw new UnsupportedError(`${id} is not a LARK M3 control`)
       }
+    },
+    // Write-only link: the NC switch and level are sent together, the camera RX volume as all three levels, so
+    // those writes need values that cannot be read (encodeSet refuses them with the same reason).
+    blindAvailability(ctx) {
+      const v = ctx.state.values
+      const unknownA = (what: string): ControlAvailability => ({ ok: false, reason: 'state-unknown', message: `${what} cannot be read (replies are not delivered)` })
+      const ok: ControlAvailability = { ok: true }
+      const a: Partial<Record<ControlId, ControlAvailability>> = {
+        [CONTROL.NOISE_ENABLED]: typeof v[CONTROL.NOISE_LEVEL] === 'number' ? ok : unknownA('The NC level'),
+        [CONTROL.NOISE_LEVEL]: typeof v[CONTROL.NOISE_ENABLED] === 'boolean' ? ok : unknownA('The NC switch'),
+      }
+      if (camera) {
+        const all = M3_CAMERA_LEVELS.every((k) => typeof v[k] === 'number')
+        for (const k of M3_CAMERA_LEVELS) a[k] = all ? ok : unknownA('The camera RX volume levels')
+      }
+      return a
     },
     controls: (p) => m3Controls(p),
     timing: M3_TIMING,

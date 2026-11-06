@@ -1,7 +1,7 @@
 /**
  * Family 6303: shared conformance suite (docs/FAMILIES.md §5.3).
- *  - the registered `driver` is still a stub (recognised only) but carries the real catalogue and frame classifier
- *  - the Phase 2 driver (createM3Driver, unregistered) runs the full suite against the simulator for every PID, every
+ *  - the registered `driver` is createM3Driver() on the registry rows since Phase 3 (W9): experimental, untested
+ *  - the driver (createM3Driver) runs the full suite against the simulator for every PID, every
  *    mock preset (check 10 runs each preset with simulator options) and the multi-RX / 2T2R profiles, with the
  *    official app's preconditions (§3.8 row 6303)
  */
@@ -16,20 +16,20 @@ import {
   driver, createM3Driver, M3Cmd, M3Requests, M3_COMMANDS, M3_CONTROL, M3_HARDWARE_CHECK, M3_PRODUCTS, M3Simulator, isM3CameraRx,
 } from '..'
 
-describeDriverConformance(driver)
-
-describe('registered M3 driver (Phase 2: still a partial stub)', () => {
-  it('is the registry entry, a stub with the real catalogue, classifier and hardware check', () => {
+describe('registered M3 driver (Phase 3: createM3Driver on the registry rows)', () => {
+  it('is the registry entry: experimental, untested, the real catalogue, classifier and hardware check', () => {
     expect(DRIVERS['6303']).toBe(driver)
-    expect(driver.status).toBe('stub')
+    expect(driver.status).toBe('experimental')
+    expect(driver.products).toBe(M3_PRODUCTS)
     expect(driver.commands).toBe(M3_COMMANDS)
     expect(driver.hardwareCheck).toBe(M3_HARDWARE_CHECK)
     expect(driver.commandOfFrame(encodeMomaRequest(MOMA_6303, M3Requests.heartbeat()))).toBe(M3Cmd.HEART_BEAT_GET)
     expect(driver.commandOfFrame(Uint8Array.of(0xde, 0xad))).toBeNull()
     for (const p of M3_PRODUCTS) {
       expect(driverFor(p)).toBe(driver)
-      expect(canConnect(p)).toBe(false)
-      expect(() => driver.createDevice(new MockTransport(), p)).toThrow(/not supported yet/)
+      expect(canConnect(p)).toBe(true)
+      expect(p.support).toMatchObject({ level: 'experimental', hardware: 'untested' })
+      expect(driver.createDevice(new MockTransport({ info: { vendorId: p.vendorId, productId: p.productId } }), p).family).toBe('6303')
     }
   })
 })
@@ -106,5 +106,27 @@ describe('M3 driver shape', () => {
       'm3:1038', 'm3-4ch:1039', 'm3cam:1036', 'm3cam4:1037', 'm3-secondary:1038', 'm3-multi:1036', 'm3-2t2r:1038',
     ])
     expect(product(1039).label).toMatch(/4CH/)
+  })
+})
+
+describe('write-only link (blindAvailability)', () => {
+  it('blocks the NC pair and the camera RX volume levels up front; the rest goes out blind', async () => {
+    const { simulatedTransport } = await import('../../../core/simulate')
+    for (const pid of [1038, 1036]) {
+      const p = product(pid)
+      const device = m3.createDevice(simulatedTransport(m3.createSimulator(p, { dropReplies: true })), p, {
+        blindWrites: true, probeTimeoutMs: 20, requestTimeoutMs: 20,
+      })
+      await device.connect()
+      expect(device.state.rx).toBe('unavailable')
+      const a = device.state.availability
+      expect(a[CONTROL.NOISE_ENABLED]).toMatchObject({ ok: false, reason: 'state-unknown' })
+      expect(a[CONTROL.NOISE_LEVEL]).toMatchObject({ ok: false, reason: 'state-unknown' })
+      if (cam(pid)) expect(a['m3.cameraVolume.level1']).toMatchObject({ ok: false, reason: 'state-unknown' })
+      else expect(a['m3.cameraVolume.level1']).toBeUndefined()
+      await expect(device.set(CONTROL.NOISE_ENABLED, true)).rejects.toMatchObject({ reason: 'state-unknown' })
+      await expect(device.set(CONTROL.LED, true)).resolves.toMatchObject({ ok: true, confirmed: false })
+      await device.disconnect()
+    }
   })
 })

@@ -40,7 +40,7 @@ import {
   max2KeyName, max2KeysOf, max2Set, max2SystemTimePayload, max2Version, type Max2VersionUnit,
 } from './commands'
 import {
-  isMax2Box, isMax2Camera, isMax2Mobile, max2Availability, max2ChannelRefusal, max2Controls, max2LinkOf, MAX2_CONTROL, MAX2_MIC_UNITS, MAX2_TC_RESET_TEXT,
+  isMax2Box, isMax2Camera, isMax2Mobile, max2Availability, max2BlindAvailability, max2ChannelRefusal, max2Controls, max2LinkOf, MAX2_CONTROL, MAX2_MIC_UNITS, MAX2_TC_RESET_TEXT,
   MAX2_VALUE, type Max2Link,
 } from './controls'
 import { parseMax2Gain, parseMax2Heartbeat, parseMax2MicPush, parseMax2Noise, parseMax2TcTime, parseMax2Version, type Max2Heartbeat } from './status'
@@ -430,6 +430,7 @@ export function createMax2Spec(product: ProductInfo, o: Max2SpecOptions = {}): P
     encodeSet(ctx, id, value, { unit }) {
       return encodeSet(ctx, id, value, unit)
     },
+    blindAvailability: (ctx) => max2BlindAvailability(session.controls, ctx.state, { ignoreFirmwareGates: ctx.options.ignoreFirmwareGates }),
     controls: () => session.controls,
     timing: link === 'usb'
       // A USBHIDService CommandExecutionConfig(timeout = 250 ms write, timeoutRead = 1000 ms).

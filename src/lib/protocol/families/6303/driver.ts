@@ -1,11 +1,10 @@
 /**
- * The LARK M3 FamilyDriver (Phase 2, W6). It is NOT the registered driver yet: the registry keeps `driver` (index.ts),
- * a stub with the real command catalogue and frame classifier, so the M3 stays recognised-only until the UI
- * integration (Phase 3) registers this one (FAMILIES.md §2.2 W9; core/__tests__/registry.test.ts pins the stub).
+ * The LARK M3 FamilyDriver (Phase 2, W6). Registered since Phase 3 (W9): index.ts exports
+ * `createM3Driver({ products: M3_PRODUCTS })` as the family's `driver`.
  *
  *   const d = createM3Driver()
  *   const mic = d.createDevice(new WebHidTransport(hidDevice), d.products[2])     // phone RX 2CH
- *   const { device } = …createMockDevice('m3cam')                                 // once registered
+ *   const { device } = createMockDevice('m3cam')                                  // core/registry.ts
  */
 import type { FamilyDriver, MockPreset } from '../../core/types'
 import type { ProductInfo } from '../../models'

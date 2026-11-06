@@ -1,13 +1,31 @@
 <script lang="ts">
-  /** Disclaimer, supported receivers and where the page works. Labels and values; details in tooltips. */
+  /**
+   * Disclaimer, supported receivers and where the page works for the receiver on screen. Labels and
+   * values; details in tooltips. The receivers line comes from the registry (connect/models.ts), the
+   * platform rows from the product's links: the tested legacy receivers keep their tested rows, the
+   * others say "Untested" per link (USB, Bluetooth).
+   */
+  import { bleLinkOf, featureLinkOf, webHidLinkOf } from '../../lib/protocol'
   import Panel from '../../lib/ui/Panel.svelte'
   import Modules from '../../lib/ui/Modules.svelte'
   import Module from '../../lib/ui/Module.svelte'
   import Lamp from '../../lib/ui/Lamp.svelte'
   import type { LampState } from '../../lib/ui/types'
+  import { session } from '../../lib/state/session.svelte'
   import { DISCLAIMER } from '../shell/link.svelte'
+  import { connectableModels, modelsLine } from '../connect/models'
 
-  const PLATFORMS: { name: string; lamp: LampState; status: string; tip: string }[] = [
+  interface PlatformRow {
+    name: string
+    lamp: LampState
+    status: string
+    tip: string
+  }
+
+  const receivers = modelsLine(connectableModels())
+
+  /** The tested USB receivers (LARK A2 / A2S, Lark M2, LARK M2S, the 6501 group). */
+  const LEGACY_ROWS: PlatformRow[] = [
     {
       name: 'Chrome or Edge on Linux, ChromeOS',
       lamp: 'on',
@@ -33,6 +51,24 @@
       tip: 'No WebHID: only the Audio page (levels, effects, recording)',
     },
   ]
+
+  const rows = $derived.by((): PlatformRow[] => {
+    const p = session.product
+    if (!p || session.isLegacy) return LEGACY_ROWS
+    const usb = !!webHidLinkOf(p) || !!featureLinkOf(p)
+    const ble = !!bleLinkOf(p)
+    const out: PlatformRow[] = []
+    if (usb) out.push({ name: 'Chrome or Edge, USB', lamp: 'hollow', status: 'Untested', tip: 'Linux needs a udev rule for the receiver' })
+    if (ble) out.push({ name: 'Chrome or Edge, Bluetooth', lamp: 'hollow', status: 'Untested', tip: 'Android, ChromeOS, macOS, Windows, Linux' })
+    out.push({
+      name: ble ? 'Safari, Firefox' : 'Safari, Firefox, Android',
+      lamp: 'off',
+      status: 'Audio only',
+      tip: 'Only the Audio page (levels, effects, recording)',
+    })
+    return out
+  })
+  const notes = $derived(session.isLegacy || !session.product ? 'docs/PROTOCOL.md' : 'docs/FAMILIES.md')
 </script>
 
 <Panel title="About">
@@ -42,11 +78,11 @@
         <dl class="facts">
           <div class="fact">
             <dt>Receivers</dt>
-            <dd>LARK A2, A2S, M2, M2S</dd>
+            <dd>{receivers}</dd>
           </div>
           <div class="fact">
             <dt>Protocol notes</dt>
-            <dd><code>docs/PROTOCOL.md</code></dd>
+            <dd><code>{notes}</code></dd>
           </div>
         </dl>
         <!-- Where the status line along the bottom doesn't print it (phones, < 1200 px). -->
@@ -54,7 +90,7 @@
       </Module>
       <Module title="Where it works">
         <ul class="platforms">
-          {#each PLATFORMS as p (p.name)}
+          {#each rows as p (p.name)}
             <li title={p.tip}>
               <span class="p-name">{p.name}</span>
               <span class="p-status"><Lamp size="sm" state={p.lamp} />{p.status}</span>

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onMount, type Component } from 'svelte'
   import Toaster from './lib/ui/Toaster.svelte'
   import AppHeader from './components/AppHeader.svelte'
   import type { HeaderTab } from './components/shell/types'
@@ -9,13 +9,14 @@
   import WriteOnlyBanner from './components/WriteOnlyBanner.svelte'
   import LostBand from './components/shell/LostBand.svelte'
   import LinkStatus from './components/shell/LinkStatus.svelte'
+  import UntestedNotice from './components/shell/UntestedNotice.svelte'
   import OverviewPage from './components/overview/OverviewPage.svelte'
   import SettingsPage from './components/settings/SettingsPage.svelte'
   import DevicePage from './components/device/DevicePage.svelte'
   import AudioPage from './components/audio/AudioPage.svelte'
   import ConsolePage from './components/console/ConsolePage.svelte'
-  import { session } from './lib/state/session.svelte'
-  import { router } from './lib/state/router.svelte'
+  import { session, type ExtraPage } from './lib/state/session.svelte'
+  import { router, type Route } from './lib/state/router.svelte'
   import { prefs } from './lib/state/prefs.svelte'
   import { BridgeError, BridgeTransport, bridgeStartSentence, isWebHidSupported, pageContext, resolveBridgeUrl } from './lib/protocol'
   import { link } from './components/shell/link.svelte'
@@ -25,6 +26,25 @@
 
   const connected = $derived(link.connected)
 
+  // Pages only some products have (session.extraPages): each one lives at
+  // src/components/<page>/<Page>Page.svelte and appears here once that file exists.
+  const extraPageModules = import.meta.glob<{ default: Component }>(
+    ['./components/mixer/MixerPage.svelte', './components/timecode/TimecodePage.svelte', './components/monitoring/MonitoringPage.svelte'],
+    { eager: true },
+  )
+  const EXTRA_PAGE: Record<ExtraPage, { label: string; path: string }> = {
+    mixer: { label: 'Mixer', path: './components/mixer/MixerPage.svelte' },
+    timecode: { label: 'Timecode', path: './components/timecode/TimecodePage.svelte' },
+    monitoring: { label: 'Monitoring', path: './components/monitoring/MonitoringPage.svelte' },
+  }
+  const extraPages = $derived(session.extraPages.filter((p) => !!extraPageModules[EXTRA_PAGE[p].path]))
+  const extraTab = (p: ExtraPage): HeaderTab => ({ route: p, label: EXTRA_PAGE[p].label })
+  /** The page component of an extra route, when this product has that page. */
+  function extraPageOf(route: Route): Component | null {
+    const p = extraPages.find((x) => x === route)
+    return p ? (extraPageModules[EXTRA_PAGE[p].path]?.default ?? null) : null
+  }
+
   // Without a device, only Audio (and Console in developer mode) make sense; everything else
   // shows the connect screen.
   const showConnect = $derived(!connected && router.route !== 'audio' && router.route !== 'console')
@@ -33,7 +53,9 @@
     ...(connected
       ? [
           { route: 'overview' as const, label: 'Overview' },
+          ...(extraPages.includes('mixer') ? [extraTab('mixer')] : []),
           { route: 'audio' as const, label: 'Audio' },
+          ...extraPages.filter((p) => p !== 'mixer').map(extraTab),
           { route: 'settings' as const, label: 'Settings' },
           { route: 'device' as const, label: 'Device' },
         ]
@@ -120,7 +142,8 @@
   if (import.meta.env.DEV) window.addEventListener('hashchange', () => (devHash = location.hash))
 
   onMount(() => {
-    // Development-only simulator: ?mock=a2|a2s|blind|m2s|m2scam|m2
+    // Development-only simulator: ?mock=<preset id> for every registry mock preset
+    // (a2, a2s, blind, m2, m2s, m2scam, a1, a1-4mic, m3, m3cam4, max2, max2box, melo …).
     const mock = import.meta.env.DEV ? query.get('mock') : null
     if (mock) void session.connectMock(mock)
     else if (autoBridge) void connectBridge(AUTO_BRIDGE_WAIT_MS)
@@ -138,12 +161,16 @@
       <LinkStatus variant="band" />
     {/if}
 
+    <!-- One strip at most, by priority: the lost link, the write-only link (which also carries the
+         untested-model words on a first connection), the untested-model notice. -->
     {#if session.phase === 'lost'}
       <div class="band">
         <LostBand onreconnect={() => (link.viaBridge ? connectBridge() : session.reconnect())} onbridge={() => connectBridge()} />
       </div>
     {:else if session.phase === 'ready' && session.writeOnly}
       <div class="band"><WriteOnlyBanner onbridge={() => connectBridge()} /></div>
+    {:else if session.untestedNotice}
+      <div class="band"><UntestedNotice /></div>
     {/if}
 
     <main class="main">
@@ -173,6 +200,13 @@
             <DevicePage />
           {:else if router.route === 'console'}
             <ConsolePage connected={session.phase === 'ready'} sendRaw={(b) => session.sendRaw(b)} />
+          {:else}
+            {@const ExtraPageView = extraPageOf(router.route)}
+            {#if ExtraPageView}
+              <ExtraPageView />
+            {:else}
+              <OverviewPage />
+            {/if}
           {/if}
         </div>
       {/if}

@@ -103,7 +103,10 @@
 >
   {#each options as o, i (o.value)}
     {@const on = o.value === value}
+    <!-- A key alone on the last row spans it ("Mono | Stereo" over "Secure audio track"), so the
+         long legend doesn't widen a column the keys above it share. -->
     <button
+      style={cols > 1 && cols < options.length && i === options.length - 1 && options.length % cols === 1 ? `grid-column: span ${cols}` : undefined}
       bind:this={buttons[i]}
       type="button"
       role="radio"

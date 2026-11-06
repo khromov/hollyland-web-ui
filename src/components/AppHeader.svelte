@@ -6,6 +6,8 @@
    * - ≥ 960 px: everything inline, as drawn.
    * - 600–959 px: glyph, tabs, lamp + device; Disconnect and theme move into the ≡ menu.
    * - < 600 px: 56 px tall, wordmark, lamp + device and the ≡ menu; the tabs move to the bottom bar.
+   * An untested product gets the "Untested" plate after its name; App shows the one-line notice of
+   * its first connection in this browser (UntestedNotice, dismissed per product).
    */
   import type { HeaderTab } from './shell/types'
   import { session } from '../lib/state/session.svelte'
@@ -14,6 +16,7 @@
   import Wordmark from './Wordmark.svelte'
   import ShellMenu from './shell/ShellMenu.svelte'
   import ThemeKey from './shell/ThemeKey.svelte'
+  import UntestedPlate from './shell/UntestedPlate.svelte'
   import { link } from './shell/link.svelte'
 
   interface Props {
@@ -25,6 +28,12 @@
   let { tabs, current, ondisconnect }: Props = $props()
 
   const name = $derived(link.connected ? session.displayName : '')
+  /**
+   * Below 960 px: a long model name in a short form ("LARK MAX 2 charging case" → "MAX 2 case"), so
+   * the model stays readable beside the tabs or the wordmark; the ≡ menu and the Device page keep
+   * the full name.
+   */
+  const shortName = $derived(name.length > 14 ? name.replace(/^lark\s+/i, '').replace(/\s+charging case$/i, ' case') : name)
 </script>
 
 <header class="header" class:many={tabs.length > 4}>
@@ -47,7 +56,8 @@
   <div class="device">
     <div class="devname" title={link.lampLabel}>
       <Lamp color={link.lamp.color} state={link.lamp.state} blink={link.lamp.blink} label={link.mode ? undefined : link.lampLabel} />
-      {#if name}<b class="mono">{name}</b>{/if}
+      {#if name}<b class="mono fullname">{name}</b>{#if shortName !== name}<b class="mono shortname" aria-hidden="true">{shortName}</b>{/if}{/if}
+      {#if name && session.untested}<span class="plate"><UntestedPlate /></span>{/if}
       {#if link.mode}<span class="mode" class:solo={!name}>{link.mode}</span>{/if}
     </div>
     <span class="visually-hidden" aria-live="polite" aria-atomic="true">{link.announcement}</span>
@@ -63,6 +73,7 @@
     </div>
   </div>
 </header>
+
 
 <style>
   .header {
@@ -135,10 +146,21 @@
     min-width: 0;
     white-space: nowrap;
   }
+  /* A long model name ("LARK MAX 2 charging case") gives way before the plate and the menu. */
   .devname b {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
     font-weight: 600;
     font-size: 13px;
     letter-spacing: 0.02em;
+  }
+  .plate {
+    display: inline-flex;
+    flex: none;
+  }
+  .devname b.shortname {
+    display: none;
   }
   .mode {
     font-size: 13px;
@@ -187,6 +209,21 @@
   }
 
   /* 600–959: glyph only, tabs, lamp + device; the rest is in the menu. */
+  /* Below 960 px (tabs and the device share the row, or the phone header) a long model name
+     gives way to its short form. */
+  @media (max-width: 959px) {
+    .devname b.fullname:has(+ b.shortname) {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+    }
+    .devname b.shortname {
+      display: inline;
+    }
+  }
   @media (max-width: 959px) {
     .header {
       gap: 16px;
@@ -246,6 +283,11 @@
     }
     .devname b {
       font-size: 12px;
+    }
+
+    /* No room beside the wordmark: the ≡ menu and the Device page show the plate. */
+    .plate {
+      display: none;
     }
     .mode.solo {
       display: inline;

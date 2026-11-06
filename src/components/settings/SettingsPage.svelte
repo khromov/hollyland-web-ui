@@ -19,8 +19,12 @@
   import { reportResult } from './feedback'
   import { sentTimes } from './sent.svelte'
   import { GATE_SHORT } from '../overview/overview'
+  import FamilySettings from './FamilySettings.svelte'
 
   const speakerDescId = uid('speaker-desc')
+
+  /** Products on the family drivers (A1, M3, MAX 2, MELO P1) get the ControlSpec-driven page. */
+  const generic = $derived(!!session.family && !session.isLegacy)
 
   const caps = $derived(session.caps)
   const is6118 = $derived(session.product?.family === '6118')
@@ -74,6 +78,9 @@
   }
 </script>
 
+{#if generic}
+<FamilySettings />
+{:else}
 <div class="settings">
   <h1 class="visually-hidden">Settings</h1>
 
@@ -154,6 +161,7 @@
 
   <AppPrefs />
 </div>
+{/if}
 
 <Dialog
   open={speakerTarget !== null}

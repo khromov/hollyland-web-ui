@@ -121,6 +121,8 @@ export class FamilyDevice<Req, Msg> implements MicDevice {
   private currentPacket: Uint8Array | null = null
   private _state: MicState
   private readonly ctx: EngineContext<Req, Msg>
+  /** Availability keys set by the driver's blindAvailability (dropped once replies arrive). */
+  private blindKeys = new Set<string>()
 
   constructor(transport: Transport, product: ProductInfo, config: FamilyDeviceConfig<Req, Msg>, options: MicDeviceOptions = {}) {
     this.transport = transport
@@ -218,6 +220,7 @@ export class FamilyDevice<Req, Msg> implements MicDevice {
         throw e
       }
       this.patch({ rx: 'unavailable' })
+      this.applyBlindAvailability()
       this.events.emit('rx-unavailable')
     }
     if (this._state.rx === 'available') {
@@ -242,7 +245,10 @@ export class FamilyDevice<Req, Msg> implements MicDevice {
       if (!this.heartbeatTimer) this.startHeartbeat()
     } catch (e) {
       if (!(e instanceof TimeoutError)) throw e
-      if (this._state.rx !== 'available') this.patch({ rx: 'unavailable' })
+      if (this._state.rx !== 'available') {
+        this.patch({ rx: 'unavailable' })
+        this.applyBlindAvailability()
+      }
     }
     return this._state.rx
   }
@@ -294,6 +300,8 @@ export class FamilyDevice<Req, Msg> implements MicDevice {
     if (ack.ok) {
       if (plan.optimistic) this.ctx.setValues(plan.optimistic)
       if (!blind && plan.readBack) this.scheduleReadBack(plan.readBack.request, plan.readBack.delayMs ?? DEFAULT_READBACK_DELAY_MS)
+      // A value sent blind can make another control writable (MAX 2: the NC switch once the depth is known).
+      if (blind && this._state.rx === 'unavailable') this.applyBlindAvailability()
     }
     return { ok: ack.ok, confirmed: !blind, code: ack.code }
   }
@@ -731,8 +739,29 @@ export class FamilyDevice<Req, Msg> implements MicDevice {
   }
 
   private patch(p: Partial<MicState>): void {
+    // Replies arrive again: the blind refusals give way to what the driver reads from the status.
+    if (p.rx === 'available' && this._state.rx !== 'available' && this.blindKeys.size) {
+      const availability = { ...this._state.availability }
+      for (const k of this.blindKeys) delete availability[k]
+      this.blindKeys.clear()
+      this._state = { ...this._state, availability }
+    }
     this._state = { ...this._state, ...p }
     this.emitState()
+  }
+
+  /** Apply the driver's blindAvailability (rx 'unavailable'): controls it cannot write blind show as blocked. */
+  private applyBlindAvailability(): void {
+    if (!this.spec.blindAvailability) return
+    let a: Partial<Record<ControlId, ControlAvailability>>
+    try {
+      a = this.spec.blindAvailability(this.ctx)
+    } catch (e) {
+      this.events.emit('error', e as Error)
+      return
+    }
+    for (const k of Object.keys(a)) this.blindKeys.add(k)
+    if (Object.keys(a).length) this.ctx.setAvailability(a)
   }
 
   private emitState(): void {

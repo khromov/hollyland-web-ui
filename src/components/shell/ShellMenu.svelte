@@ -12,6 +12,7 @@
   import { prefs, type ThemePref } from '../../lib/state/prefs.svelte'
   import { session } from '../../lib/state/session.svelte'
   import { link } from './link.svelte'
+  import UntestedPlate from './UntestedPlate.svelte'
 
   interface Props {
     ondisconnect?: () => void
@@ -64,6 +65,7 @@
     <div class="row device">
       <Lamp color={link.lamp.color} state={link.lamp.state} blink={link.lamp.blink} label={link.mode ? undefined : link.lampLabel} />
       <span class="name mono">{session.displayName}</span>
+      {#if session.untested}<UntestedPlate />{/if}
       {#if link.mode}<span class="mode">{link.mode}</span>{/if}
     </div>
     {#if ondisconnect}

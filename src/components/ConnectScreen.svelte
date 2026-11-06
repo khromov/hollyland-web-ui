@@ -1,9 +1,12 @@
 <script lang="ts">
   /**
    * The Connect page (no control link yet): one centred column, read top to bottom.
-   *   title and one-line subtitle → three steps → "Connect receiver" → collapsed extras:
+   *   title and the supported models → three steps → "Connect receiver" (USB) and, where the
+   *   browser has Web Bluetooth, "Connect over Bluetooth" → collapsed extras:
    *   "Full status on macOS (local bridge)" (macOS only) and "Receiver not in the list?".
-   * Browsers without WebHID get the reason and a "Copy link" key instead of the steps.
+   * The links come from `session.connectPaths`: a browser with Web Bluetooth but no WebHID
+   * (Android Chrome) gets the Bluetooth steps; one with neither gets the reason and a "Copy link"
+   * key. The models line is generated from the registry (connect/models.ts).
    * Nothing here imitates browser UI.
    */
   import { Check, Copy } from '@lucide/svelte'
@@ -12,11 +15,15 @@
   import Lamp from '../lib/ui/Lamp.svelte'
   import Disclosure from './connect/Disclosure.svelte'
   import CodeWindow from './connect/CodeWindow.svelte'
+  import { bluetoothProductsLine, connectableModels, modelsLine } from './connect/models'
   import { REPO_URL, bridgeStartHelp, pageContext } from '../lib/protocol'
+  import { session } from '../lib/state/session.svelte'
+  import { reconnectUsb } from '../lib/state/links'
   import { DISCLAIMER, platform } from './shell/link.svelte'
 
   interface Props {
-    supported: boolean
+    /** WebHID is available. Kept for callers; the page reads every link from `session.connectPaths`. */
+    supported?: boolean
     busy: boolean
     /** Step text while connecting, e.g. "Reading settings…" */
     step?: string | null
@@ -33,7 +40,6 @@
     bridgeAddress?: string
   }
   let {
-    supported,
     busy,
     step = null,
     error = null,
@@ -54,10 +60,47 @@
   /** The bridge holds the whole receiver except on Linux/ChromeOS, so its USB audio pauses (docs/BRIDGE.md). */
   const pausesAudio = platform !== 'linux' && platform !== 'chromeos'
 
+  /** Links this browser offers: WebHID ("Connect receiver") and Web Bluetooth ("Connect over Bluetooth"). */
+  const usb = session.connectPaths.usb
+  const bluetooth = session.connectPaths.bluetooth
+  /** Phones and browsers with Web Bluetooth only (Android Chrome): the Bluetooth path is the main one. */
+  const bluetoothOnly = bluetooth && !usb
+  const supported = usb || bluetooth
+
+  const allModels = `For the ${modelsLine(connectableModels())}.`
+  /** "LARK MAX 2 charging case and MELO P1": what the Bluetooth chooser can list. */
+  const btProducts = bluetoothProductsLine()
+  /** Bluetooth only: the products by name (the MAX 2 receiver itself doesn't connect over Bluetooth). */
+  const subtitle = bluetoothOnly ? `For the ${btProducts}.` : allModels
+  /** "Bluetooth: " before a help line, unless Bluetooth is the only link on the page. */
+  const btPrefix = bluetoothOnly ? '' : 'Bluetooth: '
+  /** The user's headline; without WebHID it says Bluetooth (neither "USB" nor "computer" is true there). */
+  const headline = bluetoothOnly
+    ? `Control your Hollyland microphone ${onPhone ? 'from your phone' : 'over Bluetooth'}`
+    : 'Control your Hollyland USB microphone from your computer'
+
   const bridgeBusy = $derived(busy && via === 'bridge')
-  const hidBusy = $derived(busy && via !== 'bridge')
+  const btBusy = $derived(busy && via === 'web-bluetooth')
+  const hidBusy = $derived(busy && via !== 'bridge' && via !== 'web-bluetooth')
   const bridgeError = $derived(error && via === 'bridge' ? error : null)
-  const hidError = $derived(error && via !== 'bridge' ? error : null)
+  /** USB and Bluetooth errors, under the keys. */
+  const linkError = $derived(error && via !== 'bridge' ? error : null)
+
+  /** Every USB HID device in the chooser: products whose vendor id is unconfirmed (registry rows). */
+  function connectAnyUsb() {
+    void session.connect({ anyDevice: true })
+  }
+  function connectBluetooth() {
+    void session.connectBluetooth()
+  }
+  /**
+   * "Reconnect <name>" reopens a granted USB receiver. After a Bluetooth attempt the session's
+   * reconnect() would retry Bluetooth, so the USB path is named here.
+   */
+  function reconnectKnown() {
+    if (session.transportKind === 'web-bluetooth') void session.connectWith('webhid', () => reconnectUsb())
+    else onreconnect?.()
+  }
 
   /**
    * The bridge is offered on macOS only (where it is the way to full control). Elsewhere it shows
@@ -104,24 +147,43 @@
 <div class="connect">
   <div class="column">
     <header class="intro">
-      <h1>Control your Hollyland USB microphone from your computer</h1>
-      <p class="subtitle">For the LARK A2, A2S, M2 and M2S.</p>
+      <h1>{headline}</h1>
+      <p class="subtitle">{subtitle}</p>
     </header>
 
     {#if supported}
       <section class="start" aria-label="Connect">
         <ol class="steps">
-          <li><span class="n" aria-hidden="true">1</span><span>Plug in the receiver.</span></li>
-          <li><span class="n" aria-hidden="true">2</span><span>Switch on the mics.</span></li>
-          <li><span class="n" aria-hidden="true">3</span><span>Press <b>Connect receiver</b> and pick it in the list.</span></li>
+          {#if bluetoothOnly}
+            <li><span class="n" aria-hidden="true">1</span><span>Turn on Bluetooth.</span></li>
+            <li><span class="n" aria-hidden="true">2</span><span>Switch on the charging case or receiver.</span></li>
+            <li><span class="n" aria-hidden="true">3</span><span>Press <b>Connect over Bluetooth</b> and pick it in the list.</span></li>
+          {:else}
+            <li><span class="n" aria-hidden="true">1</span><span>Plug in the receiver.</span></li>
+            <li><span class="n" aria-hidden="true">2</span><span>Switch on the mics.</span></li>
+            <li><span class="n" aria-hidden="true">3</span><span>Press <b>Connect receiver</b> and pick it in the list.</span></li>
+          {/if}
         </ol>
 
         <div class="actions">
-          <Key variant="primary" size="lg" loading={hidBusy} disabled={bridgeBusy} onclick={onconnect}>
-            {hidBusy ? (step ?? 'Connecting…') : 'Connect receiver'}
-          </Key>
-          {#if known && onreconnect && !busy}
-            <Key size="lg" onclick={onreconnect}>Reconnect {known.name}</Key>
+          {#if usb}
+            <Key variant="primary" size="lg" loading={hidBusy} disabled={bridgeBusy || btBusy} onclick={onconnect}>
+              {hidBusy ? (step ?? 'Connecting…') : 'Connect receiver'}
+            </Key>
+          {/if}
+          {#if usb && known && onreconnect && !busy}
+            <Key size="lg" onclick={reconnectKnown}>Reconnect {known.name}</Key>
+          {/if}
+          {#if bluetooth}
+            <Key
+              variant={bluetoothOnly ? 'primary' : 'default'}
+              size="lg"
+              loading={btBusy}
+              disabled={bridgeBusy || hidBusy}
+              onclick={connectBluetooth}
+            >
+              {btBusy ? (step ?? 'Connecting…') : 'Connect over Bluetooth'}
+            </Key>
           {/if}
         </div>
         <!-- Only while the bridge disclosure is closed: open, it shows the progress and the error itself. -->
@@ -134,8 +196,8 @@
             </span>
           </p>
         {/if}
-        {#if hidError}
-          <Banner tone="danger" title={hidError.title}>{hidError.detail}</Banner>
+        {#if linkError}
+          <Banner tone="danger" title={linkError.title}>{linkError.detail}</Banner>
         {/if}
       </section>
     {:else}
@@ -171,7 +233,7 @@
               <Key
                 size="lg"
                 loading={bridgeBusy}
-                disabled={hidBusy}
+                disabled={hidBusy || btBusy}
                 title="Bridge at {bridgeAddress}"
                 onclick={onbridge}
               >
@@ -197,20 +259,31 @@
 
         {#if supported}
           <Disclosure title="Receiver not in the list?">
+            <!-- Every HID device in the chooser: for receivers whose USB vendor id isn't confirmed. -->
+            {#if usb}
+              <Key disabled={busy} onclick={connectAnyUsb}>Show all USB devices</Key>
+            {/if}
             <ul class="facts">
-              <li>LARK A2 shows as “Wireless Microphone”.</li>
-              <li>Re-plug it or try another port.</li>
-              <li>Use a data cable, not charge-only.</li>
-              <li>Close HollyAudio and other tabs using it.</li>
-              <li>
-                <p>Linux: save as <code class="wrap">/etc/udev/rules.d/70-hollyland.rules</code></p>
-                <CodeWindow
-                  text={'SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3547", MODE="0660", TAG+="uaccess"'}
-                  copyLabel="Copy the udev rule"
-                />
-                <p>then run <code>sudo udevadm control --reload</code> and re-plug.</p>
-              </li>
-              <li>Windows: check Sound settings.</li>
+              {#if usb}
+                <li>LARK A2 shows as “Wireless Microphone”.</li>
+                <li>Re-plug it or try another port.</li>
+                <li>Use a data cable, not charge-only.</li>
+                <li>Close HollyAudio and other tabs using it.</li>
+                <li>
+                  <p>Linux: save as <code class="wrap">/etc/udev/rules.d/70-hollyland.rules</code></p>
+                  <CodeWindow
+                    text={'SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3547", MODE="0660", TAG+="uaccess"'}
+                    copyLabel="Copy the udev rule"
+                  />
+                  <p>then run <code>sudo udevadm control --reload</code> and re-plug.</p>
+                </li>
+                <li>Windows: check Sound settings.</li>
+              {/if}
+              {#if bluetooth}
+                <li>{btPrefix}{btProducts} only.</li>
+                <li>{btPrefix ? `${btPrefix}disconnect` : 'Disconnect'} it from other phones and apps.</li>
+                {#if platform === 'android'}<li>Android: allow Chrome to find nearby devices.</li>{/if}
+              {/if}
             </ul>
           </Disclosure>
         {/if}
@@ -247,11 +320,11 @@
     line-height: 1.15;
     text-wrap: balance;
   }
+  /* The models line: one line in the column where it fits. */
   .subtitle {
     font-size: 16px;
     line-height: 1.5;
     color: var(--ink-2);
-    max-width: 58ch;
     text-wrap: pretty;
   }
 

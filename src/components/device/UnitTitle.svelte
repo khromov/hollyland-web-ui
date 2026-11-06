@@ -19,14 +19,32 @@
     id?: string
     level?: 3 | 4
     status?: Snippet
+    /** Hardware plate instead of the channel's (TX3, CASE …), with its expansion. */
+    plate?: string
+    plateTitle?: string
+    /** Draw the mic's identity LED (purple / yellow): only where the product's LEDs have those colours. */
+    identity?: boolean
   }
-  let { channel, name, sub = null, led = 'on', id, level = 3, status }: Props = $props()
-  const plate = $derived(channel === 'rx' ? 'RX' : channel === 'tx1' ? 'TX1' : 'TX2')
-  const plateTitle = $derived(channel === 'rx' ? 'Receiver' : channel === 'tx1' ? 'Transmitter 1' : 'Transmitter 2')
+  let {
+    channel,
+    name,
+    sub = null,
+    led = 'on',
+    id,
+    level = 3,
+    status,
+    plate: plateText,
+    plateTitle: plateTitleText,
+    identity = true,
+  }: Props = $props()
+  const plate = $derived(plateText ?? (channel === 'rx' ? 'RX' : channel === 'tx1' ? 'TX1' : 'TX2'))
+  const plateTitle = $derived(
+    plateTitleText ?? (channel === 'rx' ? 'Receiver' : channel === 'tx1' ? 'Transmitter 1' : 'Transmitter 2'),
+  )
 </script>
 
 <div class="head">
-  {#if channel !== 'rx'}
+  {#if identity && channel !== 'rx'}
     <Lamp color={channel === 'tx1' ? 'mic1' : 'mic2'} state={led} size="lg" />
   {/if}
   <div class="names">

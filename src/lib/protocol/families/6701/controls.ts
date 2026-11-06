@@ -254,6 +254,39 @@ export function max2Availability(
 }
 
 /**
+ * Availability while replies are not delivered (write-only link): the firmware-gated controls wait for an RX version
+ * that cannot be read ('version-unknown'), and the writes that carry values the app has not read are refused, as
+ * encodeSet refuses them ('state-unknown'): the NC switch sends the current depth, every gain write sends all mic
+ * gains. A value sent blind counts as known (the engine re-applies this after every blind write). No mic checks:
+ * nothing is known about the mics.
+ */
+export function max2BlindAvailability(
+  controls: readonly ControlSpec[],
+  s: Pick<MicState, 'units' | 'values'>,
+  extra: { ignoreFirmwareGates?: boolean } = {},
+): Partial<Record<string, ControlAvailability>> {
+  const out: Partial<Record<string, ControlAvailability>> = {}
+  const ok: ControlAvailability = { ok: true }
+  const v = s.values
+  const gate = versionGate(s.units.rx.version, MAX2_SPEC_VERSION_USB, { ignore: extra.ignoreFirmwareGates })
+  for (const id of MAX2_GATED) if (has(controls, id)) out[id] = gate
+  const unknown = (what: string): ControlAvailability => ({ ok: false, reason: 'state-unknown', message: `${what} cannot be read (replies are not delivered)` })
+  if (has(controls, MAX2_CONTROL.NOISE_ENABLED)) out[MAX2_CONTROL.NOISE_ENABLED] = typeof v[MAX2_CONTROL.NOISE_DEPTH] === 'number' ? ok : unknown('the NC depth')
+  const four = v[MAX2_CONTROL.FOUR_MIC] === true
+  const mics = four ? MAX2_MIC_UNITS : MAX2_MIC_UNITS.slice(0, 2)
+  const known = (except?: string) => mics.every((u) => u === except || typeof v[controlKey(MAX2_CONTROL.MIC_GAIN, u)] === 'number')
+  for (const id of [MAX2_CONTROL.GAIN_TYPE, MAX2_CONTROL.GAIN_DYNAMIC]) if (has(controls, id)) out[id] = known() ? ok : unknown('the mic gains')
+  if (has(controls, MAX2_CONTROL.MIC_GAIN)) {
+    for (const u of MAX2_MIC_UNITS) {
+      out[controlKey(MAX2_CONTROL.MIC_GAIN, u)] = !mics.includes(u)
+        ? { ok: false, reason: 'two-mic-mode', message: 'Mic 3/4 exist in 4 Mic & 1 RX mode only' }
+        : known(u) ? ok : unknown('the other mic gains')
+    }
+  }
+  return out
+}
+
+/**
  * Why a channel mode is refused (A HLBleDeviceActivity initView lambdas 13/14), or null:
  *  - stereo / safety track while the timecode switch is on and the TC mode is not Mode 3, except on the mobile RX
  *  - safety track except through the charging case (productId 101)

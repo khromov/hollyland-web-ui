@@ -4,11 +4,14 @@
    * replies (macOS/Windows HID), so it never appears on Linux/ChromeOS or through the bridge.
    *
    * One thin line ("Status unavailable on macOS" + "Why?"); the bridge and "Forget remembered
-   * values" live in the expandable details, so the strip costs ~36 px on every screen size.
+   * values" live in the expandable details, so the strip costs ~36 px on every screen size. On the
+   * first connection of an untested model it also carries that notice ("Untested model · …", with
+   * its own dismiss key), so the page never stacks two strips.
    */
-  import { ChevronDown, Info } from '@lucide/svelte'
+  import { ChevronDown, Info, X } from '@lucide/svelte'
   import Key from '../lib/ui/Key.svelte'
-  import { bridgeStartHelp } from '../lib/protocol'
+  import { bridgeStartHelp, webHidLinkOf } from '../lib/protocol'
+  import { session } from '../lib/state/session.svelte'
   import { PLATFORM_NAME, platform } from './shell/link.svelte'
   import { FORGET_LABEL, FORGET_TIP, forgetRemembered } from './settings/sent.svelte'
 
@@ -19,10 +22,16 @@
   let { onbridge }: Props = $props()
 
   const startHelp = bridgeStartHelp()
-  const message = platform === 'other' ? 'Status unavailable' : `Status unavailable on ${PLATFORM_NAME[platform]}`
+  const status = platform === 'other' ? 'Status unavailable' : `Status unavailable on ${PLATFORM_NAME[platform]}`
+  /** First connection of an untested model: its notice shares this strip (one strip at most). */
+  const untested = $derived(session.untestedNotice)
+  const message = $derived(untested ? `Untested model · ${status}` : status)
   const pausesAudio = platform !== 'linux' && platform !== 'chromeos'
-  /** The bridge needs libusb with root (macOS, Linux); Windows can't run it (docs/BRIDGE.md). */
-  const bridgeRuns = platform !== 'windows'
+  /**
+   * The bridge needs libusb with root (macOS, Linux); Windows can't run it (docs/BRIDGE.md). It
+   * captures products with an interrupt-report USB link only (not the A1's feature reports).
+   */
+  const bridgeRuns = $derived(platform !== 'windows' && !!session.product && !!webHidLinkOf(session.product))
   let open = $state(false)
   const detailsId = `wo-details-${Math.random().toString(36).slice(2, 8)}`
 </script>
@@ -30,15 +39,23 @@
 <div class="mc-window strip" role="status">
   <div class="line">
     <Info class="arrow" size={15} strokeWidth={2} aria-hidden="true" />
-    <span class="msg">{message}</span>
+    <span class="msg"
+      >{#if untested}<span class="wide">{message}</span><span class="narrow">Untested · Status unavailable</span>{:else}{message}{/if}</span
+    >
     <button type="button" class="why" aria-expanded={open} aria-controls={detailsId} onclick={() => (open = !open)}>
       {open ? 'Less' : 'Why?'}
       <ChevronDown size={14} strokeWidth={2} aria-hidden="true" class={open ? 'flip' : ''} />
     </button>
+    {#if untested}
+      <button type="button" class="dismiss" aria-label="Dismiss untested-model notice" title="Dismiss" onclick={() => session.dismissUntestedNotice()}>
+        <X size={16} strokeWidth={2} aria-hidden="true" />
+      </button>
+    {/if}
   </div>
 
   {#if open}
     <div class="details" id={detailsId}>
+      {#if untested}<p>Untested model. Risky actions are hidden.</p>{/if}
       <p>Settings still apply; battery, mute and values can’t be read.</p>
       {#if bridgeRuns}
         <p>Full status: run the local bridge{pausesAudio ? ' (pauses USB audio)' : ''}.</p>
@@ -107,6 +124,26 @@
   .why :global(.flip) {
     transform: rotate(180deg);
   }
+  .dismiss {
+    position: relative;
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    width: 32px;
+    height: 28px;
+    border: 0;
+    border-radius: var(--r-cap);
+    background: transparent;
+    color: var(--w-ink);
+  }
+  .dismiss::after {
+    content: '';
+    position: absolute;
+    inset: -8px -2px;
+  }
+  .dismiss:hover {
+    background: color-mix(in srgb, var(--w-ink) 10%, transparent);
+  }
   .details {
     display: grid;
     justify-items: start;
@@ -123,9 +160,18 @@
     font-size: 13px;
     overflow-wrap: anywhere;
   }
+  .narrow {
+    display: none;
+  }
   @media (max-width: 599px) {
     .details {
       padding-left: 14px;
+    }
+    .wide {
+      display: none;
+    }
+    .narrow {
+      display: inline;
     }
   }
 </style>

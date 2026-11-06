@@ -35,15 +35,16 @@
     const age = session.lastUpdate ? formatAge(clock.now - session.lastUpdate) : null
     return [...(link.viaBridge ? [{ label: 'Bridge' }] : []), ...(age ? [{ label: 'Last reply', value: age }] : [])]
   })
-  const rxVersion = $derived(session.units?.rx.version ?? null)
+  const rxVersion = $derived(link.rxVersion)
 </script>
 
 {#if variant === 'line'}
   <footer class="line" class:bare={items.length === 0}>
     <StatusLine {items} end={link.statusEnd} />
   </footer>
-{:else}
-  <!-- A landmark of its own: it sits between the header and main on phones. -->
+{:else if bandItems.length || rxVersion}
+  <!-- A landmark of its own: it sits between the header and main on phones. Nothing while it has
+       nothing to say (the MAX 2 case before its first status poll). -->
   <section class="band" aria-label="Link status">
     <StatusLine variant="band" items={bandItems} label="Link status">
       {#snippet end()}{#if rxVersion}<span class="mono fw">RX {rxVersion}</span>{/if}{/snippet}

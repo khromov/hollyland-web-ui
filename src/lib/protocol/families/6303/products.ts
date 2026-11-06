@@ -9,8 +9,9 @@ import type { ProductInfo } from '../../models'
 export const M3_RESEARCH = 'docs/research/families/m3-6303.md'
 
 /**
- * Registered rows: recognised only, so the registry keeps the M3 unconnectable until the UI integration (Phase 3)
- * switches the registered driver (index.ts). Framing high, transport and VID medium (FAMILIES.md §1.2).
+ * Research-only support record (recognised). Since Phase 3 (W9) the registry rows below use
+ * M3_EXPERIMENTAL_SUPPORT: the registered driver is createM3Driver() (index.ts). Framing high, transport and VID
+ * medium (FAMILIES.md §1.2).
  */
 export const M3_SUPPORT = recognised(M3_RESEARCH, 'medium', 'framing high; transport and vendor id medium (VID never checked by the app)')
 
@@ -41,7 +42,7 @@ const ROWS: readonly { pid: number; variant: 'camera' | 'mobile'; ch: 2 | 4; con
 
 export const M3_PRODUCTS: readonly ProductInfo[] = ROWS.map((r) =>
   // R product_6303 "LARK M3" (A DeviceCompat.getDeviceName 1036–1039); I EA `lark m3` → deviceType 14 (@0x10012477c).
-  usbProduct('6303', M3_SUPPORT, {
+  usbProduct('6303', M3_EXPERIMENTAL_SUPPORT, {
     productId: r.pid, name: 'LARK M3', label: `LARK M3 (${r.variant === 'camera' ? 'camera' : 'phone'} RX, ${r.ch}CH)`, code: '6303',
     variant: r.variant,
     // Kept from the Phase 0 registry (txCount = channels = 2 / 4 by PID). Up to 4 TX in 4T4R on every PID (m3-6303.md §1.1).

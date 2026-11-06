@@ -512,6 +512,12 @@ export interface WebBluetoothReconnectOptions extends Omit<WebBluetoothRequestOp
    * A granted device that is out of range or asleep would otherwise make connect() hang or fail.
    */
   advertisementTimeoutMs?: number
+  /**
+   * Device objects already in hand (a previous transport's `device`): tried first, so the reconnect works
+   * without `navigator.bluetooth.getDevices()` (behind a flag in Chrome; `gatt.connect()` works on the same
+   * object after a disconnect). Granted devices are tried after them.
+   */
+  devices?: readonly BleDeviceLike[]
 }
 
 /** Snapshot for the diagnostic report (FAMILIES.md §4.3, §5.7 "notification sizes"). */
@@ -730,9 +736,11 @@ export class WebBluetoothTransport extends BaseTransport {
   static async reconnect(o: WebBluetoothReconnectOptions = {}): Promise<WebBluetoothTransport | null> {
     const api = o.bluetooth ?? bluetoothApi()
     const candidates = o.candidates ? [...o.candidates] : bleCandidates(o.products ?? ALL_PRODUCTS, { includeRecognised: o.includeRecognised })
-    if (!api || !candidates.length) return null
-    const granted = await WebBluetoothTransport.getGrantedDevices(api)
-    const devices = o.deviceId ? granted.filter((d) => d.id === o.deviceId || `ble:${d.id}` === o.deviceId) : granted
+    const known = o.devices ?? []
+    if ((!api && !known.length) || !candidates.length) return null
+    const granted = api ? await WebBluetoothTransport.getGrantedDevices(api) : []
+    const match = (d: BleDeviceLike) => !o.deviceId || d.id === o.deviceId || `ble:${d.id}` === o.deviceId
+    const devices = [...known.filter(match), ...granted.filter((d) => match(d) && !known.some((k) => k === d || k.id === d.id))]
     for (const d of devices) {
       if (!(await waitForAdvertisement(d, o.advertisementTimeoutMs ?? 5000))) continue
       const t = new WebBluetoothTransport(d, candidates, o)

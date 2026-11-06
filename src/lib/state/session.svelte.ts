@@ -1,33 +1,97 @@
 /**
- * Session store: the single binding between the UI and HollylandDevice.
+ * Session store: the single binding between the UI and the connected product.
  *
- *  - connect / auto-reconnect / disconnect over WebHID (or any Transport, e.g. the local bridge)
- *  - mirrors DeviceState into Svelte state (1 Hz heartbeat)
- *  - write pipeline: optimistic overlay while pending, rollback + toast on failure
+ * The device is a MicDevice (core/registry.ts createMicDevice): LegacyMicDevice over HollylandDevice
+ * for LARK A2 / A2S, Lark M2, LARK M2S and the 6501 group, or a family driver's FamilyDevice for the
+ * LARK A1, LARK M3, LARK MAX 2 and MELO P1 (docs/FAMILIES.md §3). Two APIs sit on top:
+ *
+ *  - The legacy API (`state`, `device`, `caps`, `settings`, `units`, `gate()`, `blockReason()`,
+ *    `write()` and the typed setters, the speaker-passthrough restart flow, custom buttons, pairing,
+ *    factory reset). Unchanged; it serves the hand-tuned pages and is empty for the other families
+ *    (`isLegacy` false: `state` / `device` / `caps` / `units` null, `settings` {}).
+ *  - The generic API for every product (`mic`, `micState`, `controls`, `value()`, `availability()`,
+ *    `blockText()`, `setControl()`, `confirmFor()`, `micSlots`, device-pushed `levels`), plus the
+ *    support data (`support`, `untested`, the first-connect notice) and the hardware report.
+ *
+ *  - connect / auto-reconnect / disconnect over USB (WebHID interrupt or feature reports), Web
+ *    Bluetooth, the local bridge, or the development simulator (`?mock=<preset id>`)
+ *  - mirrors the device state into Svelte state (every status poll)
+ *  - write pipelines: optimistic overlay while pending, rollback + toast on failure
  *  - "write-only" mode when the OS drops the receiver's replies (macOS / Windows): writes go out
  *    unconfirmed and the last values sent from this browser are remembered locally
  *  - block rules from the official app (no mic online, all online mics muted)
- *  - disruptive flows: speaker passthrough (RX restart), remove pairing, factory reset
+ *  - disruptive flows: receiver restarts (overlay + automatic reconnect), remove pairing, factory reset
  */
 import {
+  CONTROL,
+  ControlUnavailableError,
+  ControlValueError,
+  DestructiveCommandError,
   DisconnectedError,
   HollylandDevice,
-  WebHidTransport,
-  isWebHidSupported,
-  lookupProduct,
+  LegacyMicDevice,
+  RxUnavailableError,
+  TimeoutError,
+  UnsupportedError,
+  WebBluetoothTransport,
+  a1,
+  controlById,
+  controlKey,
+  createMicDevice,
+  displayName,
+  driverFor,
+  findMockPreset,
+  m3,
+  max2,
+  melo,
+  simulatedTransport,
+  supportOf,
   Target,
   type Capabilities,
+  type ControlAvailability,
+  type ControlGroup,
+  type ControlId,
+  type ControlSpec,
+  type ControlValue,
   type DeviceState,
+  type FamilyCode,
   type FeatureGateState,
   type GatedFeature,
+  type MicDevice,
+  type MicState,
+  type MicTrafficEntry,
+  type MicUnit,
   type ProductInfo,
   type SetResult,
   type Settings,
+  type SupportInfo,
   type Transport,
-  type TrafficEntry as DeviceTraffic,
+  type UnitId,
 } from '../protocol'
 import { traffic } from './traffic.svelte'
 import { toasts } from '../ui/toast.svelte'
+import type { Confidence } from '../ui/types'
+import {
+  connectPaths,
+  grantedUsbDevices,
+  hidTransportFor,
+  onUsbDeviceConnect,
+  reconnectBluetooth,
+  reconnectUsb,
+  requestBluetooth,
+  requestUsb,
+  resolveUsbProduct,
+  sameReceiver,
+  type ConnectPaths,
+} from './links'
+import { confirmInfo, disruptiveKind, reasonText, type ConfirmInfo } from './reasons'
+import { displayControls } from './labels'
+import { buildHardwareReport, type CheckOutcome, type WriteRecord } from './report'
+import { isNoticeDismissed, rememberNoticeDismissed } from './support'
+
+export type { ConnectPaths, LinkKind } from './links'
+export type { ConfirmInfo } from './reasons'
+export type { CheckOutcome, WriteRecord } from './report'
 
 export type Phase = 'unsupported' | 'idle' | 'connecting' | 'ready' | 'restarting' | 'lost'
 
@@ -56,10 +120,22 @@ export interface ConnectError {
   detail?: string
 }
 
-type TransportFactory = () => Promise<Transport | null>
+/** Pages beyond Overview / Audio / Settings / Device that a product needs (src/components/<page>/<Page>Page.svelte). */
+export type ExtraPage = 'mixer' | 'timecode' | 'monitoring'
+
+/** MELO P1 device-pushed levels (dB per input and output, about ten times a second). */
+export type DeviceLevels = melo.MeloLevels
+
+/** What a connect factory returns: a transport, optionally with the link kind and registry row it was opened as. */
+type Opened = Transport | { transport: Transport; kind?: string; product?: ProductInfo }
+type TransportFactory = () => Promise<Opened | null>
 
 const LAST_DEVICE_KEY = 'mc.lastDevice'
 const SENT_KEY_PREFIX = 'mc.sent.'
+/** Values sent blind through the generic API (write-only), per product. */
+const SENT_CONTROL_KEY_PREFIX = 'mc.sentControls.'
+/** Writes kept for the hardware report. */
+const WRITE_LOG_MAX = 30
 
 /** RX restart (speaker passthrough): after this long the overlay offers "Stop waiting". */
 const RESTART_SLOW_MS = 12_000
@@ -67,6 +143,21 @@ const RESTART_SLOW_MS = 12_000
 const RESTART_DEADLINE_MS = 30_000
 /** RX restart: still attached this long after RESTART_RX means it didn't drop off USB; resume. */
 const RESTART_NO_DROP_MS = 8_000
+/** Bluetooth restart: pause between reconnect attempts while the restart overlay is up. */
+const BLE_RESTART_RETRY_MS = 3_000
+
+/**
+ * Status polls and pushes per family (the console's "hide heartbeats" filter): the A1 heartbeat,
+ * the M3 0x6000, the MAX 2 0x600B and BLE pushes, the MELO P1 0x600B and VU pushes.
+ */
+const POLL_COMMANDS: Partial<Record<FamilyCode, readonly number[]>> = {
+  '6108': [0x1f],
+  '6303': [0x6000],
+  '6701': [0x600b, 0x6000, 0x6001, 0x6002],
+  '6201': [0x600b, 0x11eb, 0x11e1, 0x11e9],
+}
+
+const HID_KINDS = new Set(['webhid', 'webhid-feature'])
 
 /** A firmware-gated feature the model has but the connected receiver doesn't offer (yet). */
 export interface GateInfo {
@@ -92,24 +183,48 @@ function storageSet(key: string, value: unknown) {
     /* storage unavailable */
   }
 }
+function storageRemove(key: string) {
+  try {
+    localStorage.removeItem(key)
+  } catch {
+    /* noop */
+  }
+}
 
 function describeError(e: unknown): ConnectError {
   const err = e as { name?: string; message?: string }
   const msg = err?.message ?? String(e)
   if (err?.name === 'NotFoundError') return { title: 'No receiver selected' }
   if (err?.name === 'SecurityError') return { title: 'The browser blocked the request', detail: 'Open the page over https, then retry.' }
+  if (err instanceof UnsupportedError || err?.name === 'UnsupportedError') return { title: 'This device is not supported' }
   if (/open|NotAllowed|busy|InvalidState/i.test(msg))
     return { title: "Couldn't open the receiver", detail: 'Close other tabs or apps using it, then retry.' }
   if (/not supported/i.test(msg)) return { title: 'This device is not supported', detail: msg }
   return { title: 'Something went wrong', detail: msg }
 }
 
+/** Short reason of a failed generic write, for the "Setup failed." toast. */
+function writeErrorText(e: unknown, writeOnly = false): string {
+  if (e instanceof ControlUnavailableError) return reasonText({ ok: false, reason: e.reason }, writeOnly) ?? 'Unavailable'
+  if (e instanceof RxUnavailableError) return 'No reply from the receiver.'
+  if (e instanceof TimeoutError) return 'No reply from the receiver.'
+  if (e instanceof DestructiveCommandError) return 'Not allowed on this model.'
+  if (e instanceof ControlValueError) return 'Invalid value.'
+  return (e as Error)?.message ?? String(e)
+}
+
+function isOpened(r: Opened): r is { transport: Transport; kind?: string; product?: ProductInfo } {
+  return typeof (r as Transport).send !== 'function' && !!(r as { transport?: Transport }).transport
+}
+
 class Session {
-  phase: Phase = $state(isWebHidSupported() ? 'idle' : 'unsupported')
+  phase: Phase = $state(connectPaths().usb || connectPaths().bluetooth ? 'idle' : 'unsupported')
   step: string | null = $state(null)
   error: ConnectError | null = $state(null)
-  /** Latest snapshot from the device (replaced on every change). */
+  /** Legacy products: latest DeviceState from HollylandDevice (replaced on every change). Null otherwise. */
   state: DeviceState | null = $state.raw(null)
+  /** Every product: latest MicState (replaced on every change). */
+  micState: MicState | null = $state.raw(null)
   /** Values shown while a write is in flight (and kept in write-only mode). */
   overlay: Partial<Settings> = $state({})
   /** Write-only: setting keys the user asked to forget (masked in the library's blind-patched state). */
@@ -123,10 +238,41 @@ class Session {
   restartSlow = $state(false)
   /** A previously used receiver that can be reopened without the chooser. */
   known: { name: string } | null = $state(null)
+  /** 'webhid' | 'webhid-feature' | 'web-bluetooth' | 'bridge' | 'mock' (LinkKind), or another factory's kind. */
   transportKind: string | null = $state(null)
   lastUpdate: number | null = $state(null)
+  /** Connect keys this browser can offer (WebHID, Web Bluetooth, the local bridge). */
+  readonly connectPaths: ConnectPaths = connectPaths()
+
+  // ---- generic write pipeline (every product)
+  /** Generic writes in flight: controlKey → value shown meanwhile. */
+  private controlOverlay: Record<string, ControlValue> = $state({})
+  private controlPending: Record<string, number> = $state({})
+  /** When this page last sent each control (controlKey → ms), for "Last sent 17:42". In memory only. */
+  sentAt: Record<string, number> = $state({})
+  /** Write-only: control values last sent from this browser (persisted per product). */
+  private sentControls: Record<string, ControlValue> = $state({})
+  /** Write-only: control keys the user asked to forget (masked in the device's blind-patched values). */
+  private forgottenControls: Set<string> = $state(new Set())
+
+  // ---- support / report
+  private noticeDismissed = $state(false)
+  /** Results of `runHardwareCheck()` by step id. */
+  checkResults: Record<string, CheckOutcome> = $state.raw({})
+  checkRunning = $state(false)
+  private writeLog: WriteRecord[] = []
+
+  // ---- device-pushed levels (MELO P1)
+  /** Last pushed levels, or null (no level stream, or none yet). */
+  levels: DeviceLevels | null = $state.raw(null)
+  levelsActive = $state(false)
+  private levelRefs = 0
 
   private dev: HollylandDevice | null = null
+  /** The attached device (null while the link is lost or restarting). */
+  private micDev: MicDevice | null = $state.raw(null)
+  /** The device whose pages are shown: kept while the link is lost, so a frozen page keeps its layout. */
+  private lastMic: MicDevice | null = $state.raw(null)
   private unsubs: (() => void)[] = []
   private factory: TransportFactory | null = null
   private intentionalClose = false
@@ -137,18 +283,26 @@ class Session {
   private pendingCount: Record<string, number> = {}
   private restartTimers: ReturnType<typeof setTimeout>[] = []
   private attaching = false
+  /** Web Bluetooth device id of the current session (reconnect without the chooser). */
+  private bleDeviceId: string | null = null
+  /** The current session's Bluetooth device object: reconnects with gatt.connect() without getDevices(). */
+  private bleDevice: WebBluetoothTransport['device'] | null = null
 
   constructor() {
-    if (typeof window === 'undefined' || !isWebHidSupported()) return
+    if (typeof window === 'undefined' || !this.connectPaths.usb) return
     void this.refreshKnown()
-    WebHidTransport.onDeviceConnect((device) => {
+    onUsbDeviceConnect((device) => {
       // Auto-reconnect after an RX restart or a replug while the page is open.
-      if ((this.phase === 'lost' || this.phase === 'restarting') && this.transportKind === 'webhid') {
-        // getDevices() picks the control collection, like the first connect did.
-        void WebHidTransport.reconnect()
-          .then((t) => t ?? new WebHidTransport(device))
-          .then((t) => this.attach(t, 'lost'))
-          .catch(() => undefined)
+      if ((this.phase === 'lost' || this.phase === 'restarting') && HID_KINDS.has(this.transportKind ?? '')) {
+        // getDevices() picks the control collection, like the first connect did; only the receiver the
+        // page was showing is reopened (another granted one may be plugged in too).
+        const previous = this.product
+        if (!previous || sameReceiver(device, previous)) {
+          void reconnectUsb(previous)
+            .then((r) => r ?? hidTransportFor(device))
+            .then((r) => this.attach(r.transport, 'lost', r.product))
+            .catch(() => undefined)
+        }
       }
       void this.refreshKnown()
     })
@@ -156,11 +310,29 @@ class Session {
 
   // ------------------------------------------------------------------ derived getters
 
+  /** Legacy products: the HollylandDevice (full legacy API). Null for the other families. */
   get device(): HollylandDevice | null {
     return this.dev
   }
+  /** The connected product as a MicDevice (every family); null while the link is lost. */
+  get mic(): MicDevice | null {
+    return this.micDev
+  }
+  private get shown(): MicDevice | null {
+    return this.micDev ?? this.lastMic
+  }
+  /**
+   * True when the product runs on HollylandDevice (6118 / 6301 / 6302 / 6501): the hand-tuned
+   * pages apply. Stays put while the link is lost or the receiver restarts.
+   */
+  get isLegacy(): boolean {
+    return this.shown instanceof LegacyMicDevice
+  }
   get product(): ProductInfo | null {
-    return this.state?.product ?? null
+    return this.micState?.product ?? this.state?.product ?? null
+  }
+  get family(): FamilyCode | null {
+    return this.shown?.family ?? null
   }
   /**
    * What the connected receiver offers: the model's capabilities minus the firmware-gated
@@ -176,6 +348,11 @@ class Session {
     const p = this.product
     if (!p) return ''
     return p.family === '6118' ? 'LARK A2' : p.name
+  }
+  /** The registry's disambiguated name ("LARK M3 (camera RX, 4CH)", "Lark C1 (2nd gen)"), for the Device page. */
+  get modelLabel(): string {
+    const p = this.product
+    return p ? displayName(p) : ''
   }
   /**
    * Why a firmware-gated feature of this model is not offered, or null when it is (or the model
@@ -204,11 +381,11 @@ class Session {
   }
   /** True when replies arrive (status and settings are live). */
   get live(): boolean {
-    return this.state?.rx === 'available'
+    return (this.micState?.rx ?? this.state?.rx) === 'available'
   }
   /** True when the OS drops replies: writes are unconfirmed and nothing can be read. */
   get writeOnly(): boolean {
-    return this.state?.rx === 'unavailable'
+    return (this.micState?.rx ?? this.state?.rx) === 'unavailable'
   }
   get settings(): Settings {
     const base = this.state?.settings ?? {}
@@ -240,6 +417,7 @@ class Session {
   get usbChannelMode(): number | null {
     return this.writeOnly ? null : this.channelModeSetting
   }
+  /** Legacy products: RX, TX1, TX2 from HollylandDevice. Null for the other families (see `micState.units`, `micSlots`). */
   get units() {
     return this.state?.units ?? null
   }
@@ -265,47 +443,335 @@ class Session {
     return null
   }
 
+  // ------------------------------------------------------------- support (untested)
+
+  /** Support record of the connected product (level, hardware testing, research). */
+  get support(): SupportInfo | null {
+    return this.shown?.support ?? (this.product ? supportOf(this.product) : null)
+  }
+  /** Not run on hardware (the "Untested" plate). */
+  get untested(): boolean {
+    return this.support?.hardware === 'untested'
+  }
+  /** The same protocol was tested on a sibling model (A2S via the A2). */
+  get siblingTested(): boolean {
+    return this.support?.hardware === 'sibling-tested'
+  }
+  /** What was tested, e.g. "LARK A2 fw 3.0.2.008 · macOS Chrome WebHID: write-only · 2026-11-05". */
+  get testedOn(): readonly string[] {
+    return this.support?.testedOn ?? []
+  }
+  /** Show the one-time first-connect notice: an untested product, connected, not dismissed in this browser. */
+  get untestedNotice(): boolean {
+    return this.untested && this.phase === 'ready' && !this.noticeDismissed
+  }
+  dismissUntestedNotice(): void {
+    const p = this.product
+    this.noticeDismissed = true
+    if (p) rememberNoticeDismissed(p)
+  }
+
+  // ------------------------------------------------------------- generic device API
+
+  /**
+   * Controls this product offers (destructive and firmware-update controls are absent on untested
+   * products), with display words (labels.ts: one casing, "24-bit", bit depths in one order).
+   */
+  get controls(): readonly ControlSpec[] {
+    const c = this.shown?.controls
+    return c ? displayControls(c) : []
+  }
+  controlsIn(group: ControlGroup): ControlSpec[] {
+    return this.controls.filter((c) => c.group === group)
+  }
+  control(id: ControlId): ControlSpec | undefined {
+    return controlById(this.controls, id)
+  }
+  /** Pages this product needs beyond Overview / Audio / Settings / Device. */
+  get extraPages(): ExtraPage[] {
+    if (!this.shown || this.isLegacy) return []
+    const groups = new Set(this.controls.map((c) => c.group))
+    const out: ExtraPage[] = []
+    if (this.family === '6201') out.push('mixer')
+    if (groups.has('timecode')) out.push('timecode')
+    // MELO P1 output volumes are part of its Mixer page.
+    if (groups.has('monitoring') && this.family !== '6201') out.push('monitoring')
+    return out
+  }
+  /**
+   * Current value of a control (per-unit controls take `unit`): a write in flight first, then the
+   * device state (read back, or applied after a blind write), then, write-only, the value last sent
+   * from this browser. Undefined = unknown.
+   */
+  value(id: ControlId, unit?: UnitId): ControlValue | undefined {
+    const key = controlKey(id, unit)
+    if (key in this.controlOverlay) return this.controlOverlay[key]
+    // Write-only: the device keeps every blind write in its values; "Forget remembered values" hides them.
+    if (this.writeOnly && this.forgottenControls.has(key)) return undefined
+    const v = this.micState?.values[key]
+    if (v !== undefined) return v
+    return this.writeOnly ? this.sentControls[key] : undefined
+  }
+  /** How the value is known: read back (solid), sent but not confirmed (sent), or not at all (unknown). */
+  confidence(id: ControlId, unit?: UnitId): Confidence {
+    const v = this.value(id, unit)
+    if (v === undefined) return 'unknown'
+    return this.live ? 'solid' : 'sent'
+  }
+  /** Why the control (on this unit) is blocked right now, or null when it is available. */
+  availability(id: ControlId, unit?: UnitId): ControlAvailability | null {
+    const a = this.micState?.availability
+    if (!a) return null
+    const v = (unit ? a[controlKey(id, unit)] : undefined) ?? a[id]
+    return v && !v.ok ? v : null
+  }
+  /** A few words for a blocked control ("No mic connected"), or null while it is available. */
+  blockText(id: ControlId, unit?: UnitId): string | null {
+    return reasonText(this.availability(id, unit), this.writeOnly)
+  }
+  isPending(id: ControlId, unit?: UnitId): boolean {
+    return (this.controlPending[controlKey(id, unit)] ?? 0) > 0
+  }
+  /** Units in the kit, RX first (online or not), as the device reports them. */
+  get unitList(): MicUnit[] {
+    const u = this.micState?.units
+    return u ? (Object.values(u).filter(Boolean) as MicUnit[]) : []
+  }
+  /**
+   * Mic slots to draw (tx1…tx4): 2 or 4, from the firmware / mode where the family says so
+   * (A1 2 / 4-mic firmware, MAX 2 "4 Mic & 1 RX", M3 4CH), else the mics that are online.
+   */
+  get micSlots(): UnitId[] {
+    const s = this.micState
+    if (!s) return []
+    const tx = (['tx1', 'tx2', 'tx3', 'tx4'] as const).filter((u) => s.units[u])
+    let n = Math.min(tx.length, 2)
+    if (this.family === '6108') n = a1.a1MicSlots(s) ?? 2
+    else if (
+      tx.length > 2 &&
+      (s.units.tx3?.online || s.units.tx4?.online || s.product.channels >= 4 || s.values[max2.MAX2_CONTROL.FOUR_MIC] === true)
+    )
+      n = 4
+    return tx.slice(0, n)
+  }
+  /** "RX 1.0.0.15 · TX1 1.0.0.12 · TX2 1.0.0.12 · Case 1.0.0.8" (every unit with a known version), or null. */
+  get firmware(): string | null {
+    const name: Partial<Record<string, string>> = { box: 'Case', earL: 'Ear L', earR: 'Ear R', remote: 'Remote' }
+    const parts = this.unitList.filter((u) => u.version).map((u) => `${name[u.id] ?? u.id.toUpperCase()} ${u.version}`)
+    return parts.length ? parts.join(' · ') : null
+  }
+
+  /**
+   * The confirmation a write needs, or null: disruptive controls (the receiver restarts or changes
+   * mode), destructive ones (tested products only), the M3 channel mode to or from 4-track, the
+   * MAX 2 timecode reset. Pass `{ confirm: true }` to setControl() after the user agreed.
+   */
+  confirmFor(id: ControlId, value: ControlValue, unit?: UnitId): ConfirmInfo | null {
+    void unit
+    const mic = this.micDev
+    const spec = this.control(id)
+    if (!mic || !spec) return null
+    if (spec.safety === 'destructive') return confirmInfo(spec, 'destructive')
+    if (spec.safety === 'disruptive') return confirmInfo(spec, disruptiveKind(spec))
+    // Legacy speaker passthrough: setControl() runs the official flow, which restarts the receiver.
+    if (this.dev && id === CONTROL.SPEAKER) return confirmInfo(spec, 'restart', 'The receiver restarts.')
+    if (mic instanceof m3.M3Device && id === CONTROL.CHANNEL_MODE && typeof value === 'number' && mic.channelModeNeedsConfirm(value)) {
+      return confirmInfo(spec, 'restart', spec.confirmText ?? m3.M3_RESTART_TEXT)
+    }
+    if (mic instanceof max2.Max2Device && id === max2.MAX2_CONTROL.TC_TIMING && typeof value === 'number' && mic.timingNeedsConfirm(value)) {
+      return confirmInfo(spec, 'reset', max2.MAX2_TC_RESET_TEXT)
+    }
+    return null
+  }
+
+  /**
+   * Generic write for every product: optimistic value while pending, rollback + "Setup failed."
+   * toast on failure, remembered locally when sent blind (write-only). A write that needs a
+   * confirmation (confirmFor) is refused unless `confirm: true`. A confirmed restart shows the
+   * restart overlay and reconnects when the receiver comes back. Returns true on success.
+   * Legacy pages keep their typed setters (setVolume() …); this works for legacy products too.
+   */
+  async setControl(id: ControlId, value: ControlValue, o: { unit?: UnitId; confirm?: boolean } = {}): Promise<boolean> {
+    const mic = this.micDev
+    if (!mic || this.phase !== 'ready') return false
+    const spec = this.control(id)
+    if (!spec) return false
+    const confirm = this.confirmFor(id, value, o.unit)
+    if (confirm && !o.confirm) {
+      console.warn(`[session] ${id} needs a confirmation (confirmFor) before setControl(…, { confirm: true })`)
+      return false
+    }
+    // Legacy speaker passthrough: the official flow sets it, counts down and restarts the receiver.
+    if (this.dev && id === CONTROL.SPEAKER && typeof value === 'boolean') return this.applySpeakerPassthrough(value)
+    const key = controlKey(id, o.unit)
+    const epoch = this.epoch
+    const seq = (this.writeSeq[`c:${key}`] ?? 0) + 1
+    this.writeSeq[`c:${key}`] = seq
+    const stale = () => epoch !== this.epoch || this.micDev !== mic
+    const newest = () => this.writeSeq[`c:${key}`] === seq
+    const shown = spec.kind !== 'action'
+    if (shown) this.controlOverlay = { ...this.controlOverlay, [key]: value }
+    this.controlPending = { ...this.controlPending, [key]: (this.controlPending[key] ?? 0) + 1 }
+    const settle = () => {
+      if (!newest() || !(key in this.controlOverlay)) return
+      const next = { ...this.controlOverlay }
+      delete next[key]
+      this.controlOverlay = next
+    }
+    try {
+      const r = await mic.set(id, value, { unit: o.unit, confirm: o.confirm })
+      this.logWrite({ at: Date.now(), id, unit: o.unit, value, ok: r.ok, confirmed: r.confirmed, code: r.code })
+      if (!r.ok) throw new Error('The receiver rejected the setting.')
+      if (stale()) return false
+      this.sentAt = { ...this.sentAt, [key]: Date.now() }
+      if (shown && !r.confirmed) this.rememberSentControl(key, value)
+      settle()
+      if (confirm?.kind === 'restart') this.beginRestart(mic, r.confirmed)
+      return true
+    } catch (e) {
+      if (!(e instanceof Error && e.message === 'The receiver rejected the setting.')) {
+        this.logWrite({ at: Date.now(), id, unit: o.unit, value, ok: false, error: `${(e as Error)?.name}: ${(e as Error)?.message}` })
+      }
+      if (stale() || e instanceof DisconnectedError) return false
+      settle()
+      toasts.error(`Setup failed. ${writeErrorText(e, this.writeOnly)}`, {
+        action: { label: 'Retry', run: () => void this.setControl(id, value, o) },
+      })
+      return false
+    } finally {
+      if (!stale()) {
+        const n = Math.max(0, (this.controlPending[key] ?? 1) - 1)
+        const next = { ...this.controlPending }
+        if (n > 0) next[key] = n
+        else delete next[key]
+        this.controlPending = next
+      }
+    }
+  }
+
+  private logWrite(w: WriteRecord) {
+    this.writeLog.push(w)
+    if (this.writeLog.length > WRITE_LOG_MAX) this.writeLog.splice(0, this.writeLog.length - WRITE_LOG_MAX)
+  }
+
+  // ----------------------------------------------------- device-pushed levels (MELO P1)
+
+  /** The product pushes its own levels (MELO P1): meters work without microphone permission. */
+  get hasDeviceLevels(): boolean {
+    return melo.hasMeloLevels(this.shown)
+  }
+
+  /**
+   * Start the device level stream while a component shows it; call the returned function on
+   * destroy. Reference-counted: the stream stops when the last user releases it, and is started
+   * again after a reconnect while someone still uses it.
+   */
+  useLevels(): () => void {
+    this.levelRefs++
+    if (this.levelRefs === 1) void this.startLevels()
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      this.levelRefs = Math.max(0, this.levelRefs - 1)
+      if (this.levelRefs === 0) void this.stopLevels()
+    }
+  }
+
+  private async startLevels(): Promise<void> {
+    const mic = this.micDev
+    if (!melo.hasMeloLevels(mic) || this.phase !== 'ready' || !this.live) return
+    try {
+      await mic.startLevels()
+      if (this.micDev === mic) this.levelsActive = mic.levelsActive
+    } catch (e) {
+      if (this.micDev === mic && !(e instanceof DisconnectedError)) console.warn('[session] levels', e)
+    }
+  }
+
+  private async stopLevels(): Promise<void> {
+    const mic = this.micDev
+    this.levelsActive = false
+    if (!melo.hasMeloLevels(mic)) return
+    await mic.stopLevels().catch(() => undefined)
+  }
+
   // ----------------------------------------------------------------------- lifecycle
 
   async refreshKnown() {
+    if (!this.connectPaths.usb) {
+      this.known = null
+      return
+    }
     try {
-      const devices = await WebHidTransport.getGrantedDevices()
+      const devices = await grantedUsbDevices()
       if (!devices.length) {
         this.known = null
         return
       }
       const d = devices[0]
-      const p = lookupProduct(d.vendorId, d.productId)
+      const p = resolveUsbProduct(d.vendorId, d.productId)
       this.known = { name: p?.name ?? d.productName ?? 'receiver' }
     } catch {
       this.known = null
     }
   }
 
-  /** Open the browser's device chooser (needs a user gesture). */
-  async connect(): Promise<void> {
-    await this.connectWith('webhid', () => WebHidTransport.request())
+  /**
+   * Open the USB chooser (needs a user gesture): every connectable USB product, legacy interrupt
+   * reports and the A1's feature reports alike. `anyDevice` lists every HID device (fallback for
+   * products whose vendor id is unconfirmed: LARK M3, MELO P1).
+   */
+  async connect(o: { anyDevice?: boolean } = {}): Promise<void> {
+    await this.connectWith('webhid', () => requestUsb(o))
+  }
+
+  /** Open the Bluetooth chooser (needs a user gesture): LARK MAX 2 charging case, MELO P1. */
+  async connectBluetooth(): Promise<void> {
+    await this.connectWith('web-bluetooth', async () => {
+      const t = await requestBluetooth()
+      return t ? { transport: t, kind: 'web-bluetooth', product: t.product ?? undefined } : null
+    })
   }
 
   /** Reopen a previously granted receiver without the chooser. */
   async reconnect(): Promise<void> {
-    if (this.phase === 'lost' && this.transportKind === 'webhid') {
+    if (this.transportKind === 'web-bluetooth') {
+      const id = this.bleDeviceId
+      if (this.phase === 'lost') {
+        // Keep the frozen page while the receiver is out of range or off.
+        const t = await reconnectBluetooth(id ?? undefined, 5000, this.bleDevice)
+        if (!t) {
+          toasts.info('Receiver not found. Turn it on and bring it closer.')
+          return
+        }
+        await this.attach(t, 'lost', t.product ?? undefined)
+        return
+      }
+      const device = this.bleDevice
+      await this.connectWith('web-bluetooth', async () => {
+        const t = await reconnectBluetooth(id ?? undefined, 5000, device)
+        return t ? { transport: t, kind: 'web-bluetooth', product: t.product ?? undefined } : null
+      })
+      return
+    }
+    if (this.phase === 'lost' && HID_KINDS.has(this.transportKind ?? '')) {
       // From the "connection lost" banner: keep the frozen page and the automatic reconnect
       // when the receiver isn't plugged in yet, instead of dropping to the connect screen.
-      let t: Transport | null = null
+      let r: Awaited<ReturnType<typeof reconnectUsb>> = null
       try {
-        t = await WebHidTransport.reconnect()
+        r = await reconnectUsb(this.product)
       } catch {
-        t = null
+        r = null
       }
-      if (!t) {
+      if (!r) {
         toasts.info('Receiver not found. Plug it back in.')
         return
       }
-      await this.attach(t, 'lost')
+      await this.attach(r.transport, 'lost', r.product)
       return
     }
-    await this.connectWith('webhid', () => WebHidTransport.reconnect())
+    await this.connectWith('webhid', () => reconnectUsb())
   }
 
   /** Connect through any transport factory (e.g. the localhost bridge). */
@@ -313,18 +779,20 @@ class Session {
     if (this.phase === 'connecting') return
     this.error = null
     this.phase = 'connecting'
-    this.step = kind === 'webhid' ? 'Choose the receiver…' : 'Connecting…'
+    this.step = kind === 'webhid' || kind === 'web-bluetooth' ? 'Choose the receiver…' : 'Connecting…'
     this.factory = factory
     this.transportKind = kind
     try {
-      const t = await factory()
-      if (!t) {
+      const r = await factory()
+      if (!r) {
         this.phase = 'idle'
         this.step = null
         this.error = { title: 'No receiver selected' }
         return
       }
-      await this.attach(t)
+      const opened = isOpened(r) ? r : { transport: r }
+      if (opened.kind) this.transportKind = opened.kind
+      await this.attach(opened.transport, 'idle', opened.product)
     } catch (e) {
       this.phase = 'idle'
       this.step = null
@@ -337,8 +805,10 @@ class Session {
    * `fallback: 'lost'` is the automatic path (replug, RX restart, the lost banner's Reconnect):
    * the frozen page or the restart overlay stays up while the receiver is reopened, and a
    * failure goes back to the lost banner instead of the connect screen.
+   * `product` names the registry row when the transport's VID/PID cannot (Bluetooth charging
+   * case, a product whose vendor id is unconfirmed, the simulator).
    */
-  private async attach(t: Transport, fallback: 'idle' | 'lost' = 'idle'): Promise<void> {
+  private async attach(t: Transport, fallback: 'idle' | 'lost' = 'idle', product?: ProductInfo): Promise<void> {
     // Already opening one (several HID "connect" events per replug, or a second Reconnect click).
     // Don't close `t`: an unopened WebHID transport shares its HIDDevice with the one in progress.
     if (this.attaching) return
@@ -348,38 +818,60 @@ class Session {
     this.intentionalClose = false
     this.resetWrites()
     this.forgotten = new Set()
+    this.forgottenControls = new Set()
     const quiet = fallback === 'lost' && (this.phase === 'lost' || this.phase === 'restarting')
     if (!quiet) {
       this.phase = 'connecting'
       this.lastUpdate = null
     }
     this.step = 'Opening the receiver…'
-    const dev = new HollylandDevice(t, { blindWrites: true, allowDestructive: true })
-    this.dev = dev
-    this.unsubs.push(
-      dev.on('state', (s) => this.onState(s)),
-      dev.onTraffic((e) => this.onTraffic(e)),
-      dev.on('disconnect', () => this.onDisconnect()),
-      dev.on('error', (e) => console.warn('[session]', e)),
-    )
     try {
+      const info = t.info
+      const row = product ?? (info ? resolveUsbProduct(info.vendorId, info.productId) : undefined)
+      const mic = createMicDevice(t, { blindWrites: true, allowDestructive: true, ...(row ? { product: row } : {}) })
+      const previous = this.product
+      this.micDev = mic
+      this.lastMic = mic
+      this.dev = mic instanceof LegacyMicDevice ? mic.legacy : null
+      if (t instanceof WebBluetoothTransport) {
+        this.bleDeviceId = t.deviceId
+        this.bleDevice = t.device
+      }
+      if (!previous || previous.productId !== mic.product.productId || previous.vendorId !== mic.product.vendorId) {
+        this.checkResults = {}
+        this.writeLog = []
+      }
+      this.unsubs.push(
+        mic.on('state', (s) => this.onState(s)),
+        mic.onTraffic((e) => this.onTraffic(e)),
+        mic.on('disconnect', () => this.onDisconnect()),
+        mic.on('error', (e) => console.warn('[session]', e)),
+      )
+      if (melo.hasMeloLevels(mic)) this.unsubs.push(mic.onLevels((l) => (this.levels = l)))
       this.step = 'Reading the receiver…'
-      const s = await dev.connect()
+      const s = await mic.connect()
       if (epoch !== this.epoch) return
-      this.state = s
-      this.lastUpdate = s.lastHeartbeatAt ?? null
+      this.micState = s
+      this.state = this.dev ? this.dev.state : null
+      this.lastUpdate = s.lastStatusAt ?? null
       this.endRestartFlow()
       this.phase = 'ready'
       this.step = null
       this.error = null
       storageSet(LAST_DEVICE_KEY, { name: s.product.name, at: Date.now() })
-      this.known = { name: s.product.name }
+      // The connect page's "Reconnect <name>" reopens a granted USB receiver: only a USB session names it.
+      if (HID_KINDS.has(this.transportKind ?? '')) this.known = { name: s.product.name }
+      else void this.refreshKnown()
+      this.noticeDismissed = isNoticeDismissed(s.product)
+      this.sentControls = (this.sentControlKey() && storageGet<Record<string, ControlValue>>(this.sentControlKey()!)) || {}
       if (s.rx === 'unavailable') this.restoreSent()
       else this.overlay = {}
+      if (this.levelRefs > 0) void this.startLevels()
     } catch (e) {
       if (epoch !== this.epoch) return
       this.detachListeners()
       this.dev = null
+      this.micDev = null
       await t.close().catch(() => {})
       this.step = null
       if (quiet) {
@@ -388,6 +880,7 @@ class Session {
         const err = describeError(e)
         toasts.error(`${err.title}.${err.detail ? ` ${err.detail}` : ''}`)
       } else {
+        this.lastMic = null
         this.phase = 'idle'
         this.error = describeError(e)
       }
@@ -399,17 +892,26 @@ class Session {
   async disconnect(): Promise<void> {
     this.intentionalClose = true
     this.epoch++
-    const dev = this.dev
+    const mic = this.micDev
     this.detachListeners()
     this.dev = null
+    this.micDev = null
+    this.lastMic = null
     this.state = null
+    this.micState = null
     this.overlay = {}
     this.forgotten = new Set()
+    this.forgottenControls = new Set()
     this.resetWrites()
     this.endRestartFlow()
     this.lastUpdate = null
-    this.phase = isWebHidSupported() ? 'idle' : 'unsupported'
-    await dev?.disconnect().catch(() => {})
+    this.levels = null
+    this.levelsActive = false
+    this.checkResults = {}
+    this.writeLog = []
+    this.sentAt = {}
+    this.phase = this.connectPaths.usb || this.connectPaths.bluetooth ? 'idle' : 'unsupported'
+    await mic?.disconnect().catch(() => {})
   }
 
   private detachListeners() {
@@ -417,29 +919,61 @@ class Session {
     this.unsubs = []
   }
 
-  private onState(s: DeviceState) {
-    this.state = s
-    if (s.lastHeartbeatAt) this.lastUpdate = s.lastHeartbeatAt
+  private onState(s: MicState) {
+    this.micState = s
+    if (this.dev) this.state = this.dev.state
+    if (s.lastStatusAt) this.lastUpdate = s.lastStatusAt
   }
 
   private onDisconnect() {
     if (this.intentionalClose) return
     this.detachListeners()
     this.dev = null
+    this.micDev = null
     this.resetWrites()
+    this.levelsActive = false
     // During an RX restart the drop is expected; the restart deadline decides when to give up.
     if (this.phase !== 'restarting') this.phase = 'lost'
+    else if (this.transportKind === 'web-bluetooth') void this.reconnectBluetoothWhileRestarting()
   }
 
-  private onTraffic(e: DeviceTraffic) {
+  /** Bluetooth has no "device connected" event: retry the silent reconnect while the restart overlay is up. */
+  private async reconnectBluetoothWhileRestarting() {
+    const epoch = this.epoch
+    while (this.phase === 'restarting' && epoch === this.epoch && !this.micDev) {
+      const t = await reconnectBluetooth(this.bleDeviceId ?? undefined, BLE_RESTART_RETRY_MS, this.bleDevice)
+      if (t && this.phase === 'restarting' && epoch === this.epoch) {
+        await this.attach(t, 'lost', t.product ?? undefined)
+        return
+      }
+      await t?.close().catch(() => undefined)
+      await new Promise((r) => setTimeout(r, BLE_RESTART_RETRY_MS))
+    }
+  }
+
+  private onTraffic(e: MicTrafficEntry) {
     traffic.add({
       dir: e.direction === 'tx' ? 'out' : 'in',
       bytes: e.bytes,
       decoded: e.summary + (e.note && e.note !== 'reply' ? ` (${e.note})` : ''),
       status: e.note === 'timeout' ? 'timeout' : 'ok',
-      heartbeat: e.frame?.cmd === 0x10,
+      heartbeat: this.dev ? e.frame?.cmd === 0x10 : this.isPollTraffic(e),
       manual: e.note === 'raw',
     })
+  }
+
+  /** A status poll or push of a non-legacy family (for the console's heartbeat filter). */
+  private isPollTraffic(e: MicTrafficEntry): boolean {
+    const mic = this.micDev
+    const polls = mic ? POLL_COMMANDS[mic.family] : undefined
+    if (!polls || !mic) return false
+    if (e.direction === 'tx') {
+      if (!e.bytes.length) return false
+      const cmd = driverFor(mic.product)?.commandOfFrame(e.bytes) ?? null
+      return cmd !== null && polls.includes(cmd)
+    }
+    const cmd = (e.message as { cmd?: number } | undefined)?.cmd
+    return typeof cmd === 'number' && polls.includes(cmd)
   }
 
   // -------------------------------------------------------------- write-only memory
@@ -451,7 +985,7 @@ class Session {
   private sentKey(): string | null {
     const p = this.product
     if (!p) return null
-    const serial = this.dev?.transport.info?.serialNumber ?? ''
+    const serial = this.micDev?.transport.info?.serialNumber ?? ''
     return `${SENT_KEY_PREFIX}${p.productId.toString(16)}.${serial}`
   }
 
@@ -476,18 +1010,39 @@ class Session {
     storageSet(k, { ...this.sentValues(), ...patch })
   }
 
+  /** Generic API: storage key of the control values sent blind, per product (family + id). */
+  private sentControlKey(): string | null {
+    const p = this.product
+    const mic = this.micDev
+    if (!p || !mic || mic instanceof LegacyMicDevice) return null
+    return `${SENT_CONTROL_KEY_PREFIX}${mic.family}.${p.productId.toString(16)}`
+  }
+
+  private rememberSentControl(key: string, value: ControlValue) {
+    if (!this.writeOnly) return
+    if (this.forgottenControls.has(key)) {
+      const next = new Set(this.forgottenControls)
+      next.delete(key)
+      this.forgottenControls = next
+    }
+    this.sentControls = { ...this.sentControls, [key]: value }
+    const k = this.sentControlKey()
+    if (k) storageSet(k, this.sentControls)
+  }
+
   /** Forget the values this browser remembered for this model of receiver (write-only mode). */
   forgetSent() {
     const k = this.sentKey()
-    if (k)
-      try {
-        localStorage.removeItem(k)
-      } catch {
-        /* noop */
-      }
+    if (k) storageRemove(k)
     this.overlay = {}
     // The library already holds every blind write in its own state: hide those values too.
     if (this.writeOnly) this.forgotten = new Set(Object.keys(this.state?.settings ?? {}))
+    const ck = this.sentControlKey()
+    if (ck) storageRemove(ck)
+    this.sentControls = {}
+    // Same for the generic API: the device's values hold every blind write.
+    if (this.writeOnly) this.forgottenControls = new Set(Object.keys(this.micState?.values ?? {}))
+    this.sentAt = {}
   }
 
   // --------------------------------------------------------------------- write pipeline
@@ -506,6 +1061,8 @@ class Session {
     this.writeSeq = {}
     this.pendingCount = {}
     this.pending = {}
+    this.controlOverlay = {}
+    this.controlPending = {}
   }
 
   /** Overlay keys of `patch` fall back to the library value (live) or the last sent value (write-only). */
@@ -540,6 +1097,7 @@ class Session {
     this.setPending(key, 1)
     try {
       const r = await run(dev)
+      this.logWrite({ at: Date.now(), id: key, value: patch, ok: r.ok, confirmed: r.confirmed, code: r.code })
       if (!r.ok) throw new Error('The receiver rejected the setting.')
       if (stale()) return false
       // Every blind write that went out is remembered, so a failed newer one reverts to it.
@@ -595,12 +1153,12 @@ class Session {
    * WebHID permission may not survive the re-enumeration, features.md §21 #4) can't leave
    * the full-screen overlay up forever.
    */
-  private armRestartTimers(dev: HollylandDevice) {
+  private armRestartTimers(mic: MicDevice) {
     this.clearRestartTimers()
     this.restartSlow = false
     this.restartTimers.push(
       setTimeout(() => {
-        if (this.phase === 'restarting' && this.dev === dev) {
+        if (this.phase === 'restarting' && this.micDev === mic) {
           this.endRestartFlow()
           this.phase = 'ready'
         }
@@ -612,12 +1170,21 @@ class Session {
     )
   }
 
+  /** A confirmed generic write restarts the receiver: show the overlay, wait for it to come back. */
+  private beginRestart(mic: MicDevice, confirmed: boolean) {
+    if (this.phase !== 'ready' || this.micDev !== mic) return
+    this.restartConfirmed = confirmed
+    this.restartCountdown = 0
+    this.phase = 'restarting'
+    this.armRestartTimers(mic)
+  }
+
   /** "Stop waiting" on the restart overlay (and the automatic deadline). */
   stopWaitingForRestart() {
     if (this.phase !== 'restarting') return
     this.endRestartFlow()
     // Still attached: carry on. Gone: the lost banner keeps the automatic reconnect running.
-    this.phase = this.dev ? 'ready' : 'lost'
+    this.phase = this.micDev ? 'ready' : 'lost'
   }
 
   /**
@@ -626,7 +1193,8 @@ class Session {
    */
   async setSpeakerPassthrough(on: boolean): Promise<boolean> {
     const dev = this.dev
-    if (!dev || this.phase !== 'ready') return false
+    const mic = this.micDev
+    if (!dev || !mic || this.phase !== 'ready') return false
     this.setPending('speaker', 1)
     try {
       const r = await dev.setSpeakerPassthrough(on)
@@ -642,11 +1210,11 @@ class Session {
       }
       this.restartCountdown = 0
       await dev.restartRx({ confirm: true }).catch(() => undefined)
-      if (this.phase === 'restarting') this.armRestartTimers(dev)
+      if (this.phase === 'restarting') this.armRestartTimers(mic)
       return true
     } catch (e) {
       if (this.dev === dev) toasts.error(`Setup failed. ${(e as Error).message}`)
-      if (this.phase === 'restarting') this.phase = this.dev ? 'ready' : 'lost'
+      if (this.phase === 'restarting') this.phase = this.micDev ? 'ready' : 'lost'
       this.endRestartFlow()
       return false
     } finally {
@@ -694,14 +1262,23 @@ class Session {
     }
   }
 
-  /** Raw frame from the developer console. Returns an error message or null. */
+  /**
+   * Raw frame from the developer console. Returns an error message or null. Legacy products: one
+   * 64-byte `AA DD` packet through HollylandDevice. Other families: the frame as typed, with the
+   * engine's console rules (untested products refuse unclassifiable and destructive frames).
+   */
   async sendRaw(bytes: Uint8Array): Promise<string | null> {
     const dev = this.dev
-    if (!dev) return 'Not connected'
-    const packet = new Uint8Array(64)
-    packet.set(bytes.subarray(0, 64))
+    const mic = this.micDev
+    if (!mic) return 'Not connected'
     try {
-      await dev.sendRaw(packet, { force: true })
+      if (dev) {
+        const packet = new Uint8Array(64)
+        packet.set(bytes.subarray(0, 64))
+        await dev.sendRaw(packet, { force: true })
+      } else {
+        await mic.sendRaw(bytes, { force: true })
+      }
       return null
     } catch (e) {
       return (e as Error).message
@@ -710,36 +1287,24 @@ class Session {
 
   /** Re-read identity (versions + serials) for every online unit. */
   async refreshIdentity(): Promise<void> {
-    if (!this.dev || !this.live) return
-    await this.dev.getIdentity().catch(() => undefined)
+    if (!this.micDev || !this.live) return
+    if (this.dev) await this.dev.getIdentity().catch(() => undefined)
+    else await this.micDev.refresh('identity').catch(() => undefined)
   }
 
   /**
-   * DEVELOPMENT ONLY: attach the protocol simulator (for screenshots and UI tests without
-   * hardware). Not reachable in production builds.
+   * DEVELOPMENT ONLY: attach a protocol simulator from the registry's mock presets (`?mock=<id>`,
+   * every family: a2, blind, a2s, m2s, m2scam, m2, a1, m3cam4, max2box, melo …; unknown ids fall back
+   * to a2). Not reachable in production builds.
    */
-  async connectMock(kind: string): Promise<void> {
+  async connectMock(id: string): Promise<void> {
     if (!import.meta.env.DEV) return
-    const { MockTransport, SimulatedReceiver } = await import('../protocol')
-    const presets: Record<string, { pid: number; family: '6118' | '6301' | '6302'; camera?: boolean; drop?: boolean }> = {
-      a2: { pid: 0x0411, family: '6118' },
-      a2s: { pid: 0x0412, family: '6118', camera: true },
-      blind: { pid: 0x0411, family: '6118', drop: true },
-      m2s: { pid: 0x0405, family: '6302' },
-      m2scam: { pid: 0x0406, family: '6302', camera: true },
-      m2: { pid: 0x0007, family: '6301' },
-    }
-    const p = presets[kind] ?? presets.a2
-    const sim = new SimulatedReceiver({ family: p.family, camera: p.camera, dropReplies: p.drop })
-    ;(globalThis as Record<string, unknown>).__sim = sim
-    await this.connectWith('mock', async () =>
-      new MockTransport({
-        info: { vendorId: 0x3547, productId: p.pid, productName: 'Wireless Microphone (simulated)', serialNumber: 'SIM' },
-        respond: sim.respond,
-        latencyMs: 8,
-        capabilities: { receive: p.drop ? 'no' : 'yes' },
-      }),
-    )
+    const found = findMockPreset(id) ?? findMockPreset('a2')
+    if (!found) return
+    const { driver, preset, product } = found
+    const sim = driver.createSimulator(product, preset.sim)
+    ;(globalThis as Record<string, unknown>).__sim = (sim as { receiver?: unknown }).receiver ?? sim
+    await this.connectWith('mock', async () => ({ transport: simulatedTransport(sim, { latencyMs: 8 }), product }))
   }
 
   /**
@@ -753,8 +1318,86 @@ class Session {
 
   /** Re-run the reply probe (e.g. after switching to the bridge). */
   async probe(): Promise<void> {
-    if (!this.dev) return
-    await this.dev.probe().catch(() => undefined)
+    if (!this.micDev) return
+    await this.micDev.probe().catch(() => undefined)
+  }
+
+  // ------------------------------------------------------------------ hardware report
+
+  /** First-contact checklist of the product's driver (docs/FAMILIES.md §5.7). */
+  get hardwareChecks() {
+    const p = this.product
+    return (p && driverFor(p)?.hardwareCheck) || []
+  }
+
+  /**
+   * Run the checklist's automatic read-only steps (descriptor, reads) and keep the results for the
+   * report. Steps that write (even reversibly) are never run from here. Live mode only.
+   */
+  async runHardwareCheck(): Promise<void> {
+    const mic = this.micDev
+    if (!mic || this.checkRunning || this.phase !== 'ready') return
+    this.checkRunning = true
+    try {
+      const results: Record<string, CheckOutcome> = {}
+      for (const step of this.hardwareChecks) {
+        if (!step.run) continue
+        if (step.kind === 'write-reversible') {
+          results[step.id] = { ok: false, summary: 'writes are not run automatically', skipped: true }
+          continue
+        }
+        if (step.kind === 'read' && !this.live) {
+          results[step.id] = { ok: false, summary: 'replies not received', skipped: true }
+          continue
+        }
+        try {
+          results[step.id] = await step.run(mic)
+        } catch (e) {
+          results[step.id] = { ok: false, summary: `${(e as Error).name}: ${(e as Error).message}` }
+        }
+        if (this.micDev !== mic) break
+        this.checkResults = { ...results }
+      }
+      this.checkResults = results
+    } finally {
+      this.checkRunning = false
+    }
+  }
+
+  /** Plain-text report for "Copy hardware report" (null when nothing is connected). */
+  hardwareReport(o: { trafficLimit?: number } = {}): string | null {
+    const mic = this.micDev
+    const p = this.product
+    if (!p) return null
+    return buildHardwareReport({
+      now: Date.now(),
+      userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+      page: typeof location !== 'undefined' ? `${location.origin}${location.pathname}` : '',
+      product: p,
+      support: this.support ?? supportOf(p),
+      linkKind: this.transportKind,
+      transport: mic?.transport ?? null,
+      state: this.micState,
+      // The drivers' own labels (the official apps' words), not the display ones.
+      controls: this.shown?.controls ?? [],
+      writes: this.writeLog,
+      checks: this.hardwareChecks,
+      checkResults: this.checkResults,
+      traffic: traffic.entries,
+      trafficLimit: o.trafficLimit,
+    })
+  }
+
+  /** Copy the report to the clipboard. Returns false when nothing is connected or the clipboard refuses. */
+  async copyHardwareReport(): Promise<boolean> {
+    const text = this.hardwareReport()
+    if (!text) return false
+    try {
+      await navigator.clipboard.writeText(text)
+      return true
+    } catch {
+      return false
+    }
   }
 
   // ===================================================================================
@@ -767,9 +1410,10 @@ class Session {
    * colours …), as the official "More Settings" screen does on start. Live mode only.
    */
   async refreshSettings(): Promise<void> {
-    const dev = this.dev
-    if (!dev || !this.live || this.phase !== 'ready') return
-    await dev.getSettings().catch(() => undefined)
+    const mic = this.micDev
+    if (!mic || !this.live || this.phase !== 'ready') return
+    if (this.dev) await this.dev.getSettings().catch(() => undefined)
+    else await mic.refresh('settings').catch(() => undefined)
   }
 
   /**
@@ -818,3 +1462,7 @@ class Session {
 
 export const session = new Session()
 export { Target }
+
+// Development builds: the session and the simulator (`__sim`, see connectMock) are reachable from the
+// browser console and from screenshot scripts.
+if (import.meta.env.DEV && typeof window !== 'undefined') (globalThis as Record<string, unknown>).__session = session

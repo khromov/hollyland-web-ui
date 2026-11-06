@@ -156,6 +156,9 @@ describe('A1 availability: firmware gate, 2- vs 4-mic, preconditions', () => {
     const from = h.transport.sent.length
     await expect(h.device.set(CONTROL.MIC_MUTE, true, { unit: 'tx1' })).rejects.toMatchObject({ reason: 'version-unknown' })
     expect(h.transport.sent.length).toBe(from)
+    // Shown as blocked up front (blindAvailability), not only refused after the click.
+    expect(h.device.state.availability[`${CONTROL.MIC_MUTE}:tx1`]).toMatchObject({ ok: false, reason: 'version-unknown' })
+    expect(h.device.state.availability[CONTROL.VOLUME]).toEqual({ ok: true })
     await h.device.disconnect()
 
     const g = await open({}, { fetchIdentity: false, ignoreFirmwareGates: true })

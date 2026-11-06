@@ -79,17 +79,21 @@ describe('WebHidTransport: legacy A2 regression', () => {
       { vendorId: 0x3547, productId: 1029 }, { vendorId: 0x3547, productId: 1030 },
       // 6501 group (Phase 1, W1): Lark C1, C1 2nd gen, M1 2nd gen, Mini
       { vendorId: 0x3547, productId: 1 }, { vendorId: 0x3547, productId: 11 }, { vendorId: 0x3547, productId: 12 }, { vendorId: 0x3547, productId: 13 },
+      // Phase 3 (W9): LARK M3 (VID assumed), LARK MAX 2 USB RX, MELO P1 RX (VID assumed)
+      { vendorId: 0x3547, productId: 1036 }, { vendorId: 0x3547, productId: 1037 }, { vendorId: 0x3547, productId: 1038 }, { vendorId: 0x3547, productId: 1039 },
+      { vendorId: 0x3547, productId: 1026 }, { vendorId: 0x3547, productId: 1027 },
+      { vendorId: 0x3547, productId: 1032 }, { vendorId: 0x3547, productId: 1033 },
     ])
     const other = new FakeHidDevice({ vendorId: 0x1234, productId: 0x040f })
     const m3 = new FakeHidDevice({ vendorId: 0x3547, productId: 0x040f, collections: M3_COLLECTIONS_63 })
     const hid = install([a2(), other, m3])
     for (const d of hid.devices) hid.granted.add(d)
     const granted = await WebHidTransport.getGrantedDevices()
-    expect(granted.map((d) => d.productId)).toEqual([0x0411, 0x040f])
-    expect(granted.every((d) => d.vendorId === 0x3547)).toBe(true)
-    // Stub families are not connectable: no unconfirmed-VID fallback yet.
-    expect(productsNeedingVidFallback()).toEqual([])
-    expect(isKnownHidDevice({ vendorId: 0x1234, productId: 0x040f })).toBe(false)
+    // Since Phase 3 the M3 is connectable and its VID is unconfirmed: a 0x040f device of another vendor counts too.
+    expect(granted.map((d) => d.productId)).toEqual([0x0411, 0x040f, 0x040f])
+    expect(productsNeedingVidFallback().map((p) => p.productId)).toEqual([1036, 1037, 1038, 1039, 1032, 1033])
+    expect(isKnownHidDevice({ vendorId: 0x1234, productId: 0x040f })).toBe(true)
+    expect(isKnownHidDevice({ vendorId: 0x1234, productId: 0x0411 })).toBe(false)
   })
 
   it('request() shows the chooser with the default filters and prefers the control collection', async () => {
@@ -194,7 +198,7 @@ describe('WebHidTransport: descriptor-derived sizes (other families)', () => {
   })
 
   it('filtersForProducts skips app identities and recognised rows unless asked', () => {
-    expect(filtersForProducts(PRODUCTS)).toHaveLength(12) // 8 A2/M2/M2S rows + the 6501 group (W1)
+    expect(filtersForProducts(PRODUCTS)).toHaveLength(20) // 8 A2/M2/M2S rows + the 6501 group (W1) + M3, MAX 2 RX, MELO P1 RX (W9)
     const all = filtersForProducts(PRODUCTS, { includeRecognised: true })
     expect(all.some((f) => f.productId === 1039)).toBe(true)
     expect(all.some((f) => f.productId === 1031)).toBe(false) // A1: feature reports, not an interrupt link

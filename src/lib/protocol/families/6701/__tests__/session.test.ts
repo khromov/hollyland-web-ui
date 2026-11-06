@@ -251,6 +251,36 @@ describe('writes: payloads the official app builds', () => {
     await device.disconnect()
   })
 
+  it('write-only: the refused writes show as blocked up front (blindAvailability), and a blind depth unblocks the NC switch', async () => {
+    const simulator = new Max2Simulator(MOBILE, { dropReplies: true })
+    const device = createMax2Device(simulatedTransport(simulator), MOBILE, { ...FAST, blindWrites: true })
+    await device.connect()
+    const a = device.state.availability
+    expect(a[MAX2_CONTROL.NOISE_ENABLED]).toMatchObject({ ok: false, reason: 'state-unknown' })
+    expect(a[MAX2_CONTROL.GAIN_TYPE]).toMatchObject({ ok: false, reason: 'state-unknown' })
+    expect(a[MAX2_CONTROL.GAIN_DYNAMIC]).toMatchObject({ ok: false, reason: 'state-unknown' })
+    expect(a[`${MAX2_CONTROL.MIC_GAIN}:tx1`]).toMatchObject({ ok: false, reason: 'state-unknown' })
+    expect(a[`${MAX2_CONTROL.MIC_GAIN}:tx3`]).toMatchObject({ ok: false, reason: 'two-mic-mode' })
+    // Firmware-gated controls wait for an RX version that can't be read.
+    expect(a[MAX2_CONTROL.FOUR_MIC]).toMatchObject({ ok: false, reason: 'version-unknown' })
+    expect(a[MAX2_CONTROL.NOISE_DEPTH]).toBeUndefined()
+    await device.set(MAX2_CONTROL.NOISE_DEPTH, 10)
+    expect(device.state.availability[MAX2_CONTROL.NOISE_ENABLED]).toEqual({ ok: true })
+    await expect(device.set(MAX2_CONTROL.NOISE_ENABLED, false)).resolves.toMatchObject({ ok: true, confirmed: false })
+    await device.disconnect()
+  })
+
+  it('the blind refusals are dropped once replies arrive', async () => {
+    const simulator = new Max2Simulator(MOBILE, { dropReplies: true })
+    const device = createMax2Device(simulatedTransport(simulator), MOBILE, { ...FAST, blindWrites: true })
+    await device.connect()
+    expect(device.state.availability[MAX2_CONTROL.GAIN_TYPE]).toMatchObject({ reason: 'state-unknown' })
+    simulator.faults.dropReplies = false
+    expect(await device.probe()).toBe('available')
+    expect(device.state.availability[MAX2_CONTROL.GAIN_TYPE]?.reason).not.toBe('state-unknown')
+    await device.disconnect()
+  })
+
   it('USB Output: only 24bit is written, it restarts the RX (needs confirm, iOS), then read back with 0x8044', async () => {
     const { simulator, device } = await open()
     simulator.uacMode = 1

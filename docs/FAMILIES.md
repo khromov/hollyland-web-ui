@@ -1,6 +1,6 @@
 # Product families: compatibility matrix, implementation plan and library architecture
 
-Status: plan, 2026-11-05; Phase 0/1 and Phase 2 status and review fixes in §2.4 (2026-11-06). Nothing in here has been run against hardware except where a row says "hardware-tested".
+Status: plan, 2026-11-05; Phase 0/1, Phase 2 and Phase 3 (W9 UI) status and review fixes in §2.4 (2026-11-06). Nothing in here has been run against hardware except where a row says "hardware-tested".
 It turns the five family research docs into one decision document:
 
 | Group | Research doc | Products |
@@ -209,7 +209,7 @@ Enforced in the engine (`core/engine.ts`) from `ProductInfo.support` and each dr
   wrapped `HollylandDevice` (`.legacy`), which the current UI console uses, keeps its looser rules for hardware
   exploration.
 
-### 2.4 Status after Phase 2 (reviews of 2026-11-05 and 2026-11-06)
+### 2.4 Status after Phase 3 (reviews of 2026-11-05 and 2026-11-06)
 
 **Phase 0/1 (review of 2026-11-05).** Phase 0 (W0) and Phase 1 (W1–W4) are in the tree. A two-lens review (Android
 3.1.0 jadx, iOS `larkSound` binary) found and fixed: the forced-`sendRaw` gaps above (engine and legacy adapter), the 6303 padding of a packet of exactly
@@ -242,17 +242,70 @@ PIDs. The review (Android 3.1.0 jadx, iOS `larkSound` disassembly) found and fix
   apart) and the NC GET on a TX coming online (Android TX1, iOS that TX), max2-6701.md §9 #7; MELO P1 VU interval
   (Android 100 ms, kept; iOS 150 ms, and a VU GET poll over External Accessory), melo-6201.md §10 #8.
 
+**Phase 3 (W9 UI) and its two-lens review (2026-11-06).** Phase 3 is done: all four family drivers are registered
+(`DRIVERS['6108' | '6201' | '6303' | '6701']`, products `experimental`), and the UI runs every product through
+`MicDevice` (`session.svelte.ts`, `createMicDevice`). The A2 and Lark M2 keep their hand-tuned pages (LegacyOverview,
+Settings, Device), unchanged. The other families get:
+- **Connect:** one USB chooser for interrupt and feature-report products ("Connect receiver", plus an any-device
+  fallback for the unconfirmed M3 / MELO P1 vendor id), "Connect over Bluetooth" (MAX 2 charging case, MELO P1; the only
+  key on Android Chrome), "Reconnect <name>" for a granted USB receiver only.
+- **Overview** (`overview/family/`): 2 or 4 mic modules (`session.micSlots`), writable mute where the product sets it
+  (A1, M3, MELO P1), per-mic gain (MAX 2, MELO P1), meters per mic (USB channels, or the MELO P1's pushed levels); the
+  kit row (receivers with primary / secondary, charging case, earphones, remote); the receiver strip from
+  `ControlSpec`s (`controls/controls.ts`: NC, volume or gain, channel mode, mixing, A1 EQ / reverb). Set-and-forget
+  controls (locks, recognition, bit depths, phone speaker, 4-mic mode, pairing, camera power) are on Settings.
+- **Pages of their own:** Mixer (MELO P1: track faders / mutes with pushed levels, scenario, output volumes),
+  Timecode (MAX 2 camera RX and charging case), Monitoring (MAX 2 mobile RX), each a tab from `session.extraPages`.
+- **Settings:** Feature Settings from the specs, "This browser" with one mic-name field per mic slot (identity lamps
+  only for the legacy products). **Device:** units with SN / firmware / battery, the hardware report (read-only check,
+  "Copy hardware report" with the write log and its ack codes), About with the receivers line from the registry.
+- **Untested marking** (§4.3): "Untested" plate by the model name, a one-line first-connect notice (dismissed per
+  product), one notice strip at most (lost link > write-only, which then also carries the untested words > untested).
+- **Restart / reset flow** for every disruptive control: "Restart the receiver?" with one house sentence, the restart
+  overlay, and the automatic reconnect (USB: the HID `connect` event; Bluetooth: retries on the same device object).
+
+The review (behaviour and UX lenses) found and fixed: write-only links let controls that the engine always refuses
+look usable (A1 per-mic mute, MAX 2 NC switch and gains) — drivers now declare `ProtocolSpec.blindAvailability`
+(`state-unknown` / `version-unknown`), applied by the engine while replies don't arrive and after every blind write,
+so the UI shows "Can't read current value" / "Can't check receiver firmware" up front (A1, M3, MAX 2, MELO P1);
+Bluetooth reconnects depended on `navigator.bluetooth.getDevices()` (behind a flag in Chrome) — the session keeps the
+`BluetoothDevice` and reconnects it with `gatt.connect()` (`WebBluetoothTransport.reconnect({ devices })`); the
+Connect page offered a USB "Reconnect" for a Bluetooth product; "Forget remembered values" left blind values on the
+generic pages; the lost band said "Plug the receiver back in" for Bluetooth; the status line had no firmware for the
+new families; the About card listed only the legacy receivers; Mic 3 / 4 names did not reach Settings and Device;
+"Mic n Connected" toasts on every charging-case connect; an automatic USB reconnect could attach another granted
+receiver (now only the same family); two notice strips stacked; channel-mode keys overflowed their module; 32-bit float
+("iOS app only") is left out unless it is the current value; official confirm sentences replaced by one house
+sentence per kind; bit depths in one order and spelling ("24-bit", "32-bit float"); labels in sentence case without
+"Toggle" / "Settings" / "Adjustment" (`src/lib/state/labels.ts`; the hardware report keeps the drivers' labels); the
+bridge offered for the A1 (its feature-report link isn't bridged); the charging case name cut in the phone header.
+
+**Left for hardware (Phase 4).** Nothing below has run on a real unit except the A2 and the Lark M2:
+- **Every family:** whether replies arrive per OS (A1 feature reports and M3 report ID 8 are expected to read on macOS;
+  a write-only result is itself a finding: copy the hardware report), the first-contact checklists (§5.7), and the
+  `confidence: 'medium' | 'low'` values. Promote `support.hardware` per product once a unit passes.
+- **6108 A1:** the set ack (Android `body[0] == 0` vs iOS `!= 0xFF`, from the report's ack codes), the 22 / 23-byte
+  heartbeat cases, per-mic mute on RX ≥ 1.0.1.3.
+- **6303 M3:** the vendor id (chooser fallback until confirmed), 4-track re-enumeration (4CH PID) and the reconnect
+  after the restart, 4-channel USB audio, multi-RX primary / secondary in the field. W10: voice profiles, wireless
+  monitoring page, paired devices.
+- **6701 MAX 2:** the BOX advertisement (service data or UUID, max2-6701.md §9 #3) and MTU, push cadence over BLE,
+  Bluetooth reconnect after a Phone Speaker / USB Output restart, timecode Reset; the USB RX path still waits for a HID
+  descriptor (> 64-byte reports); `syncTimeOnConnect` stays off (the system time is not sent on connect).
+- **6201 MELO P1:** write with vs without response on FFE1 (Android vs iOS), VU push rate, the iOS-only `0x131B`, the
+  `0x1304` rxSlave choice, firmware-gated rows (3.0.7.9 / 4.0.0.1). W10: Easy / Pro Tuning DSP.
+
 Every family below except the A2 is **untested on hardware**: destructive and OTA commands are refused by the engine
 (and hidden), disruptive controls need a per-call confirm, toggles are never sent blind.
 
-| Family | What the library does today | Tested on hardware | What Phase 3 (W9 UI) needs |
+| Family | What the library does today | Tested on hardware | In the UI after Phase 3 (W9) |
 |---|---|---|---|
-| 6118 / 6301 / 6302 | `HollylandDevice` + `LegacyMicDevice`: heartbeat, identity, NC, volume, channel, LED, lock, auto-off, voice presets, meters from USB audio | **A2 tested** (fw 3.0.2.008, write-only on macOS, full via the bridge); **M2 (PID 7) tested** (volume / NC read on connect, PROTOCOL.md §11.6–§11.8); A2S sibling; M2S untested | session on `MicDevice` via `createMicDevice`; keep today's pages |
-| 6501 (C1, C1 2nd gen, M1 2nd gen, Mini) | same engine with the 6501 rules (heartbeat link-only on PID 1, volume wire map, Mic1/Mic2 swap, NC-on precondition) | untested (the tested M2 is the proxy) | "Same protocol as Lark M2 (tested)" plate; NC level only while NC is on; no LED / lock / channel rows |
-| 6108 LARK A1 | **registered** driver: feature-report transport, 1 s poll, 13 controls (per-mic mute, NC + level, volume, Mono/Stereo, EQ, reverb + level, Mic Recognition, auto-off, LED, Mode setting; 2↔4-mic "Wireless settings" catalogued as destructive, hidden), RX ≥ 1.0.1.3 mute gate, 2/4-mic firmware, 5 mock presets | untested | `WebHidFeatureTransport` connect path; 2 or 4 mic modules with writable mute; Audio page EQ / reverb; untested plate + first-connect notice; set-ack reading (Android `0` vs iOS `!= 0xFF`) shown in the diagnostic report |
-| 6303 LARK M3 | `createM3Driver()` (not registered): report-ID-8 WebHID, 1.5 s `0x6000` poll, 16 controls (mute, NC + level, phone volume, camera 3-level dB gains, Mono/Stereo/4-track with per-value restart confirm in `M3Device`, smart mix, TX recognition, LED, hot-shoe sync, playback without unplugging and Bit Depth (24-bit only) as disruptive, TX button lock, auto-off), primary/secondary RX gating, 4T4R/2T2R, 7 mock presets | untested (VID unconfirmed) | register the driver; chooser fallback for the unconfirmed VID; up to 4 mic modules; receivers list (primary badge, secondary read-only); restart dialogs from `confirmText` and `M3Device.channelModeNeedsConfirm`; 4-channel USB audio meters. Later (W10): voice profiles, wireless monitoring |
-| 6701 LARK MAX 2 | `createMax2Driver()` (not registered): USB RX 1026/1027 (`0x600B` 3 s poll) and BLE BOX 101 (pushes + iOS 3 s `0x600B` to target 2), 21 controls (Phone Speaker, internal / USB bit depth, Lock Mic, NC + depth, dynamic / per-mic gain, channel incl. safety track (BOX only), timecode switch / mode / fps / timing with Reset confirm in `Max2Device`, Mic Recognition, 4 Mic & 1 RX, RX pairing, Wireless Monitoring + OWS play / volume / pairing), RX ≥ 3.0.0.50 gates, 9 mock presets; system time on connect only with `syncTimeOnConnect` | untested | register the driver; "Connect over Bluetooth" (BOX); Timecode and Monitoring pages; BOX / earphone battery cards; 2/4 mic modules; restart dialogs (Phone Speaker, USB Output, Wireless Monitoring, 4-mic) and the Reset dialog (`MAX2_TC_RESET_TEXT`, `Max2Device.timingNeedsConfirm`); a decision on `syncTimeOnConnect`. USB path still waits for a HID descriptor (> 64-byte reports) |
-| 6201 MELO P1 | `MELO_DRIVER` (not registered): BLE (FFE0/FFE1/FFE2, target 1) and USB framings, 3 s `0x600B` poll, start-up GETs incl. `0x1305`, 25 controls (NC + depth, noise gate + threshold (< 4.0.0.1), Near/Mid/Far or per-mic gain (≥ 3.0.7.9), mic / output bit depth and auto speaker output as disruptive, 3.5 mm I/O, LED + brightness per unit, scenario, mic / instrument / BGM faders and mutes, wireless / wired / USB output volumes and mutes), VU stream via `0x11E0` + `0x6048` (`startLevels`, not `MicState.values`), 5 mock presets | untested | register the driver; "Connect over Bluetooth" (works on Android Chrome); new Mixer page (faders, mutes, output volumes) fed by `onLevels`; battery cards for RX, mics, case, earphones, remote; version-gated rows (`firmware-too-old` / `firmware-too-new`); restart dialogs. Later (W10): Easy/Pro Tuning DSP |
+| 6118 / 6301 / 6302 | `HollylandDevice` + `LegacyMicDevice`: heartbeat, identity, NC, volume, channel, LED, lock, auto-off, voice presets, meters from USB audio | **A2 tested** (fw 3.0.2.008, write-only on macOS, full via the bridge); **M2 (PID 7) tested** (volume / NC read on connect, PROTOCOL.md §11.6–§11.8); A2S sibling; M2S untested | session on `MicDevice` via `createMicDevice`; the hand-tuned pages, unchanged |
+| 6501 (C1, C1 2nd gen, M1 2nd gen, Mini) | same engine with the 6501 rules (heartbeat link-only on PID 1, volume wire map, Mic1/Mic2 swap, NC-on precondition) | untested (the tested M2 is the proxy) | the legacy pages with the 6501 capability flags (NC level only while NC is on; no LED / lock / channel rows); "Untested" plate and first-connect notice (the planned "Same protocol as Lark M2" plate is not drawn) |
+| 6108 LARK A1 | **registered** driver: feature-report transport, 1 s poll, 13 controls (per-mic mute, NC + level, volume, Mono/Stereo, EQ, reverb + level, Mic Recognition, auto-off, LED, Mode setting; 2↔4-mic "Wireless settings" catalogued as destructive, hidden), RX ≥ 1.0.1.3 mute gate, 2/4-mic firmware, 5 mock presets | untested | done: `WebHidFeatureTransport` connect path (same USB chooser); 2 or 4 mic modules with writable mute (hidden below RX 1.0.1.3 or while the version is unknown); EQ / reverb on the Overview strip; untested plate + first-connect notice; ack codes of every write in the hardware report |
+| 6303 LARK M3 | `createM3Driver()`, registered: report-ID-8 WebHID, 1.5 s `0x6000` poll, 16 controls (mute, NC + level, phone volume, camera 3-level dB gains, Mono/Stereo/4-track with per-value restart confirm in `M3Device`, smart mix, TX recognition, LED, hot-shoe sync, playback without unplugging and Bit Depth (24-bit only) as disruptive, TX button lock, auto-off), primary/secondary RX gating, 4T4R/2T2R, 7 mock presets | untested (VID unconfirmed) | done: registered; chooser fallback for the unconfirmed VID; up to 4 mic modules; receivers row (primary / secondary; a secondary RX's blocked controls say so once); restart dialogs (`M3Device.channelModeNeedsConfirm`, Bit Depth, playback without unplugging); per-mic meters in 4-track. Later (W10): voice profiles, wireless monitoring |
+| 6701 LARK MAX 2 | `createMax2Driver()`, registered: USB RX 1026/1027 (`0x600B` 3 s poll) and BLE BOX 101 (pushes + iOS 3 s `0x600B` to target 2), 21 controls (Phone Speaker, internal / USB bit depth, Lock Mic, NC + depth, dynamic / per-mic gain, channel incl. safety track (BOX only), timecode switch / mode / fps / timing with Reset confirm in `Max2Device`, Mic Recognition, 4 Mic & 1 RX, RX pairing, Wireless Monitoring + OWS play / volume / pairing), RX ≥ 3.0.0.50 gates, 9 mock presets; system time on connect only with `syncTimeOnConnect` | untested | done: registered; "Connect over Bluetooth" (BOX); Timecode and Monitoring tabs; case / earphone battery cards; 2/4 mic modules with per-mic gain; restart dialogs (Phone Speaker, USB Output, Wireless Monitoring), 4-mic and pairing confirms, the Reset dialog (`Max2Device.timingNeedsConfirm`); `syncTimeOnConnect` off. USB path still waits for a HID descriptor (> 64-byte reports) |
+| 6201 MELO P1 | `MELO_DRIVER`, registered: BLE (FFE0/FFE1/FFE2, target 1) and USB framings, 3 s `0x600B` poll, start-up GETs incl. `0x1305`, 25 controls (NC + depth, noise gate + threshold (< 4.0.0.1), Near/Mid/Far or per-mic gain (≥ 3.0.7.9), mic / output bit depth and auto speaker output as disruptive, 3.5 mm I/O, LED + brightness per unit, scenario, mic / instrument / BGM faders and mutes, wireless / wired / USB output volumes and mutes), VU stream via `0x11E0` + `0x6048` (`startLevels`, not `MicState.values`), 5 mock presets | untested | done: registered; "Connect over Bluetooth" (works on Android Chrome); Mixer tab (track faders and mutes, scenario, output volumes) with the pushed levels; battery cards for RX, mics, case, earphones, remote; version-gated rows (`firmware-too-old` / `firmware-too-new`); restart dialogs. Later (W10): Easy/Pro Tuning DSP |
 
 ---
 

@@ -1,18 +1,33 @@
 /**
  * Family 6201: the shared conformance suite (docs/FAMILIES.md §5.3).
- *  - the registered `driver` (still a stub: registry contract only);
- *  - the Phase 2 driver MELO_DRIVER against MeloSimulator over the mock transport (USB framing), with the
+ *  - the registered `driver`, which is MELO_DRIVER since Phase 3 (W9);
+ *  - MELO_DRIVER against MeloSimulator over the mock transport (USB framing), with the
  *    firmware gates (3.0.7.9, 4.0.0.1) below / at / above and the app's preconditions;
  *  - the same suite over the whole Web Bluetooth stack (WebBluetoothTransport → fake GATT FFE0 / FFE1 / FFE2 →
  *    simulator), MTU 23: BLE framing (target 1), writes with response, 20-byte notifications.
  * Check 10 (populated after connect) runs for the default simulator and every preset with simulator options; no
  * notReadOnConnect exception is needed: every readable control is read at start-up or explained by availability.
  */
+import { describe, expect, it } from 'vitest'
 import { describeDriverConformance, type ConformanceOptions } from '../../../core/conformance'
+import { DRIVERS, canConnect } from '../../../core/registry'
+import { lookupProduct } from '../../../models'
 import { bleBridgedDriver } from '../../../transports/fake-bluetooth'
 import { driver, MELO_BLE_LINK, MELO_CONTROL as C, MELO_DRIVER, meloFrameLength, type MeloSimulator } from '..'
 
-describeDriverConformance(driver)
+describe('registered MELO P1 driver (Phase 3)', () => {
+  it('is MELO_DRIVER: receivers experimental and connectable, accessories recognised only', () => {
+    expect(DRIVERS['6201']).toBe(driver)
+    expect(driver).toBe(MELO_DRIVER)
+    expect(driver.status).toBe('experimental')
+    for (const pid of [1032, 1033]) {
+      const p = lookupProduct(0x3547, pid)!
+      expect(p.support).toMatchObject({ level: 'experimental', hardware: 'untested' })
+      expect(canConnect(p)).toBe(true)
+    }
+    for (const pid of [1034, 1035, 1040]) expect(canConnect(lookupProduct(0x3547, pid)!)).toBe(false)
+  })
+})
 
 const options: ConformanceOptions = {
   // The GET-backed controls are read at start-up (user queue, ahead of the suite's own requests), so the
@@ -48,3 +63,24 @@ describeDriverConformance(MELO_DRIVER, options)
 // Over Web Bluetooth: the registry link (FFE0 / FFE1 with response / FFE2) for both receivers, host writes joined
 // into frames before the simulator; simulator chunking is left out (the fake GATT already splits at MTU − 3).
 describeDriverConformance(bleBridgedDriver(MELO_DRIVER, { mtu: 23, link: MELO_BLE_LINK, frameLength: meloFrameLength }), { ...options, chunkSizes: [] })
+
+describe('write-only link (blindAvailability)', () => {
+  it('blocks every write built from a structure it could not read; firmware gates wait for the version', async () => {
+    const { simulatedTransport } = await import('../../../core/simulate')
+    const p = lookupProduct(0x3547, 1032)!
+    const device = MELO_DRIVER.createDevice(simulatedTransport(MELO_DRIVER.createSimulator(p, { dropReplies: true })), p, {
+      blindWrites: true, probeTimeoutMs: 20, requestTimeoutMs: 20,
+    })
+    await device.connect()
+    expect(device.state.rx).toBe('unavailable')
+    const a = device.state.availability
+    for (const k of [C.NC_ENABLED, C.MIC_BIT_DEPTH, C.OUTPUT_BIT_DEPTH, C.BGM_VOLUME, `${C.MIC_MUTE}:tx1`, C.LED, `${C.LED}:tx2`, C.USB_OUT_MUTE]) {
+      expect(a[k], k).toMatchObject({ ok: false, reason: 'state-unknown' })
+    }
+    expect(a[C.MIC_GAIN_PRESET]).toMatchObject({ ok: false, reason: 'version-unknown' })
+    // The NC depth carries its own switch byte: it goes out blind.
+    expect(a[C.NC_DEPTH]?.ok ?? true).toBe(true)
+    await expect(device.set(C.NC_DEPTH, 10)).resolves.toMatchObject({ ok: true, confirmed: false })
+    await device.disconnect()
+  })
+})

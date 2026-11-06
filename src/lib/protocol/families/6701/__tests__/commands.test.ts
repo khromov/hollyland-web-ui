@@ -122,8 +122,8 @@ describe('MAX 2 catalogue: keyed by request form', () => {
     expect(max2CommandOf({ items: [{ cmd: MAX2_CMD.HEART_INFO }, { cmd: 0x7777 }] })).toBe(0x7777)
   })
 
-  it('the registered (stub) driver classifies frames with the real catalogue', () => {
-    expect(driver.status).toBe('stub')
+  it('the registered driver classifies frames with the real catalogue', () => {
+    expect(driver.status).toBe('experimental')
     expect(driver.commands).toBe(MAX2_COMMANDS)
     expect(driver.commandOfFrame(vec('MAX 2 factory reset'))).toBe(MAX2_CMD.RESET_FACTORY)
     expect(driver.commandOfFrame(vec('MAX 2 heartbeat, USB camera'))).toBe(MAX2_CMD.HEART_INFO)

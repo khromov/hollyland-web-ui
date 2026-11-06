@@ -329,6 +329,8 @@ export function createA1Spec(o: A1SpecOptions = {}): ProtocolSpec<A1Request, A1R
       }
     },
     encodeSet,
+    // Without replies the RX version stays unknown: the per-mic mute (RX ≥ 1.0.1.3) is refused, as encodeSet does.
+    blindAvailability: (ctx) => a1Availability(ctx.state, ctx.options),
     controls: (product) => controlsOf(product),
     timing: { ...A1_TIMING, ...o.timing },
   }

@@ -20,7 +20,13 @@
 
 <Band title="Connection lost" role="alert">
   {#snippet mark()}<Lamp color="rec" />{/snippet}
-  <p>{link.viaBridge ? 'Plug the receiver back in; keep the bridge running.' : 'Plug the receiver back in.'}</p>
+  <p>
+    {link.viaBridge
+      ? 'Plug the receiver back in; keep the bridge running.'
+      : session.transportKind === 'web-bluetooth'
+        ? 'Turn the receiver on and bring it closer.'
+        : 'Plug the receiver back in.'}
+  </p>
   {#snippet actions()}
     <Key variant="light" onclick={onreconnect}>Reconnect</Key>
     {#if onbridge && !link.viaBridge && session.writeOnly && platform !== 'windows'}

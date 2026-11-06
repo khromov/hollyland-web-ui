@@ -13,15 +13,11 @@
  *   hardware-check.ts  first-contact steps (FAMILIES.md §5.7)
  *   driver.ts          createMeloDriver() / MELO_DRIVER: the Phase 2 driver ('experimental')
  *
- * The registered `driver` below stays a stub (receivers recognised only; see driver.ts for why) but carries the
- * real catalogue and frame classifier, so sendRaw classification and the console can name every MELO P1 frame.
+ * Registered since Phase 3 (W9): `driver` is MELO_DRIVER (receivers 1032 / 1033 'experimental', hardware
+ * 'untested'; mic, case and earphones stay recognised only).
  */
-import { stubDriver } from '../../core/stub'
 import type { FamilyDriver } from '../../core/types'
-import { MELO_COMMANDS } from './commands'
-import { meloCommandOfFrame } from './driver'
-import { MELO_HARDWARE_CHECK } from './hardware-check'
-import { MELO_APP_PRODUCTS, MELO_PRODUCTS, MELO_RESEARCH } from './products'
+import { MELO_DRIVER } from './driver'
 
 export * from './products'
 export * from './commands'
@@ -33,12 +29,4 @@ export * from './sim'
 export * from './hardware-check'
 export * from './driver'
 
-function partialStub(): FamilyDriver {
-  return {
-    ...stubDriver({ code: '6201', name: 'MELO P1', products: [...MELO_PRODUCTS, ...MELO_APP_PRODUCTS], research: MELO_RESEARCH, hardwareCheck: MELO_HARDWARE_CHECK }),
-    commands: MELO_COMMANDS,
-    commandOfFrame: meloCommandOfFrame,
-  }
-}
-
-export const driver: FamilyDriver = /* @__PURE__ */ partialStub()
+export const driver: FamilyDriver = MELO_DRIVER

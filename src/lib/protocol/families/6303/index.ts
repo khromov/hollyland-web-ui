@@ -12,19 +12,12 @@
  *   hardware-check.ts first-contact steps (§5.7)
  *   driver.ts         createM3Driver(): the Phase 2 'experimental' driver, mock presets
  *
- * The registered `driver` stays a stub (products recognised only, createDevice refuses) but carries the real command
- * catalogue, frame classifier and hardware check. Registering the full driver takes two lines in this folder, rows
- * built with M3_EXPERIMENTAL_SUPPORT in products.ts and `export const driver = createM3Driver({ products: M3_PRODUCTS })`
- * here, plus the shared registry test's expectations (core/__tests__/registry.test.ts pins the stub status, the
- * connectable PIDs and the preset list); that belongs with the UI integration (Phase 3).
+ * Registered since Phase 3 (W9): `driver` is createM3Driver() on the registry rows (M3_EXPERIMENTAL_SUPPORT in
+ * products.ts: 'experimental', hardware 'untested', so destructive and OTA commands stay refused by the engine).
  */
-import { stubDriver } from '../../core/stub'
 import type { FamilyDriver } from '../../core/types'
-import { MOMA_6303 } from '../../moma/profiles'
-import { momaCommandOfFrame } from '../../moma/spec'
-import { M3_COMMANDS } from './commands'
-import { M3_HARDWARE_CHECK } from './hardware-check'
-import { M3_PRODUCTS, M3_RESEARCH } from './products'
+import { createM3Driver } from './driver'
+import { M3_PRODUCTS } from './products'
 
 export * from './products'
 export * from './commands'
@@ -35,13 +28,4 @@ export * from './sim'
 export * from './hardware-check'
 export * from './driver'
 
-function partialStub(): FamilyDriver {
-  return {
-    ...stubDriver({ code: '6303', name: 'LARK M3', products: M3_PRODUCTS, research: M3_RESEARCH, hardwareCheck: M3_HARDWARE_CHECK }),
-    // Wire layer available: sendRaw classification and the console can name and gate every M3 frame.
-    commands: M3_COMMANDS,
-    commandOfFrame: (f) => momaCommandOfFrame(MOMA_6303, f, M3_COMMANDS),
-  }
-}
-
-export const driver: FamilyDriver = /* @__PURE__ */ partialStub()
+export const driver: FamilyDriver = /* @__PURE__ */ createM3Driver({ products: M3_PRODUCTS })

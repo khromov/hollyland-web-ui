@@ -1,14 +1,26 @@
 /**
  * Family 6701: the shared conformance suite (docs/FAMILIES.md §5.3) for
- *  - the registered driver (a stub with the real catalogue: registry contract only), and
+ *  - the registered driver (createMax2Driver() on the registry rows since Phase 3, W9), and
  *  - createMax2Driver() (USB RX 1026 / 1027 and BLE BOX 101 against the simulator), plus the BOX behind the
  *    real WebBluetoothTransport and a fake GATT peripheral at MTU 23 and MTU 185 (transports/fake-bluetooth.ts).
  */
+import { describe, expect, it } from 'vitest'
 import { describeDriverConformance, type ConformanceOptions } from '../../../core/conformance'
+import { DRIVERS, canConnect } from '../../../core/registry'
 import { bleBridgedDriver } from '../../../transports/fake-bluetooth'
-import { createMax2Driver, driver, max2FrameLength, MAX2_CONTROL, type Max2Simulator } from '..'
+import { createMax2Driver, driver, max2FrameLength, MAX2_APP_PRODUCTS, MAX2_CONTROL, MAX2_PRODUCTS, type Max2Simulator } from '..'
 
-describeDriverConformance(driver)
+describe('registered MAX 2 driver (Phase 3)', () => {
+  it('is createMax2Driver() on the registry rows: RX 1026 / 1027 and the BOX 101 connectable, OWS 102 recognised', () => {
+    expect(DRIVERS['6701']).toBe(driver)
+    expect(driver.status).toBe('experimental')
+    expect(driver.products).toEqual([...MAX2_PRODUCTS, ...MAX2_APP_PRODUCTS])
+    for (const p of driver.products) {
+      expect(canConnect(p), p.name).toBe(p.productId !== 102)
+      expect(p.support?.hardware).toBe('untested')
+    }
+  })
+})
 
 const max2 = createMax2Driver()
 const row = (pid: number) => max2.products.find((p) => p.productId === pid)!

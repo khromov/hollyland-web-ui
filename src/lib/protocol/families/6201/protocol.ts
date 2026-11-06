@@ -244,6 +244,40 @@ export function meloAvailability(state: MicState, s: MeloSession): Partial<Recor
   return out
 }
 
+/**
+ * Availability while replies are not delivered (write-only link): meloAvailability (firmware gates wait for an RX
+ * version that cannot be read), plus 'state-unknown' for every write encodeMeloSet builds from a read structure
+ * (NC switch + level, noise gate, bit depths, LEDs, track faders, output volumes), as encodeMeloSet refuses them.
+ */
+export function meloBlindAvailability(state: MicState, s: MeloSession): Partial<Record<ControlId, ControlAvailability>> {
+  const out = meloAvailability(state, s)
+  const unknown = (what: string): ControlAvailability => ({ ok: false, reason: 'state-unknown', message: `${what} cannot be read (replies are not delivered)` })
+  const block = (id: ControlId, have: boolean, what: string) => {
+    if (have) return
+    for (const key of [id, ...(MELO_CONTROLS.find((c) => c.id === id)?.perUnit ?? []).map((u) => controlKey(id, u))]) {
+      if (out[key]?.ok !== false) out[key] = unknown(what)
+    }
+  }
+  block(C.NC_ENABLED, !!s.nc, 'the NC level')
+  block(C.NOISE_GATE_ENABLED, !!s.noiseGate, 'the noise gate')
+  block(C.NOISE_GATE_THRESHOLD, !!s.noiseGate, 'the noise gate')
+  block(C.MIC_GAIN, !!s.txGains, 'the mic gains')
+  block(C.MIC_BIT_DEPTH, !!s.heartbeat, 'the bit depths')
+  block(C.OUTPUT_BIT_DEPTH, !!s.heartbeat, 'the bit depths')
+  for (const id of [C.MIC_VOLUME, C.MIC_MUTE, C.INSTRUMENT_VOLUME, C.INSTRUMENT_MUTE, C.BGM_VOLUME, C.BGM_MUTE]) block(id, !!s.streamIn, 'the track faders')
+  for (const id of [C.WIRELESS_OUT_VOLUME, C.WIRELESS_OUT_MUTE, C.WIRED_OUT_VOLUME, C.WIRED_OUT_MUTE, C.USB_OUT_VOLUME, C.USB_OUT_MUTE]) {
+    block(id, !!s.streamOut, 'the output volumes')
+  }
+  for (const u of Object.keys(MELO_LED_DEVICE) as UnitId[]) {
+    if (s.leds.get(MELO_LED_DEVICE[u]!)) continue
+    for (const id of [C.LED, C.LED_BRIGHTNESS]) {
+      const key = controlKey(id, u)
+      if (out[key]?.ok !== false) out[key] = unknown(`the ${u} LED`)
+    }
+  }
+  return out
+}
+
 // ---------------------------------------------------------------------------------- mapping
 
 function clamp(v: number, min: number, max: number): number {
@@ -667,6 +701,7 @@ export function createMeloSpec(profile: MomaProfile, s: MeloSession): ProtocolSp
       s.bind(ctx)
       return encodeMeloSet(s, id, value, o.unit)
     },
+    blindAvailability: (ctx) => meloBlindAvailability(ctx.state, s),
     controls: () => MELO_CONTROLS,
     // Android: 200 ms per transfer (A protocol/core/parser/CommandExecutionConfig); 500 ms leaves room for BLE writes
     // with response (melo-6201.md §4.5).

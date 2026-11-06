@@ -2,11 +2,8 @@
  * The MELO P1 FamilyDriver (Phase 2, W8): status 'experimental', receivers 1032 / 1033 connectable, hardware
  * 'untested' (destructive and OTA commands refused by the engine, disruptive controls need a per-call confirm).
  *
- * It is not registered yet: core/registry.ts uses `driver` from index.ts, which stays a stub with this driver's
- * command catalogue and frame classifier, because the registry's shared tests pin the 6201 driver as a stub
- * and the receiver rows as recognised-only (core/__tests__/registry.test.ts, __tests__/webhid.test.ts). Registering
- * it is two lines in this folder (index.ts `driver = createMeloDriver()`, products.ts MELO_SUPPORT level
- * 'experimental') plus those shared test expectations.
+ * Registered since Phase 3 (W9): index.ts exports MELO_DRIVER as the family's `driver`, and the receiver rows in
+ * products.ts carry MELO_EXPERIMENTAL_SUPPORT.
  *
  *   const d = createMeloDriver()
  *   const t = await WebBluetoothTransport.request()                 // MELO P1 RX: FFE0 / FFE1 / FFE2

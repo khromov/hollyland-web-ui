@@ -85,7 +85,11 @@ describe('registry rows (FAMILIES.md §1.1)', () => {
     expect(supportOf(lookupProduct(H, 1029)!)).toMatchObject({ level: 'supported', hardware: 'untested' })
     // The A1 driver is registered since Phase 2 (W5, families/6108/products.ts A1_SUPPORT); never on hardware.
     expect(supportOf(lookupProduct(H, 1031)!)).toMatchObject({ level: 'experimental', hardware: 'untested' })
-    for (const p of PRODUCTS.filter((x) => !x.family && x.productId !== 1031)) {
+    // Phase 3 (W9): the M3, MAX 2 and MELO P1 drivers are registered; their control rows are experimental, untested.
+    const registered = [1031, 1036, 1037, 1038, 1039, 1026, 1027, 1032, 1033]
+    for (const pid of registered) expect(supportOf(lookupProduct(H, pid)!)).toMatchObject({ level: 'experimental', hardware: 'untested' })
+    expect(supportOf(lookupAppProduct(101)!)).toMatchObject({ level: 'experimental', hardware: 'untested' })
+    for (const p of PRODUCTS.filter((x) => !x.family && !registered.includes(x.productId))) {
       expect(supportOf(p).level, displayName(p)).toBe('recognised')
       expect(supportOf(p).hardware).toBe('untested')
       expect(supportOf(p).research).toMatch(/^docs\//)
@@ -116,15 +120,16 @@ describe('drivers', () => {
     expect(DRIVERS['6118'].status).toBe('supported')
     expect(DRIVERS['6501'].status).toBe('experimental') // Phase 1 (W1)
     expect(DRIVERS['6108'].status).toBe('experimental') // Phase 2 (W5)
-    for (const code of ['6201', '6303', '6701'] as const) expect(DRIVERS[code].status).toBe('stub')
+    for (const code of ['6201', '6303', '6701'] as const) expect(DRIVERS[code].status).toBe('experimental') // Phase 3 (W9)
   })
 
-  it('only legacy rows (the 6501 group since Phase 1) and the A1 (Phase 2) are connectable', () => {
+  it('connectable: legacy rows (6501 since Phase 1), the A1 (Phase 2), M3, MAX 2 RX + BOX and MELO P1 RX (Phase 3)', () => {
     const connectable = ALL_PRODUCTS.filter(canConnect).map((p) => p.productId).sort((a, b) => a - b)
-    expect(connectable).toEqual([1, 7, 8, 11, 12, 13, 32, 33, 1029, 1030, 1031, 1041, 1042])
-    expect(ALL_PRODUCTS.filter(isConnectableProduct)).toHaveLength(13)
+    expect(connectable).toEqual([1, 7, 8, 11, 12, 13, 32, 33, 101, 1026, 1027, 1029, 1030, 1031, 1032, 1033, 1036, 1037, 1038, 1039, 1041, 1042])
+    expect(ALL_PRODUCTS.filter(isConnectableProduct)).toHaveLength(22)
     expect(unsupportedReason(lookupProduct(H, 2)!)).toMatch(/Lark MAX is recognised but not supported yet .*legacy-6501\.md/)
-    expect(unsupportedReason(lookupProduct(H, 1036)!)).toMatch(/recognised but not supported yet .*m3-6303\.md/)
+    expect(unsupportedReason(lookupProduct(H, 1034)!)).toMatch(/recognised but not supported yet .*melo-6201\.md/)
+    expect(unsupportedReason(lookupProduct(H, 1036)!)).toBeNull()
   })
 
   it('createMicDevice: LegacyMicDevice for the A2, UnsupportedError for stubs and unknown PIDs', () => {
@@ -132,7 +137,8 @@ describe('drivers', () => {
     expect(a2).toBeInstanceOf(LegacyMicDevice)
     expect(a2.family).toBe('6118')
     expect(a2.support.hardware).toBe('tested')
-    expect(() => createMicDevice(new MockTransport({ info: { vendorId: H, productId: 1039 } }))).toThrow(UnsupportedError)
+    expect(createMicDevice(new MockTransport({ info: { vendorId: H, productId: 1039 } })).family).toBe('6303')
+    expect(() => createMicDevice(new MockTransport({ info: { vendorId: H, productId: 1035 } }))).toThrow(UnsupportedError)
     expect(() => createMicDevice(new MockTransport({ info: { vendorId: H, productId: 0x9999 } }))).toThrow(/not a product this app knows/)
     expect(() => createMicDevice(new MockTransport({ info: { vendorId: H, productId: 2 } }))).toThrow(/not supported yet/)
     const m1 = createMicDevice(new MockTransport({ info: { vendorId: H, productId: 12 } }))
@@ -143,7 +149,12 @@ describe('drivers', () => {
 
   it('mock presets come from the drivers and build working devices', async () => {
     expect(mockPresets().map((p) => p.id)).toEqual([
-      'a1', 'a1-4mic', 'a1-4mic-old', 'a1-oldfw', 'a1-blind', 'a2', 'a2s', 'blind', 'm2', 'm2cam', 'm2s', 'm2scam', 'c1', 'c1g2', 'm1g2', 'mini',
+      'a1', 'a1-4mic', 'a1-4mic-old', 'a1-oldfw', 'a1-blind', 'a2', 'a2s', 'blind',
+      'melo', 'melo-fw3079', 'melo-fw3070', 'melo-1mic', 'melo-sub',
+      'm2', 'm2cam', 'm2s', 'm2scam',
+      'm3', 'm3-4ch', 'm3cam', 'm3cam4', 'm3-secondary', 'm3-multi', 'm3-2t2r',
+      'c1', 'c1g2', 'm1g2', 'mini',
+      'max2', 'max2-4mic', 'max2-ows', 'max2-oldfw', 'max2-blind', 'max2cam', 'max2cam-tc', 'max2box', 'max2box-mtu185',
     ])
     expect(findMockPreset('nope')).toBeUndefined()
     expect(() => createMockDevice('nope')).toThrow(/available: a1, a1-4mic, .*a2, a2s/)

@@ -506,6 +506,20 @@ describe('WebBluetoothTransport.reconnect()', () => {
     expect(await WebBluetoothTransport.reconnect({ bluetooth: bt.api, candidates: BOTH })).toBeNull()
   })
 
+  it('reconnects a device object in hand without getDevices() (Chrome keeps it behind a flag)', async () => {
+    const box = fakeMax2Box()
+    const bt = new FakeBluetooth([box])
+    bt.persistentPermissions = false
+    const first = await WebBluetoothTransport.reconnect({ bluetooth: bt.api, candidates: BOTH })
+    expect(first).toBeNull()
+    const t = await WebBluetoothTransport.reconnect({ bluetooth: bt.api, candidates: BOTH, devices: [box], advertisementTimeoutMs: 200 })
+    expect(t?.isOpen).toBe(true)
+    expect(t!.product).toBe(BOX)
+    await t!.close()
+    box.inRange = false
+    expect(await WebBluetoothTransport.reconnect({ bluetooth: bt.api, candidates: BOTH, devices: [box], advertisementTimeoutMs: 30 })).toBeNull()
+  })
+
   it('connects at once when the browser cannot watch advertisements', async () => {
     const box = fakeMax2Box()
     box.supportsWatchAdvertisements = false

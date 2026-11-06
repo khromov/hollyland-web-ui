@@ -150,14 +150,14 @@ class Link {
     }
   }
 
+  /** "RX … · TX1 … · TX2 …" (every unit with a known version, any family), or null. */
   get firmware(): string | null {
-    const u = session.units
-    if (!u) return null
-    const parts: string[] = []
-    if (u.rx.version) parts.push(`RX ${u.rx.version}`)
-    if (u.tx1.version) parts.push(`TX1 ${u.tx1.version}`)
-    if (u.tx2.version) parts.push(`TX2 ${u.tx2.version}`)
-    return parts.length ? parts.join(' · ') : null
+    return session.firmware
+  }
+
+  /** The receiver's firmware version, for the phone link band, or null. */
+  get rxVersion(): string | null {
+    return session.unitList.find((u) => u.id === 'rx')?.version ?? null
   }
 
   /**
