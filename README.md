@@ -10,7 +10,7 @@ each mic, watch levels, record and add voice effects.
 **Ways to run it:**
 
 - Open **<https://khromov.github.io/hollyland-web-ui/>** in Chrome, Edge or Opera on a desktop or laptop.
-- Run **`npx hollyland-web-ui`**, which starts the web UI and, on macOS, the USB bridge. *Coming soon: the
+- Run **`npx hollyland-web-ui`**, which starts the web UI and, on macOS and Linux, the USB bridge. *Coming soon: the
   package isn't on npm yet.*
 - Run it from a clone of this repository (see [Development](#development)).
 
@@ -70,31 +70,42 @@ Brave and others) on desktop and laptop computers. Safari, Firefox and phone bro
 
 | Computer | In the browser | With the local bridge |
 | --- | --- | --- |
-| **Linux** | Full live control (expected; needs a udev rule, see below) | Not needed |
-| **ChromeOS** | Full live control (expected) | Not available |
+| **Linux** | **Write-only** (tested with a Lark M2) | **Full live control** (tested with a Lark M2). USB audio keeps working. Runs without sudo with the udev rules below. |
+| **ChromeOS** | Write-only (expected: same kernel HID stack as Linux, not yet tested) | Not available |
 | **macOS** | **Write-only** (tested) | **Full live control** (tested). The receiver's USB audio pauses while the bridge runs. |
 | **Windows** | Write-only (expected, not yet tested) | Not available |
 
 **Write-only** means the page can send settings to the receiver but can't read anything back: no battery
 levels, no mic status and no current values. The receiver answers every request, but its replies use an HID
-report ID that its descriptor doesn't declare, and macOS (and very likely Windows) discards them before the
-browser sees them. Settings you send do take effect; on macOS this was tested with the indicator light and
+report ID that its descriptor doesn't declare, and macOS and Linux (and very likely Windows) discard them
+before the browser sees them. On Linux the kernel's HID core drops an input report with an undeclared ID
+before it reaches hidraw, the device node Chrome reads. Settings you send do take effect; on macOS this was tested with the indicator light and
 channel mode. The controls show the values this browser last sent. The A2's noise-cancellation on/off switch
 is hidden in this mode because the receiver only offers a toggle, and a toggle without the current state
 could do the opposite of what you asked. You can still choose a level.
 
-The **local bridge** is a small helper that runs as root on your computer. It takes the receiver from macOS
-with libusb and relays its packets to the page over `ws://127.0.0.1`. macOS can only hand over the whole USB
-device, so **the receiver's USB audio is unavailable while the bridge runs** and comes back when you stop it.
+The **local bridge** is a small helper that runs on your computer. It takes the receiver's HID control
+interface with libusb and relays its packets to the page over `ws://127.0.0.1`.
+
+- **macOS:** it runs as root, and macOS can only hand over the whole USB device, so **the receiver's USB audio
+  is unavailable while the bridge runs** and comes back when you stop it.
+- **Linux:** it takes only the HID interface, so **USB audio keeps working**. With the udev rules below it
+  runs as you, without sudo.
+
 See [docs/BRIDGE.md](docs/BRIDGE.md).
 
-Linux udev rule (so Chrome may open the receiver without root):
+Linux udev rules: the first line lets Chrome open the receiver (WebHID), the second lets the bridge open it
+without root.
 
 ```
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3547", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTR{idVendor}=="3547", MODE="0660", TAG+="uaccess"
 ```
 
-Save it as `/etc/udev/rules.d/70-hollyland.rules`, run `sudo udevadm control --reload`, then re-plug the receiver.
+Save them as `/etc/udev/rules.d/70-hollyland.rules`, run `sudo udevadm control --reload`, then re-plug the
+receiver.
+
+![Hollyland Web UI on Linux, connected to a Lark M2 through the local bridge: Mic 1 online at 85 %, Mic 2 in the case, noise cancellation and volume read back](docs/images/linux-bridge-overview.png)
 
 ## Ways to use it
 
@@ -105,9 +116,9 @@ Nothing to install.
 1. Open the page in Chrome, Edge or Opera.
 2. Press **Connect receiver** and choose "Wireless Microphone".
 
-On Linux and ChromeOS you get full live control. On macOS and Windows the connection is write-only.
+On its own the connection is write-only: the page sends settings but can't read them back.
 
-For full control on a Mac with the hosted page, start only the bridge with `npx hollyland-web-ui --bridge-only`
+For full control on macOS or Linux with the hosted page, start only the bridge with `npx hollyland-web-ui --bridge-only`
 (once the package is on npm). Until then, run it from a clone of this repository, after `npm install`:
 
 ```
@@ -134,13 +145,15 @@ npx hollyland-web-ui
 - It serves the web UI on <http://127.0.0.1:47320> (this computer only) and opens it in your browser.
 - **On macOS** it also starts the USB bridge, which asks for your password: only root can take a USB device
   away from macOS. The page connects through the bridge by itself and shows **Connected · bridge**.
+- **On Linux** it starts the bridge too. With the [udev rules](#platforms) it runs without sudo; without them
+  it asks for your password like on macOS. USB audio keeps working.
   If you skip the password, Hollyland Web UI keeps running in write-only mode.
 - Press **Ctrl+C** to stop. The bridge hands the receiver back and USB audio returns a moment later.
 
 | Option | Meaning |
 | --- | --- |
 | `--no-bridge` | Don't start the bridge. The page uses WebHID; on macOS that is write-only, but USB audio keeps working. |
-| `--bridge` | Also start the bridge on Linux (it starts by default only on macOS). |
+| `--bridge` | Start the bridge (it starts by default on macOS and Linux). |
 | `--bridge-only` | Start only the bridge, for the hosted page (in this mode it also accepts that page). Prints the address to open. |
 | `-p`, `--port <n>` | Web UI port (default 47320). |
 | `--bridge-port <n>` | Bridge port (default 47321). |

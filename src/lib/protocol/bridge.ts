@@ -3,9 +3,10 @@
  * (scripts/bridge.ts, docs/BRIDGE.md) over a loopback WebSocket. Works in browsers and in Node
  * (uses globalThis.WebSocket unless a constructor is passed in).
  *
- * Why: macOS (and probably Windows) drops the receiver's replies (undeclared HID report id 0xBB,
- * PROTOCOL.md §2.4), so WebHID there is write-only. The bridge runs as root, takes the whole
- * receiver from the OS with libusb and relays interrupt endpoint packets byte for byte, so this
+ * Why: macOS and Linux (and probably Windows) drop the receiver's replies (undeclared HID report
+ * id 0xBB, PROTOCOL.md §2.4), so WebHID there is write-only. The bridge takes the receiver's HID
+ * interface from the OS with libusb (root on macOS, where it takes the whole receiver; on Linux
+ * a udev rule is enough) and relays interrupt endpoint packets byte for byte, so this
  * transport receives replies everywhere (`capabilities.receive === 'yes'`).
  *
  * Wire protocol on ws://127.0.0.1:47321/hid:

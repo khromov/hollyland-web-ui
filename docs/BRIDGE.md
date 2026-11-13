@@ -1,7 +1,7 @@
 # Local USB bridge
 
-The bridge is an optional helper that runs on your own computer. On macOS the browser can only send
-settings to the receiver. The bridge gives Hollyland Web UI full read **and** write access.
+The bridge is an optional helper that runs on your own computer. On macOS and Linux the browser can only
+send settings to the receiver. The bridge gives Hollyland Web UI full read **and** write access.
 
 The quickest way to start it is with Node.js 20 or newer:
 
@@ -9,7 +9,8 @@ The quickest way to start it is with Node.js 20 or newer:
 npx hollyland-web-ui
 ```
 
-That serves Hollyland Web UI on <http://127.0.0.1:47320>, starts the bridge (it asks for your password),
+That serves Hollyland Web UI on <http://127.0.0.1:47320>, starts the bridge (on macOS it asks for your
+password; on Linux only when the [udev rules](#linux) aren't in place),
 opens the page and connects. You don't need to clone anything. From a clone of this repository, run
 `npm run bridge` instead and press **Connect through local bridge**.
 
@@ -17,23 +18,27 @@ opens the page and connects. You don't need to clone anything. From a clone of t
 > work today. Until it is published, use a clone of this repository and `npm run bridge`
 > ([below](#from-a-clone-npm-run-bridge)).
 
-**While the bridge runs, the receiver's USB audio is paused.** See [below](#usb-audio-pauses-while-it-runs).
+**On macOS the receiver's USB audio is paused while the bridge runs.** On Linux it keeps working. See
+[below](#usb-audio-pauses-while-it-runs).
 
 ## Why it exists
 
 - **The receiver does answer.** It replies to every request with an input report whose ID is `0xBB`.
-- **macOS drops the replies.** The HID descriptor does not declare report ID `0xBB`, so the macOS HID stack
-  (IOHIDFamily) drops every reply before Chrome can see it. Windows probably does the same.
+- **macOS and Linux drop the replies.** The HID descriptor does not declare report ID `0xBB`, so the macOS
+  HID stack (IOHIDFamily) drops every reply before Chrome can see it. The Linux kernel's HID core does the
+  same before hidraw, which Chrome reads (verified on a Lark M2, see [Linux](#linux)). Windows probably does
+  the same.
 - **The page can still send settings there.** It can't read battery levels, mic status or the current
   values. That is the "write-only" mode (see [PROTOCOL.md §2.4](PROTOCOL.md)).
-- **Linux and ChromeOS deliver the replies.** Chrome there gets full read/write and does not need the bridge.
+- **ChromeOS** runs the same kernel HID stack as Linux, so it is expected to be write-only too (not tested).
+  The bridge doesn't run there.
 
 A root libusb capture on macOS (2026-11-05, LARK A2) got exactly one `BB DD …` reply for every `AA DD …`
 request on interface 0. The bridge uses that path:
 
 ```
-Hollyland Web UI page  ──ws://127.0.0.1:47321/hid──▶  bridge (root, libusb)  ──interrupt OUT 0x03──▶  receiver
-                       ◀── binary 64-byte packets ──                         ◀── interrupt IN 0x82 ───
+Hollyland Web UI page  ──ws://127.0.0.1:47321/hid──▶  bridge (libusb)  ──interrupt OUT 0x03──▶  receiver
+                       ◀── binary 64-byte packets ──                    ◀── interrupt IN 0x82 ───
 ```
 
 It relays packets byte for byte and doesn't interpret them. The protocol logic stays in the page
@@ -58,8 +63,9 @@ npx hollyland-web-ui
 ```
 
 1. **It serves the UI.** The web UI runs on `http://127.0.0.1:47320`, reachable only from this computer.
-2. **It starts the bridge, on macOS.** The bridge is started through `sudo`, which asks for the password you
-   log in with: "Password for <you> (Hollyland Web UI needs it to start the USB bridge)".
+2. **It starts the bridge, on macOS and Linux.** The bridge is started through `sudo`, which asks for the
+   password you log in with: "Password for <you> (Hollyland Web UI needs it to start the USB bridge)".
+   - On Linux, sudo is skipped when the [udev rules](#linux) let you open the receiver.
    - It runs under the same Node binary as npx (absolute path), so nvm, fnm and Volta installs work.
    - If you're already root, no sudo is needed.
 3. **It waits until the bridge answers.** Only then does it open the browser, so the browser doesn't take
@@ -77,7 +83,7 @@ uses it and leaves it running when you stop.
 | Option | Meaning |
 | --- | --- |
 | `--no-bridge` | Don't start the bridge (WebHID only; write-only on macOS, USB audio keeps working). |
-| `--bridge` | Start the bridge on Linux too. It starts by default only on macOS. Windows can't run it. |
+| `--bridge` | Start the bridge. It starts by default on macOS and Linux. Windows can't run it. |
 | `--bridge-only` | Start only the bridge, for the [hosted page](#hosted-page-github-pages), which it then also accepts. No web server, no browser. |
 | `-p`, `--port <n>` | Web UI port (default 47320). |
 | `--bridge-port <n>` | Bridge port (default 47321). The page is opened with `?bridge=<n>&auto=1`. |
@@ -125,7 +131,10 @@ From the Hollyland Web UI project folder (after `npm install`):
 npm run bridge
 ```
 
-- **It asks for your password.** Only root may take a USB device away from macOS.
+- **It asks for your password on macOS.** Only root may take a USB device away from macOS.
+- **On Linux it runs as you** once the [udev rules](#linux) are in place and the receiver is plugged in
+  ("You may open the receiver (udev rule), so the bridge runs without sudo."). Otherwise it asks for your
+  password like on macOS.
 - **Don't type `sudo npm run bridge`.** `npm run bridge` re-launches itself as
   `sudo <your node> --import tsx scripts/bridge.ts`, using the **absolute path** of the Node that runs npm.
   That avoids `sudo: node: command not found` with nvm, fnm or Volta.
@@ -136,7 +145,7 @@ npm run bridge
   - It is also in the "Connection lost" banner, which appears when the bridge takes the receiver away from a
     write-only session.
   - The header then shows **Connected · bridge**.
-- **Stopping.** Press **Ctrl+C** in the terminal. The bridge always hands the receiver back to macOS.
+- **Stopping.** Press **Ctrl+C** in the terminal. The bridge always hands the receiver back to the OS.
 
 Options (pass them after `--`):
 
@@ -189,13 +198,54 @@ won't work while you're connected through the bridge. On macOS the Audio card th
 
 If you mainly want audio, use `npx hollyland-web-ui --no-bridge` (or the hosted page) and accept write-only control.
 
-**On Linux** the bridge only detaches the HID driver from interface 0, so audio keeps working. Linux doesn't
-need the bridge anyway.
+**On Linux** the bridge only detaches the HID driver from interface 0, so audio keeps working: the audio
+interfaces stay with `snd-usb-audio` (verified, see [Linux](#linux)).
+
+## Linux
+
+Tested on 2026-11-13 with a Lark M2 (USB ID `3547:0007`, receiver firmware 2.0.0.36, mic firmware 2.1.0.36),
+Ubuntu 26.04 (kernel 7.0), Brave 1.99 (Chromium 157) and PipeWire 1.6.
+
+**Without the bridge the page is write-only.** It connects over WebHID and shows "Status unavailable on
+Linux". A heartbeat (`AA DD 10 40`, 64 bytes) written straight to the receiver's `/dev/hidraw*` gets nothing
+back either. The receiver does answer, as the bridge shows, but with report ID `0xBB`, which its descriptor
+doesn't declare (it declares `0x06`, `0x07`, `0x55`, `0x41` and `0x05`). The kernel's HID core looks up
+the report ID first and drops a report it doesn't know: `__hid_input_report()` in `drivers/hid/hid-core.c`
+returns when `hid_get_report()` finds nothing, before `hidraw_report_event()` is reached.
+
+**Through the bridge it is full control**, and USB audio keeps working. The bridge takes interface 0 from
+`usbhid` (it shows up as `usbfs`); interfaces 1 and 3 stay with `snd-usb-audio`. The PipeWire source stayed
+running and recorded normally while the page was connected.
+
+**Udev rules.** Save as `/etc/udev/rules.d/70-hollyland.rules`, run `sudo udevadm control --reload`, then
+re-plug the receiver:
+
+```
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3547", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTR{idVendor}=="3547", MODE="0660", TAG+="uaccess"
+```
+
+- The first line lets Chrome open the receiver at all (WebHID, write-only).
+- The second gives you its USB device node (`/dev/bus/usb/…`). libusb needs write access there to detach
+  `usbhid` from interface 0 and claim it, and that is all the bridge needs: no root.
+
+**Then:**
+
+1. `npm run bridge -- --allow-origin https://khromov.github.io` from a clone (or `npm run bridge` with a page
+   from this computer). It says "the bridge runs without sudo" and `captured Lark M2 …`.
+2. Open <https://khromov.github.io/hollyland-web-ui/?bridge=auto>, or press **Connect through local bridge**
+   under **Full status on Linux (local bridge)** on the Connect page.
+
+![Connect page on Linux: "Full status on Linux (local bridge)" with the bridge command, and the two udev rules under "Receiver not in the list?"](images/linux-connect.png)
+
+![Overview through the bridge on Linux: Mic 1 online with its battery, Mic 2 in the case, noise cancellation and volume read from the receiver](images/linux-bridge-overview.png)
+
+![Device page through the bridge on Linux: model, "Local bridge" connection, firmware and serial numbers of the receiver and Mic 1](images/linux-bridge-device.png)
 
 ## Security model
 
-The bridge runs as root and gives a web page full control of the receiver, including factory reset. So it is
-deliberately narrow:
+The bridge runs as root on macOS (on Linux as you, with the udev rules) and gives a web page full control of
+the receiver, including factory reset. So it is deliberately narrow:
 
 - **Loopback only.** It binds to `127.0.0.1`. Other computers on the network can't reach it.
 - **Origin allow list.** WebSocket upgrades are accepted only from these pages:
@@ -289,13 +339,14 @@ https://khromov.github.io` from a clone. Once the package is on npm, both say `n
 | --- | --- |
 | `npx hollyland-web-ui` says the bridge didn't start after the password prompt | sudo gave up after three wrong passwords. Hollyland Web UI keeps running write-only and opens the plain page; run it again to retry. (Ctrl+C at the prompt stops Hollyland Web UI altogether.) |
 | "sudo can only ask for your password in a terminal" | Run `npx hollyland-web-ui` in a terminal window, not from a script or an IDE task without a TTY. |
-| "The bridge needs root" | From a clone, run `npm run bridge`, not `node scripts/bridge.ts` or `npx tsx …`. With the package, use `npx hollyland-web-ui`. |
+| "The bridge needs root" | From a clone, run `npm run bridge`, not `node scripts/bridge.ts` or `npx tsx …`. With the package, use `npx hollyland-web-ui`. (macOS only: Linux doesn't need root.) |
+| Linux: "could not capture the receiver: no permission to open the receiver (LIBUSB_ERROR_ACCESS)" | Add the [udev rules](#linux), run `sudo udevadm control --reload` and re-plug the receiver. Or start the bridge with `npm run bridge` while the receiver is unplugged, so it uses sudo. |
 | `sudo: node: command not found` / `sudo: npm: command not found` | Use `npm run bridge` without `sudo`; it passes the full Node path to sudo. `npx hollyland-web-ui` does the same. |
 | "Could not load the "usb" package" | From a clone: `npm install`. With the package: `npx --yes hollyland-web-ui@latest`. |
 | "Port 47320 … already in use" (`npx hollyland-web-ui`) | Hollyland Web UI is already running in another terminal. Stop it, or use `--port <n>`. |
 | "port 47321 is in use by another program" | Something other than the bridge holds that port. Use `--bridge-port <n>` (or `--port <n>` with `npm run bridge`, then open the page with `?bridge=<n>`). |
 | "Port 47321 … already in use" (`npm run bridge`) | Another bridge is running (stop it), or pick `--port <n>` and open the page with `?bridge=<n>`. |
-| Windows: "The bridge does not run on Windows" | Expected. Windows can't detach its HID driver from one interface without replacing the driver (e.g. with WinUSB through Zadig), and that would break the receiver's normal use. Use write-only mode, or Chrome on Linux/ChromeOS. |
+| Windows: "The bridge does not run on Windows" | Expected. Windows can't detach its HID driver from one interface without replacing the driver (e.g. with WinUSB through Zadig), and that would break the receiver's normal use. Use write-only mode, or the bridge on Linux or macOS. |
 
 ### Connecting the page
 
@@ -327,7 +378,10 @@ https://khromov.github.io` from a clone. Once the package is on npm, both say `n
     so the bridge calls the device methods with the real interface number.
 - `scripts/bridge-server.ts`: WebSocket relay, Origin and Host checks, the one-client rule. It has no USB code
   and is unit-tested.
-- `scripts/bridge-launch.mjs`: `npm run bridge`, re-launch under sudo with the current Node and tsx.
+- `scripts/bridge-launch.mjs`: `npm run bridge`, re-launch under sudo with the current Node and tsx (on Linux
+  without sudo when the udev rules let you open the receiver).
+- `cli/lib/linux-usb.mjs`: Linux check whether this user may open the plugged-in receiver, shared by both
+  launchers.
 - `cli/hollyland-web-ui.mjs`, `cli/lib/`: the `npx hollyland-web-ui` launcher and its loopback static server.
   - `npm run build:cli` (run by `npm pack`) builds the UI into `cli/dist/web`.
   - It also bundles the bridge into `cli/dist/bridge.mjs`.

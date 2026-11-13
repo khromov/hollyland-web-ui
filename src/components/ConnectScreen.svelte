@@ -3,7 +3,7 @@
    * The Connect page (no control link yet): one centred column, read top to bottom.
    *   title and the supported models → three steps → "Connect receiver" (USB) and, where the
    *   browser has Web Bluetooth, "Connect over Bluetooth" → collapsed extras:
-   *   "Full status on macOS (local bridge)" (macOS only) and "Receiver not in the list?".
+   *   "Full status on macOS / Linux (local bridge)" (macOS and Linux only) and "Receiver not in the list?".
    * The links come from `session.connectPaths`: a browser with Web Bluetooth but no WebHID
    * (Android Chrome) gets the Bluetooth steps; one with neither gets the reason and a "Copy link"
    * key. The models line is generated from the registry (connect/models.ts).
@@ -19,7 +19,7 @@
   import { REPO_URL, bridgeStartHelp, pageContext } from '../lib/protocol/app'
   import { session } from '../lib/state/session.svelte'
   import { reconnectUsb } from '../lib/state/links'
-  import { DISCLAIMER, platform } from './shell/link.svelte'
+  import { DISCLAIMER, PLATFORM_NAME, platform } from './shell/link.svelte'
 
   interface Props {
     /** WebHID is available. Kept for callers; the page reads every link from `session.connectPaths`. */
@@ -56,6 +56,9 @@
   /** The hosted site reaches the bridge on 127.0.0.1 only after Chrome's local network prompt. */
   const notLocal = pageContext() !== 'loopback'
   const onMac = platform === 'mac'
+  const onLinux = platform === 'linux'
+  /** macOS and Linux drop the receiver's replies; the bridge (which runs on both) reads them. */
+  const bridgeForStatus = onMac || onLinux
   const onPhone = platform === 'android' || platform === 'ios'
   /** The bridge holds the whole receiver except on Linux/ChromeOS, so its USB audio pauses (docs/BRIDGE.md). */
   const pausesAudio = platform !== 'linux' && platform !== 'chromeos'
@@ -103,11 +106,11 @@
   }
 
   /**
-   * The bridge is offered on macOS only (where it is the way to full control). Elsewhere it shows
+   * The bridge is offered on macOS and Linux (where it is the way to full control). Elsewhere it shows
    * up only while a bridge connection is under way or has just failed: `npx hollyland-web-ui`
    * opens the page with ?bridge=auto, and its waiting text and errors must stay visible.
    */
-  const showBridge = $derived(!!onbridge && (onMac || via === 'bridge'))
+  const showBridge = $derived(!!onbridge && (bridgeForStatus || via === 'bridge'))
   let bridgeOpen = $state(false)
   $effect(() => {
     if (bridgeBusy || bridgeError) bridgeOpen = true
@@ -222,7 +225,10 @@
       <div class="more mc-rule-top">
         {#if showBridge}
           <div bind:this={bridgeSection}>
-            <Disclosure title={onMac ? 'Full status on macOS (local bridge)' : 'Local bridge'} bind:open={bridgeOpen}>
+            <Disclosure
+              title={bridgeForStatus ? `Full status on ${PLATFORM_NAME[platform]} (local bridge)` : 'Local bridge'}
+              bind:open={bridgeOpen}
+            >
               <div class="cmd">
                 <p class="small">{startHelp.where ? `Run ${startHelp.where}:` : 'Run in a terminal:'}</p>
                 <CodeWindow text={startHelp.command} copyLabel="Copy the bridge command" />
@@ -247,6 +253,7 @@
 
               <ul class="facts">
                 {#if pausesAudio}<li>Pauses USB audio while it runs.</li>{/if}
+                {#if onLinux}<li>USB audio keeps working. No sudo with the udev rules under “Receiver not in the list?”.</li>{/if}
                 <li>Stop it with <kbd>Ctrl</kbd>+<kbd>C</kbd>.</li>
                 {#if notLocal}<li>If Chrome asks, choose <b>Allow</b>.</li>{/if}
                 <li>
@@ -272,9 +279,10 @@
                 <li>
                   <p>Linux: save as <code class="wrap">/etc/udev/rules.d/70-hollyland.rules</code></p>
                   <CodeWindow
-                    text={'SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3547", MODE="0660", TAG+="uaccess"'}
-                    copyLabel="Copy the udev rule"
+                    text={'SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3547", MODE="0660", TAG+="uaccess"\nSUBSYSTEM=="usb", ATTR{idVendor}=="3547", MODE="0660", TAG+="uaccess"'}
+                    copyLabel="Copy the udev rules"
                   />
+                  <p>The second line lets the local bridge run without sudo.</p>
                   <p>then run <code>sudo udevadm control --reload</code> and re-plug.</p>
                 </li>
                 <li>Windows: check Sound settings.</li>

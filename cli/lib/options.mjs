@@ -11,12 +11,12 @@ export const REPO_URL = 'https://github.com/khromov/hollyland-web-ui'
 export class UsageError extends Error {}
 
 /**
- * Whether the bridge starts when neither --bridge nor --no-bridge is given: only on macOS, where
- * the OS drops the receiver's replies. Linux and ChromeOS get full read/write over WebHID, and
+ * Whether the bridge starts when neither --bridge nor --no-bridge is given: on macOS and Linux,
+ * where the OS drops the receiver's replies before the browser sees them (docs/PROTOCOL.md §2.4).
  * Windows can't run the bridge.
  */
 export function bridgeByDefault(platform = process.platform) {
-  return platform === 'darwin'
+  return platform === 'darwin' || platform === 'linux'
 }
 
 function parsePort(flag, v) {
@@ -116,16 +116,16 @@ Unofficial; not affiliated with Hollyland.
 Usage: npx hollyland-web-ui [options]
 
 Serves the web UI on http://127.0.0.1:${DEFAULT_PORT} (this computer only) and opens it in your
-browser. On macOS it also starts the local USB bridge, which asks for your password: macOS only
-lets the browser send settings, and the bridge adds live battery, mic status and current values.
-The receiver's USB audio is paused while the bridge runs.
+browser. On macOS and Linux it also starts the local USB bridge: the browser can only send
+settings there, and the bridge adds live battery, mic status and current values. On macOS it asks
+for your password and the receiver's USB audio is paused while it runs. On Linux audio keeps
+working, and with the udev rule from docs/BRIDGE.md it needs no password.
 
 Options:
   -p, --port <n>          web UI port (default ${DEFAULT_PORT})
       --bridge-port <n>   USB bridge port (default ${DEFAULT_BRIDGE_PORT})
       --no-bridge         don't start the USB bridge
-      --bridge            start the USB bridge on Linux too (on by default only on macOS;
-                          Linux and ChromeOS already get full read/write in Chrome)
+      --bridge            start the USB bridge (on by default on macOS and Linux)
       --bridge-only       start only the USB bridge, for the hosted page at
                           ${HOSTED_URL}
                           (in this mode the bridge also accepts that page)

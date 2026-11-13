@@ -1,14 +1,15 @@
 /**
- * Hollyland Web UI local USB bridge: full read/write on macOS, where the OS drops the receiver's
- * replies before any browser sees them (docs/PROTOCOL.md §2.4). See docs/BRIDGE.md.
+ * Hollyland Web UI local USB bridge: full read/write on macOS and Linux, where the OS drops the
+ * receiver's replies before any browser sees them (docs/PROTOCOL.md §2.4). See docs/BRIDGE.md.
  *
  *   npm run bridge [-- --port 47321 --allow-origin https://example.com --iap2 --verbose]
  *
- * What it does (needs root):
+ * What it does (needs root; on Linux, write access to the receiver's USB device node is enough,
+ * see the udev rule in docs/BRIDGE.md "Linux"):
  *  1. listens on ws://127.0.0.1:<port>/hid (loopback only, Origin + Host checks, one client)
  *  2. finds a supported receiver (VID 0x3547 / 0x4417, connectable PIDs with an interrupt HID link
  *     from the registry in src/lib/protocol/models.ts), detaches the OS drivers (on macOS this
- *     takes the WHOLE receiver: its USB audio pauses), claims the HID control interface
+ *     takes the WHOLE receiver: its USB audio pauses; on Linux only interface 0), claims the HID control interface
  *     (interface 0: interrupt IN 0x82 / OUT 0x03)
  *  3. relays every interrupt-IN packet to the client and every client packet to the interrupt-OUT
  *     endpoint, byte for byte (legacy receivers: exactly 64 bytes; other families: the packet
@@ -20,7 +21,8 @@
  * bulk bytes on /iap2 for experiments. iAP2 itself is not implemented here.
  *
  * Do not run this file with plain `node` + sudo: use `npm run bridge` (scripts/bridge-launch.mjs),
- * which re-launches it under sudo with the current node binary and tsx.
+ * which re-launches it under sudo with the current node binary and tsx (on Linux without sudo when
+ * the udev rule already gives you the receiver).
  *
  * `npx hollyland-web-ui` (cli/hollyland-web-ui.mjs) runs a bundled copy (cli/dist/bridge.mjs, built by
  * `npm run build:cli`) under sudo with --embedded: a short banner and log lines marked "bridge",
@@ -49,6 +51,18 @@ type Device = UsbTypes.Device
 type InEndpoint = UsbTypes.InEndpoint
 type OutEndpoint = UsbTypes.OutEndpoint
 type LibUSBException = UsbTypes.LibUSBException
+
+/**
+ * Only macOS hands the bridge the whole USB device (its audio interfaces too). On Linux libusb
+ * detaches the kernel driver from interface 0 alone; snd-usb-audio keeps the audio interfaces.
+ */
+const PAUSES_AUDIO = process.platform !== 'linux'
+
+/** Linux: the udev rule that lets the bridge run without root (docs/BRIDGE.md "Linux"). */
+const LINUX_USB_RULE = 'SUBSYSTEM=="usb", ATTR{idVendor}=="3547", MODE="0660", TAG+="uaccess"'
+const LINUX_RULE_HINT =
+  `add the udev rule ${LINUX_USB_RULE} to /etc/udev/rules.d/70-hollyland.rules, ` +
+  'run "sudo udevadm control --reload" and re-plug the receiver (or run the bridge as root)'
 
 // ------------------------------------------------------------------------------------- CLI
 
@@ -285,7 +299,8 @@ class Bridge {
           `IN 0x${c.hid.inEp.address.toString(16)} / OUT 0x${c.hid.outEp.address.toString(16)}` +
           (c.iap2 ? `; iAP2 interface ${c.iap2.number}, IN 0x${c.iap2.inEp.address.toString(16)} / OUT 0x${c.iap2.outEp.address.toString(16)}` : ''),
       )
-      log('USB audio from this receiver is PAUSED until the bridge stops (Ctrl+C)')
+      if (PAUSES_AUDIO) log('USB audio from this receiver is PAUSED until the bridge stops (Ctrl+C)')
+      else log('USB audio keeps working: the bridge holds only the HID control interface')
       this.server.setDevice(info, c.packet)
     } catch (e) {
       if (this.state === 'capturing') this.state = 'searching'
@@ -299,7 +314,15 @@ class Bridge {
 
   private async capture(device: Device): Promise<Captured> {
     const u = this.usb.usb
-    device.open()
+    try {
+      device.open()
+    } catch (e) {
+      const ex = e as LibUSBException
+      if (process.platform === 'linux' && ex.errno === u.LIBUSB_ERROR_ACCESS) {
+        throw new Error(`no permission to open the receiver (LIBUSB_ERROR_ACCESS): ${LINUX_RULE_HINT}`)
+      }
+      throw e
+    }
     const pipes: Pipe[] = []
     try {
       const hid = this.findPipe(device, 'hid', (n, cls) => cls === u.LIBUSB_CLASS_HID && n >= 0, u.LIBUSB_TRANSFER_TYPE_INTERRUPT, 0)
@@ -378,7 +401,10 @@ class Bridge {
       } catch (e) {
         const ex = e as LibUSBException
         if (ex.errno === this.usb.usb.LIBUSB_ERROR_ACCESS) {
-          throw new Error(`the OS refused to release interface ${p.number} (LIBUSB_ERROR_ACCESS): run the bridge as root (npm run bridge)`)
+          throw new Error(
+            `the OS refused to release interface ${p.number} (LIBUSB_ERROR_ACCESS): ` +
+              (process.platform === 'linux' ? LINUX_RULE_HINT : 'run the bridge as root (npm run bridge)'),
+          )
         }
         throw new Error(`could not detach the OS driver from interface ${p.number}: ${ex.message}`)
       }
@@ -648,12 +674,14 @@ async function main(): Promise<void> {
   if (process.platform === 'win32') {
     console.error(
       'The bridge does not run on Windows: Windows cannot detach its HID driver from the receiver.\n' +
-        'Use Chrome on Linux or ChromeOS for full read/write, or macOS with this bridge. See docs/BRIDGE.md.',
+        'Run it on Linux or macOS for full read/write. See docs/BRIDGE.md.',
     )
     process.exit(1)
   }
   if (opts.embedded) logLabel = '  bridge'
-  if (typeof process.getuid === 'function' && process.getuid() !== 0) {
+  // Linux needs no root: write access to the receiver's device node (udev rule) is enough, and
+  // capture() says what to do when it is missing.
+  if (process.platform !== 'linux' && typeof process.getuid === 'function' && process.getuid() !== 0) {
     printRootHelp(opts.embedded)
     process.exit(1)
   }
@@ -706,7 +734,7 @@ async function main(): Promise<void> {
       .catch((e: unknown) => log(`cleanup error: ${errText(e)}`))
       .finally(() => {
         clearTimeout(hard)
-        log('receiver handed back. USB audio resumes in a moment (re-plug it if it does not).')
+        log(PAUSES_AUDIO ? 'receiver handed back. USB audio resumes in a moment (re-plug it if it does not).' : 'receiver handed back.')
         process.exit(code)
       })
   }
@@ -747,7 +775,11 @@ Hollyland Web UI USB bridge ${BRIDGE_VERSION}
   Accepts     ${origins.join('\n              ')}
   Clients     one page at a time; a second one is refused
 
-  While the bridge holds the receiver its USB AUDIO IS PAUSED (no mic input on this computer).
+  ${
+    PAUSES_AUDIO
+      ? 'While the bridge holds the receiver its USB AUDIO IS PAUSED (no mic input on this computer).'
+      : 'USB audio keeps working: the bridge takes only the receiver\'s HID control interface.'
+  }
   Press Ctrl+C to stop; the receiver is handed back to the OS automatically.
 ${opts.port !== BRIDGE_DEFAULT_PORT ? `\n  Custom port: open the page with ?bridge=${opts.port}\n` : ''}
 In Hollyland Web UI, choose "Connect through local bridge".

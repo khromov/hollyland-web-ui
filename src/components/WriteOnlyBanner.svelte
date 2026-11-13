@@ -1,7 +1,8 @@
 <script lang="ts">
   /**
    * Status strip under the header. Rendered by App only while the current connection can't read
-   * replies (macOS/Windows HID), so it never appears on Linux/ChromeOS or through the bridge.
+   * replies (macOS, Linux and Windows HID drop them; docs/PROTOCOL.md §2.4), so it never appears
+   * through the bridge.
    *
    * One thin line ("Status unavailable on macOS" + "Why?"); the bridge and "Forget remembered
    * values" live in the expandable details, so the strip costs ~36 px on every screen size. On the

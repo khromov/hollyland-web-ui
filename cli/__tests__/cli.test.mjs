@@ -13,11 +13,12 @@ import { createStaticServer, mimeType, resolveRequestPath } from '../lib/static-
 const CLI = fileURLToPath(new URL('../hollyland-web-ui.mjs', import.meta.url))
 
 describe('parseOptions', () => {
-  it('defaults: bridge only on macOS', () => {
+  it('defaults: bridge on macOS and Linux', () => {
     expect(parseOptions([], 'darwin')).toMatchObject({ port: DEFAULT_PORT, bridgePort: DEFAULT_BRIDGE_PORT, bridge: true, open: true })
-    expect(parseOptions([], 'linux').bridge).toBe(false)
+    expect(parseOptions([], 'linux').bridge).toBe(true)
     expect(parseOptions([], 'win32').bridge).toBe(false)
     expect(bridgeByDefault('darwin')).toBe(true)
+    expect(bridgeByDefault('linux')).toBe(true)
   })
 
   it('reads ports in both spellings and the switches', () => {
@@ -26,7 +27,8 @@ describe('parseOptions', () => {
     })
     expect(parseOptions(['-p', '6000'], 'darwin').port).toBe(6000)
     expect(parseOptions(['--no-bridge'], 'darwin').bridge).toBe(false)
-    expect(parseOptions(['--bridge'], 'linux').bridge).toBe(true)
+    expect(parseOptions(['--no-bridge'], 'linux').bridge).toBe(false)
+    expect(parseOptions(['--bridge'], 'win32').bridge).toBe(true)
     expect(parseOptions(['--help'], 'darwin').help).toBe(true)
     expect(parseOptions(['-v'], 'darwin').version).toBe(true)
   })
