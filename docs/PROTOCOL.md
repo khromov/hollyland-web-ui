@@ -121,7 +121,7 @@ Rules:
 | macOS: root libusb (local bridge, `scripts/bridge.ts`) | ✅ interrupt OUT `0x03` | ✅ interrupt IN `0x82`, one reply per request. Capturing the device takes the **whole** receiver from macOS, so its USB audio is unavailable until the bridge hands it back. | L §11.6, §11.7 |
 | macOS: WebUSB | ❌ HID is a protected class, and interface #7 is claimed by `accessoryd`. | ❌ | L (ioreg) |
 | macOS: ExternalAccessory (the iOS path) | ❌ `IAPAppRegisterClient: registerWasSuccessful 0`, 0 accessories. No iapd/iap2d on macOS. | ❌ | L §11.5 |
-| Linux: hidraw (Chrome WebHID, node-hid) | ✅ (raw write to the interrupt OUT). Needs a udev rule for access: `SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3547", MODE="0660", TAG+="uaccess"` | ❌ **dropped by the kernel's HID core**: `__hid_input_report()` returns when `hid_get_report()` finds no declared report for the ID, before `hidraw_report_event()`. hidraw only sees report IDs the descriptor declares. | Lark M2, Ubuntu 26.04, kernel 7.0, Brave 1.99, 2026-11-13 (§11.9) |
+| Linux: hidraw (Chrome WebHID, node-hid) | ✅ (raw write to the interrupt OUT). Needs a udev rule for access: `SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3547|4417", MODE="0660", TAG+="uaccess"` | ❌ **dropped by the kernel's HID core**: `__hid_input_report()` returns when `hid_get_report()` finds no declared report for the ID, before `hidraw_report_event()`. hidraw only sees report IDs the descriptor declares. | Lark M2, Ubuntu 26.04, kernel 7.0, Brave 1.99, 2026-11-13 (§11.9) |
 | Linux: libusb (local bridge, `scripts/bridge.ts`) | ✅ interrupt OUT `0x03` | ✅ interrupt IN `0x82`. Detaches `usbhid` from interface 0 only; the audio interfaces stay with `snd-usb-audio`, so **USB audio keeps working**. No root needed with a udev rule on the USB device node: `SUBSYSTEM=="usb", ATTR{idVendor}=="3547", MODE="0660", TAG+="uaccess"` | Lark M2, 2026-11-13 (§11.9) |
 | ChromeOS: WebHID | expected ✅ (hidraw underneath) | expected ❌ (same kernel HID core as Linux) | not tested |
 | Windows: WebHID / hidapi | expected ❌. hidclass routes reports by declared report ID, and Chromium picks a collection handle by report ID. | expected ❌ | not tested |
@@ -731,10 +731,10 @@ Through the macOS HID stack no reply payload bytes can be seen. §11.6 has repli
 everything else (set acks, M2/M2S, TX-addressed heartbeats, OTA) byte-level captures need a libusb session (the
 bridge with `--verbose`, as root on macOS, or on Linux with the udev rule); Linux hidraw drops them too (§11.9):
 ```
-npx tsx scripts/probe.ts sweep        # every read-only command, prints RX hex + decode
-npx tsx scripts/probe.ts device       # library end-to-end
+npm run bridge -- --verbose           # prints every packet in hex while the page sends requests
 ```
-Then paste the output here.
+Then paste the output here. `scripts/probe.ts` reads through node-hid, i.e. the same OS HID stack, so it
+sees no replies on macOS or Linux.
 
 ### 11.5 ExternalAccessory on macOS
 
@@ -814,7 +814,7 @@ Ubuntu 26.04.1, kernel 7.0.0, Brave 1.99.55 (Chromium 157), PipeWire 1.6.2. Rece
 | HID descriptor | `/sys/class/hidraw/hidraw*/device/report_descriptor` | Reports `0x06` (Consumer), `0x07` (Telephony), `0x55` (vendor 0xFF90), `0x41` (vendor 0xFF82) and `0x05` (vendor 0x7478), as on macOS (§11.8). No `0xAA` or `0xBB`. | Same as macOS. |
 | WebHID connect | Brave, hosted page | Connects, the heartbeat probe gets no reply: "Status unavailable on Linux". | Write-only, like macOS. |
 | Replies on hidraw | `write(/dev/hidraw12, AA DD 10 40 + 58 × 00)`, then `read` for 3 s | Nothing. | The kernel's HID core drops the undeclared `0xBB` input report in `__hid_input_report()` (`hid_get_report()` returns NULL) before `hidraw_report_event()`. The "hidraw does not filter report IDs" assumption in §2.4 was wrong. |
-| Bridge as a normal user | `npm run bridge`, udev rule `SUBSYSTEM=="usb", ATTR{idVendor}=="3547", MODE="0660", TAG+="uaccess"` | libusb opens the device, detaches `usbhid` from interface 0 and claims it without root; `captured Lark M2 (3547:0007 …): interface 0, IN 0x82 / OUT 0x3`. | No root on Linux; the launcher skips sudo when the node is writable. |
+| Bridge as a normal user | `npm run bridge`, udev rule `SUBSYSTEM=="usb", ATTR{idVendor}=="3547", MODE="0660", TAG+="uaccess"` | libusb opens the device, detaches `usbhid` from interface 0 and claims it without root; `captured Lark M2 (3547:0007 …): interface 0, IN 0x82 / OUT 0x3`. | No root on Linux; the launchers run the bridge as you (under sudo only with `--sudo`). |
 | USB audio while bridged | `/sys/bus/usb/devices/*:1.*/driver`, `pw-record` | Interface 0 → `usbfs`; interfaces 1 and 3 stay on `snd-usb-audio`; the PipeWire source stays RUNNING and a 2 s recording peaked at −24 dBFS. | Audio keeps working on Linux. |
 | Live state through the bridge | Brave, hosted page `?bridge=auto` and local page | TX1 online, battery 87 → 85 %, TX2 offline (in the case), NC on, volume 6/6, RX/TX1 version and serial, "Paired" for TX1. | Full control on Linux through the bridge. |
 
@@ -897,8 +897,8 @@ Ubuntu 26.04.1, kernel 7.0.0, Brave 1.99.55 (Chromium 157), PipeWire 1.6.2. Rece
 
 1. **Replies that are still unseen.** §11.6 covers the A2's read-only replies. Still needed (libusb: the bridge,
    as root on macOS or with the udev rule on Linux; hidraw drops them, §11.9): set acks, TX-addressed heartbeats, the second IN report the macOS driver counts, and everything on
-   M2/M2S. `probe.ts sweep` / `probe.ts device` print them. On macOS the local bridge can capture them too
-   (`npm run bridge -- --verbose` prints every packet).
+   M2/M2S. The local bridge captures them: `npm run bridge -- --verbose` prints every packet. (`probe.ts`
+   reads through node-hid, which sees no replies on macOS or Linux.)
 2. **Chrome WebHID:** answered for macOS (§11.7). `sendReport(0xAA, 63 B)` resolves and the writes take effect.
    Still open: Windows. Do writes work there too, and are the replies dropped as expected?
 3. M2 / M2S HID descriptors: do they use report IDs at all? If not, receiving may work on macOS too.

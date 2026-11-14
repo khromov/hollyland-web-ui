@@ -100,14 +100,14 @@ the undeclared `0xBB`) are **W** there as on macOS (verified on a Lark M2, PROTO
 | 3 | Lark M2 | W ✅, +B ✅ | ?, +B | W ✅, +B ✅ | W | ✗ | bridge (macOS, Linux) | **Supported, hardware-tested** (macOS 2026-11-06, Linux 2026-11-13; PROTOCOL.md §11.8, §11.9) | high (wire) |
 | 4 | Lark M2 EAGLESHERO | as #3 | as #3 | as #3 | as #3 | ✗ | as #3 | Supported, untested | medium (VID inferred) |
 | 5 | LARK M2S | as #3 | as #3 | as #3 | as #3 | ✗ | as #3 | Supported, untested (unit on hand) | high (wire) |
-| 6–9 | Lark C1 / C1 2nd gen / M1 2nd gen / Mini | as #3, +B | as #3, +B | F | F | ✗ | as #3 | Listed, `family: null` → **Phase 1** | high (wire), medium (UI semantics) |
+| 6–9 | Lark C1 / C1 2nd gen / M1 2nd gen / Mini | as #3, +B | as #3, +B | as #3 | as #3 | ✗ | as #3 | Listed, `family: null` → **Phase 1** | high (wire), medium (UI semantics) |
 | 10 | Lark MAX | ? | ? | ? | ? | ✗ | unknown | Not listed → add as recognised only | low |
 | 11 | LARK A1 | **F?** (feature reports bypass the input-report filter; Feature 5 must be declared) | F? (needs declared Feature 5) | F | F | ✗ | likely on every desktop OS, no bridge needed | Listed, unsupported → **Phase 2** | high (commands), medium (transport) |
 | 12–13 | LARK M3 (all four PIDs) | **F?** (replies on report ID 8, declared [I]) | F? (send the declared report length) | F | F | ✗ | likely on every desktop OS | Listed, unsupported → **Phase 2** | high (framing), medium (transport, VID) |
-| 14–15 | LARK MAX 2 RX over USB | ? (byte 0 is still `BB`) | ? | F? (report size) | F? | ✗ | unknown | Listed (note wrongly says "BLE product") → **Phase 2b** | medium |
+| 14–15 | LARK MAX 2 RX over USB | ? (byte 0 is still `BB`) | ? | ? (as macOS: the kernel drops undeclared IDs too) | ? | ✗ | unknown | Listed (note wrongly says "BLE product") → **Phase 2b** | medium |
 | 16 | LARK MAX 2 BOX over BLE | **F** | F | ⚑ | F | **F** | yes, also on Android phones | Not listed → **Phase 2** | medium-high |
 | 17 | OWS Monitor Earphone | ✗ (not planned) | ✗ | ✗ | ✗ | ✗ | – | Not listed; skip (state comes through the MAX 2 RX) | low |
-| 18 | MELO P1 receiver | BLE **F**; USB ? | BLE F; USB ? | BLE ⚑; USB F (frames ≤ 1 report) | BLE F; USB F | BLE **F** | yes over BLE | Listed, unsupported → **Phase 2** (BLE first) | codec high, settings medium-high, DSP medium |
+| 18 | MELO P1 receiver | BLE **F**; USB ? | BLE F; USB ? | BLE ⚑; USB ? (as macOS; frames ≤ 1 report) | BLE F; USB ? | BLE **F** | yes over BLE | Listed, unsupported → **Phase 2** (BLE first) | codec high, settings medium-high, DSP medium |
 | 19 | MELO P1 Mic | USB ? | ? | ? | ? | ✗ | – | Listed; skip (firmware-update device) | low |
 | 20 | MELO P1 Charging Case | USB ? | ? | ? | ? | ✗ | – | Listed; skip (firmware, battery health) | low |
 | 21 | MELO P1 TWS Earphones | ✗ | ✗ | ✗ | ✗ | ✗ | – | Listed as a USB PID (wrong: 772 is an app ID) → remove from the USB table | low |

@@ -1,9 +1,10 @@
 // Linux: can this user open the receiver's USB device node without root?
 //
 // The bridge needs write access to /dev/bus/usb/<bus>/<dev> to detach the kernel's HID driver from
-// interface 0 and claim it. Root has that; so does any user once the udev rule in docs/BRIDGE.md
-// ("Linux") tags the receiver with `uaccess`. The launchers (`npm run bridge`, `npx hollyland-web-ui`)
-// use this to skip sudo when it isn't needed.
+// interface 0 and claim it. Root has that; so does any user once the udev rules in docs/BRIDGE.md
+// ("Linux") tag the receiver with `uaccess`. On Linux the launchers (`npm run bridge`,
+// `npx hollyland-web-ui`) always start the bridge as the current user and never call sudo on their
+// own (only with --sudo); they use this to say up front when the rules are missing.
 
 import { accessSync, constants, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -11,10 +12,13 @@ import { join } from 'node:path'
 /** USB vendor IDs of the receivers the bridge captures (Hollyland, EAGLESHERO OEM). */
 export const RECEIVER_VENDOR_IDS = ['3547', '4417']
 
-/** The udev rules for Linux, one per line: WebHID (hidraw) and the bridge without root (usb). */
+/**
+ * The udev rules for Linux, one per line: WebHID (hidraw) and the bridge without root (usb). The
+ * `|` alternation covers both vendor IDs in RECEIVER_VENDOR_IDS.
+ */
 export const LINUX_UDEV_RULES = [
-  'SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3547", MODE="0660", TAG+="uaccess"',
-  'SUBSYSTEM=="usb", ATTR{idVendor}=="3547", MODE="0660", TAG+="uaccess"',
+  'SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3547|4417", MODE="0660", TAG+="uaccess"',
+  'SUBSYSTEM=="usb", ATTR{idVendor}=="3547|4417", MODE="0660", TAG+="uaccess"',
 ]
 export const LINUX_UDEV_FILE = '/etc/udev/rules.d/70-hollyland.rules'
 
@@ -63,11 +67,21 @@ export function linuxReceiverNodes(sysDir = SYS_USB, devDir = DEV_USB) {
 }
 
 /**
- * Linux only: true when at least one receiver is plugged in and this user may open every one of
- * them, so the bridge can run without sudo. False when none is plugged in (the bridge would wait
- * for one, and without the udev rule it couldn't open it).
+ * Linux, not root: what to tell the user before the bridge starts as them. Empty when every
+ * plugged-in receiver can be opened, or none is plugged in yet (the bridge waits for one and
+ * explains LIBUSB_ERROR_ACCESS itself if it can't open it). Otherwise the udev rules to add.
+ * @param {{ node: string, writable: boolean }[]} nodes from linuxReceiverNodes()
+ * @param {string} sudoHint how to run the bridge under sudo instead, e.g. "npx hollyland-web-ui --sudo"
+ * @returns {string[]} lines to print
  */
-export function linuxBridgeWithoutRoot(sysDir = SYS_USB, devDir = DEV_USB) {
-  const nodes = linuxReceiverNodes(sysDir, devDir)
-  return nodes.length > 0 && nodes.every((n) => n.writable)
+export function linuxAccessHint(nodes, sudoHint) {
+  const blocked = nodes.filter((n) => !n.writable)
+  if (blocked.length === 0) return []
+  return [
+    `You can't open the receiver (${blocked.map((n) => n.node).join(', ')}) without root yet.`,
+    `Save these udev rules as ${LINUX_UDEV_FILE}:`,
+    ...LINUX_UDEV_RULES.map((r) => `  ${r}`),
+    'then run "sudo udevadm control --reload" and re-plug the receiver: the bridge picks it up by itself.',
+    `Or stop and run ${sudoHint} instead.`,
+  ]
 }

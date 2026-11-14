@@ -21,12 +21,12 @@
  * bulk bytes on /iap2 for experiments. iAP2 itself is not implemented here.
  *
  * Do not run this file with plain `node` + sudo: use `npm run bridge` (scripts/bridge-launch.mjs),
- * which re-launches it under sudo with the current node binary and tsx (on Linux without sudo when
- * the udev rule already gives you the receiver).
+ * which re-launches it under sudo with the current node binary and tsx (on Linux as you, without
+ * sudo, unless you pass --sudo).
  *
  * `npx hollyland-web-ui` (cli/hollyland-web-ui.mjs) runs a bundled copy (cli/dist/bridge.mjs, built by
- * `npm run build:cli`) under sudo with --embedded: a short banner and log lines marked "bridge",
- * because its output shares the terminal with the CLI's.
+ * `npm run build:cli`) with --embedded, under sudo on macOS and as you on Linux: a short banner and
+ * log lines marked "bridge", because its output shares the terminal with the CLI's.
  */
 import { createRequire } from 'node:module'
 import type * as UsbTypes from 'usb'
@@ -59,10 +59,10 @@ type LibUSBException = UsbTypes.LibUSBException
 const PAUSES_AUDIO = process.platform !== 'linux'
 
 /** Linux: the udev rule that lets the bridge run without root (docs/BRIDGE.md "Linux"). */
-const LINUX_USB_RULE = 'SUBSYSTEM=="usb", ATTR{idVendor}=="3547", MODE="0660", TAG+="uaccess"'
+const LINUX_USB_RULE = 'SUBSYSTEM=="usb", ATTR{idVendor}=="3547|4417", MODE="0660", TAG+="uaccess"'
 const LINUX_RULE_HINT =
   `add the udev rule ${LINUX_USB_RULE} to /etc/udev/rules.d/70-hollyland.rules, ` +
-  'run "sudo udevadm control --reload" and re-plug the receiver (or run the bridge as root)'
+  'run "sudo udevadm control --reload" and re-plug the receiver (or restart the bridge with --sudo)'
 
 // ------------------------------------------------------------------------------------- CLI
 
@@ -93,9 +93,11 @@ Options:
   --pid <n>               only capture this USB product id (decimal or 0x hex)
   --verbose               print every packet
   --embedded              short banner and "bridge" log prefix (used by npx hollyland-web-ui)
+  --sudo                  Linux: run under sudo instead of as you (handled by npm run bridge)
   -h, --help              show this help
 
-USB audio from the receiver pauses while the bridge runs. Press Ctrl+C to give it back.
+On macOS USB audio from the receiver pauses while the bridge runs; on Linux it keeps working.
+Press Ctrl+C to give the receiver back.
 Details: docs/BRIDGE.md`
 
 class UsageError extends Error {}

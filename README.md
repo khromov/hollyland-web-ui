@@ -48,7 +48,7 @@ Mic 1 is shown in purple and Mic 2 in yellow. On the LARK A2 these match the tra
 | --- | --- | --- |
 | LARK A2 | `3547:0411` | Tested on hardware |
 | LARK A2S (camera receiver) | `3547:0412` | Implemented from the official app, not yet tested on hardware |
-| Lark M2 | `3547:0007`, `3547:0008` (EAGLESHERO `4417:0020`/`0021`) | Implemented from the official app, not yet tested on hardware |
+| Lark M2 | `3547:0007`, `3547:0008` (EAGLESHERO `4417:0020`/`0021`) | Tested on hardware (macOS and Linux); the EAGLESHERO edition not yet |
 | LARK M2S | `3547:0405`, `3547:0406` | Implemented from the official app, not yet tested on hardware |
 
 The LARK A1 and LARK M3 use different protocols and are not supported. Some features need a minimum
@@ -89,17 +89,17 @@ interface with libusb and relays its packets to the page over `ws://127.0.0.1`.
 
 - **macOS:** it runs as root, and macOS can only hand over the whole USB device, so **the receiver's USB audio
   is unavailable while the bridge runs** and comes back when you stop it.
-- **Linux:** it takes only the HID interface, so **USB audio keeps working**. With the udev rules below it
-  runs as you, without sudo.
+- **Linux:** it takes only the HID interface, so **USB audio keeps working**. It runs as you, without sudo,
+  and needs the udev rules below to open the receiver.
 
 See [docs/BRIDGE.md](docs/BRIDGE.md).
 
 Linux udev rules: the first line lets Chrome open the receiver (WebHID), the second lets the bridge open it
-without root.
+without root. `3547` is Hollyland's USB vendor ID, `4417` that of the EAGLESHERO edition.
 
 ```
-SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3547", MODE="0660", TAG+="uaccess"
-SUBSYSTEM=="usb", ATTR{idVendor}=="3547", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3547|4417", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTR{idVendor}=="3547|4417", MODE="0660", TAG+="uaccess"
 ```
 
 Save them as `/etc/udev/rules.d/70-hollyland.rules`, run `sudo udevadm control --reload`, then re-plug the
@@ -145,15 +145,17 @@ npx hollyland-web-ui
 - It serves the web UI on <http://127.0.0.1:47320> (this computer only) and opens it in your browser.
 - **On macOS** it also starts the USB bridge, which asks for your password: only root can take a USB device
   away from macOS. The page connects through the bridge by itself and shows **Connected · bridge**.
-- **On Linux** it starts the bridge too. With the [udev rules](#platforms) it runs without sudo; without them
-  it asks for your password like on macOS. USB audio keeps working.
   If you skip the password, Hollyland Web UI keeps running in write-only mode.
-- Press **Ctrl+C** to stop. The bridge hands the receiver back and USB audio returns a moment later.
+- **On Linux** it starts the bridge too, as you: it never uses sudo unless you add `--sudo`. It needs the
+  [udev rules](#platforms) to open the receiver; without them it prints the rules and keeps waiting, so you
+  can add them and re-plug the receiver. USB audio keeps working.
+- Press **Ctrl+C** to stop. The bridge hands the receiver back (on macOS USB audio returns a moment later).
 
 | Option | Meaning |
 | --- | --- |
-| `--no-bridge` | Don't start the bridge. The page uses WebHID; on macOS that is write-only, but USB audio keeps working. |
+| `--no-bridge` | Don't start the bridge. The page uses WebHID, which is write-only on macOS and Linux. On macOS this keeps USB audio working. |
 | `--bridge` | Start the bridge (it starts by default on macOS and Linux). |
+| `--sudo` | Linux: start the bridge under sudo, for when the udev rules aren't installed. (On macOS it always uses sudo.) |
 | `--bridge-only` | Start only the bridge, for the hosted page (in this mode it also accepts that page). Prints the address to open. |
 | `-p`, `--port <n>` | Web UI port (default 47320). |
 | `--bridge-port <n>` | Bridge port (default 47321). |
@@ -242,7 +244,7 @@ npm run dev          # http://localhost:5173
 | `npm test` | Unit tests (vitest): protocol, bridge relay, DSP, CLI |
 | `npm run check` | svelte-check and TypeScript for the app, Node config and scripts |
 | `npm run build` | Production build in `dist/`. `BASE_PATH=/hollyland-web-ui/` builds for GitHub Pages. |
-| `npm run bridge` | Local USB bridge (asks for your password; see [docs/BRIDGE.md](docs/BRIDGE.md)) |
+| `npm run bridge` | Local USB bridge (asks for your password on macOS; runs as you on Linux; see [docs/BRIDGE.md](docs/BRIDGE.md)) |
 | `npm run probe -- <cmd>` | Read-only protocol probe over `node-hid` (`list`, `status`, `sweep`, …) |
 | `npm run build:cli` | Builds the npm package's web UI and bundled bridge into `cli/dist/` (`npm pack` runs it too) |
 | `npm run dsp:prepare`, `npm run dsp:compare` | DSP parity harness against the native library. Needs the HollyAudio iOS app on an Apple Silicon Mac. |

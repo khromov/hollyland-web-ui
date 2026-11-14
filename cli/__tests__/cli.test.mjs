@@ -41,6 +41,14 @@ describe('parseOptions', () => {
     expect(HOSTED_URL.startsWith(`${HOSTED_ORIGIN}/`)).toBe(true)
   })
 
+  it('--sudo is opt-in and only goes with the bridge', () => {
+    expect(parseOptions([], 'linux').sudo).toBe(false)
+    expect(parseOptions(['--sudo'], 'linux')).toMatchObject({ sudo: true, bridge: true })
+    expect(parseOptions(['--sudo', '--bridge-only'], 'linux')).toMatchObject({ sudo: true, bridgeOnly: true })
+    expect(() => parseOptions(['--sudo', '--no-bridge'], 'linux')).toThrow(/contradict/)
+    expect(() => parseOptions(['--sudo=1'], 'linux')).toThrow(UsageError)
+  })
+
   it('rejects bad input with a usage error', () => {
     for (const argv of [['--port'], ['--port', 'abc'], ['--port', '70000'], ['--port', '0'], ['--nope'], ['extra'], ['--no-open=1']]) {
       expect(() => parseOptions(argv, 'darwin'), argv.join(' ')).toThrow(UsageError)
@@ -51,7 +59,7 @@ describe('parseOptions', () => {
 
   it('help names every option', () => {
     const help = helpText('1.2.3')
-    for (const flag of ['--port', '--bridge-port', '--no-bridge', '--bridge ', '--bridge-only', '--no-open', '--verbose', '--version', '--help']) {
+    for (const flag of ['--port', '--bridge-port', '--no-bridge', '--bridge ', '--bridge-only', '--sudo', '--no-open', '--verbose', '--version', '--help']) {
       expect(help).toContain(flag)
     }
     expect(help).toContain('Hollyland Web UI 1.2.3')

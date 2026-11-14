@@ -30,7 +30,7 @@ export interface TransportDeviceInfo {
 export interface TransportCapabilities {
   /**
    * Whether this transport can receive device replies on the current platform.
-   * `'yes'` = verified, `'no'` = known to be filtered by the OS (macOS / Windows HID stacks drop
+   * `'yes'` = verified, `'no'` = known to be filtered by the OS (macOS / Linux / Windows HID stacks drop
    * the undeclared report ID 0xBB, see PROTOCOL.md §2.4), `'unknown'` = try and see.
    */
   receive: 'yes' | 'no' | 'unknown'

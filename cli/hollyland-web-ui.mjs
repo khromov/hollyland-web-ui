@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // `npx hollyland-web-ui`: serves the prebuilt Hollyland Web UI on http://127.0.0.1:<port>, starts the
-// local USB bridge (macOS and Linux by default; under sudo unless a Linux udev rule makes that
-// unnecessary) and opens the page, which then connects through
-// the bridge by itself (?bridge=auto). See README.md and docs/BRIDGE.md.
+// local USB bridge (macOS and Linux by default; under sudo on macOS, as the current user on Linux
+// unless --sudo) and opens the page, which then connects through the bridge by itself
+// (?bridge=auto). See README.md and docs/BRIDGE.md.
 //
 // Plain ESM with no dependencies of its own; the bridge (cli/dist/bridge.mjs) is bundled from
 // scripts/bridge.ts by `npm run build:cli` and needs the "usb" and "ws" packages at runtime.
@@ -13,7 +13,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DEFAULT_BRIDGE_PORT, HOSTED_ORIGIN, HOSTED_URL, UsageError, helpText, parseOptions } from './lib/options.mjs'
 import { createStaticServer } from './lib/static-server.mjs'
-import { LINUX_UDEV_FILE, linuxBridgeWithoutRoot } from './lib/linux-usb.mjs'
+import { LINUX_UDEV_FILE, linuxAccessHint, linuxReceiverNodes } from './lib/linux-usb.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const WEB_ROOT = join(HERE, 'dist', 'web')
@@ -114,14 +114,21 @@ async function setUpBridge(opts, pageOrigin) {
   if (opts.verbose) args.push('--verbose')
   const isRoot = typeof process.getuid === 'function' && process.getuid() === 0
   const interactive = !!process.stdin.isTTY
-  // Linux: the udev rule lets this user take the receiver's HID interface without root.
-  const linuxNoRoot = process.platform === 'linux' && !isRoot && linuxBridgeWithoutRoot()
+  // Linux: the bridge runs as this user (the udev rules give it the receiver's HID interface) and
+  // is never elevated unless --sudo asks for it.
+  const linuxAsUser = process.platform === 'linux' && !isRoot && !opts.sudo
   let command = process.execPath
   let commandArgs = args
   if (isRoot) {
     row('USB bridge', 'starting (already running as root)…')
-  } else if (linuxNoRoot) {
-    row('USB bridge', 'starting (the udev rule lets you open the receiver, no sudo needed)…')
+  } else if (linuxAsUser) {
+    const hint = linuxAccessHint(linuxReceiverNodes(), 'npx hollyland-web-ui --sudo')
+    if (hint.length === 0) {
+      row('USB bridge', 'starting as you (no sudo on Linux)…')
+    } else {
+      row('USB bridge', yellow('starting as you, but it needs the udev rules first:'))
+      for (const line of hint) say(`${' '.repeat(13)}${line}`)
+    }
   } else {
     // The absolute path of this Node keeps nvm, fnm and Volta installs working under sudo.
     command = 'sudo'
@@ -129,7 +136,7 @@ async function setUpBridge(opts, pageOrigin) {
     row('USB bridge', `starting… It needs administrator rights to take the receiver over from ${OS_NAME},`)
     say(`${' '.repeat(13)}so sudo asks for the password you use to log in to this computer.`)
     if (process.platform === 'linux') {
-      say(dim(`${' '.repeat(13)}No sudo next time: add the udev rule from docs/BRIDGE.md ("Linux") as ${LINUX_UDEV_FILE}.`))
+      say(dim(`${' '.repeat(13)}No sudo next time: add the udev rules from docs/BRIDGE.md ("Linux") as ${LINUX_UDEV_FILE}.`))
     }
   }
   const usedSudo = command === 'sudo'

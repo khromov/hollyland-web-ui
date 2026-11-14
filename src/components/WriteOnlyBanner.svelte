@@ -13,7 +13,7 @@
   import Key from '../lib/ui/Key.svelte'
   import { bridgeStartHelp, webHidLinkOf } from '../lib/protocol/app'
   import { session } from '../lib/state/session.svelte'
-  import { PLATFORM_NAME, platform } from './shell/link.svelte'
+  import { PLATFORM_NAME, platform, type Platform } from './shell/link.svelte'
   import { FORGET_LABEL, FORGET_TIP, forgetRemembered } from './settings/sent.svelte'
 
   interface Props {
@@ -28,11 +28,15 @@
   const untested = $derived(session.untestedNotice)
   const message = $derived(untested ? `Untested model · ${status}` : status)
   const pausesAudio = platform !== 'linux' && platform !== 'chromeos'
+  const NO_BRIDGE: readonly Platform[] = ['windows', 'chromeos', 'android', 'ios']
   /**
-   * The bridge needs libusb with root (macOS, Linux); Windows can't run it (docs/BRIDGE.md). It
-   * captures products with an interrupt-report USB link only (not the A1's feature reports).
+   * The bridge is a Node program using libusb (root on macOS, the udev rules on Linux); it doesn't
+   * run on Windows, ChromeOS or phones (docs/BRIDGE.md). It captures products with an
+   * interrupt-report USB link only (not the A1's feature reports).
    */
-  const bridgeRuns = $derived(platform !== 'windows' && !!session.product && !!webHidLinkOf(session.product))
+  const bridgeRuns = $derived(
+    !NO_BRIDGE.includes(platform) && !!session.product && !!webHidLinkOf(session.product),
+  )
   let open = $state(false)
   const detailsId = `wo-details-${Math.random().toString(36).slice(2, 8)}`
 </script>

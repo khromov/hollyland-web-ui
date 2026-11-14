@@ -253,7 +253,7 @@
 
               <ul class="facts">
                 {#if pausesAudio}<li>Pauses USB audio while it runs.</li>{/if}
-                {#if onLinux}<li>USB audio keeps working. No sudo with the udev rules under “Receiver not in the list?”.</li>{/if}
+                {#if onLinux}<li>USB audio keeps working. Runs as you, without sudo, once the udev rules under “Receiver not in the list?” are in place.</li>{/if}
                 <li>Stop it with <kbd>Ctrl</kbd>+<kbd>C</kbd>.</li>
                 {#if notLocal}<li>If Chrome asks, choose <b>Allow</b>.</li>{/if}
                 <li>
@@ -279,11 +279,11 @@
                 <li>
                   <p>Linux: save as <code class="wrap">/etc/udev/rules.d/70-hollyland.rules</code></p>
                   <CodeWindow
-                    text={'SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3547", MODE="0660", TAG+="uaccess"\nSUBSYSTEM=="usb", ATTR{idVendor}=="3547", MODE="0660", TAG+="uaccess"'}
+                    text={'SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3547|4417", MODE="0660", TAG+="uaccess"\nSUBSYSTEM=="usb", ATTR{idVendor}=="3547|4417", MODE="0660", TAG+="uaccess"'}
                     copyLabel="Copy the udev rules"
                   />
-                  <p>The second line lets the local bridge run without sudo.</p>
                   <p>then run <code>sudo udevadm control --reload</code> and re-plug.</p>
+                  <p>The second line is for the local bridge.</p>
                 </li>
                 <li>Windows: check Sound settings.</li>
               {/if}
