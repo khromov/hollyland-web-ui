@@ -1,7 +1,9 @@
 #!/usr/bin/env node
-// `npm run bridge [-- options]`: starts scripts/bridge.ts as root.
+// `npm run bridge [-- options]`: starts scripts/bridge.ts as root on macOS, and as you on Linux
+// (where the udev rules in docs/BRIDGE.md "Linux" give it the receiver; `-- --sudo` runs it under
+// sudo there instead).
 //
-// The bridge must run as root, but `sudo npm …` / `sudo node …` fail for nvm users
+// The bridge must run as root on macOS, but `sudo npm …` / `sudo node …` fail for nvm users
 // ("sudo: node: command not found") because sudo resets PATH. This launcher re-runs the
 // bridge under sudo with the absolute path of the node binary that runs npm right now
 // (process.execPath) and tsx's loader, with the terminal inherited so sudo can ask for the
@@ -10,8 +12,11 @@ import { spawn } from 'node:child_process'
 import { constants } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { linuxAccessHint, linuxReceiverNodes } from '../cli/lib/linux-usb.mjs'
 
-const args = process.argv.slice(2)
+// --sudo is the launcher's own (Linux: run under sudo); the rest goes to the bridge.
+const sudoAsked = process.argv.slice(2).includes('--sudo')
+const args = process.argv.slice(2).filter((a) => a !== '--sudo')
 const script = join(dirname(fileURLToPath(import.meta.url)), 'bridge.ts')
 
 let tsxLoader
@@ -25,7 +30,7 @@ try {
 if (process.platform === 'win32') {
   console.error(
     'The bridge does not run on Windows: Windows cannot detach its HID driver from the receiver.\n' +
-      'Use Chrome on Linux or ChromeOS for full read/write, or macOS with this bridge. See docs/BRIDGE.md.',
+      'Run it on Linux or macOS for full read/write. See docs/BRIDGE.md.',
   )
   process.exit(1)
 }
@@ -33,9 +38,16 @@ if (process.platform === 'win32') {
 const nodeArgs = ['--import', tsxLoader, script, ...args]
 const isRoot = typeof process.getuid === 'function' && process.getuid() === 0
 const helpOnly = args.includes('--help') || args.includes('-h')
-const direct = isRoot || helpOnly
+// Linux: the bridge runs as you (the udev rules let it detach the HID driver from interface 0) and
+// is never elevated unless --sudo asks for it.
+const linuxAsUser = process.platform === 'linux' && !isRoot && !sudoAsked
+const direct = isRoot || helpOnly || linuxAsUser
 
-if (!direct) {
+if (linuxAsUser && !helpOnly) {
+  const hint = linuxAccessHint(linuxReceiverNodes(), 'npm run bridge -- --sudo')
+  if (hint.length === 0) console.log('The bridge runs as you (no sudo on Linux).')
+  else for (const line of hint) console.log(line)
+} else if (!direct) {
   console.log('The bridge needs root to take the receiver from the operating system; sudo may ask for your password.')
 }
 

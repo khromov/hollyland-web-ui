@@ -89,23 +89,25 @@ MELO P1 remote control, and MAX 2 / MELO P1 earphone controls (volume, pairing, 
 Legend: **✅** verified on hardware · **F** full read/write expected · **F?** full expected if an unverified descriptor
 detail holds · **W** write-only (the OS drops replies) · **?** unknown until the HID descriptor is captured ·
 **⚑** behind a Chrome flag (Web Bluetooth on Linux) · **✗** no browser path · **+B** the local root-libusb bridge
-(`docs/BRIDGE.md`) gives full read/write for interrupt-pipe USB devices on macOS/Windows/Linux.
+(`docs/BRIDGE.md`) gives full read/write for interrupt-pipe USB devices on macOS and Linux (Windows can't run it).
+On Linux the kernel drops input reports whose ID the descriptor doesn't declare, so the legacy receivers (replies on
+the undeclared `0xBB`) are **W** there as on macOS (verified on a Lark M2, PROTOCOL.md §11.9).
 
 | # | Product | Chrome macOS | Windows | Linux | ChromeOS | Android | Full read/write expected | Hollyland Web UI today | Confidence |
 |---|---|---|---|---|---|---|---|---|---|
-| 1 | LARK A2 | W ✅, +B ✅ | ? (W expected), +B | F (udev rule) | F | ✗ | Linux, ChromeOS, bridge | **Supported, hardware-tested** (fw 3.0.2.008) | high (live captures, PROTOCOL.md §11) |
-| 2 | LARK A2S | W (as A2), +B | ?, +B | F | F | ✗ | as A2 | Supported, untested variant | high |
-| 3 | Lark M2 | ? (W if like A2), +B | ?, +B | F | F | ✗ | Linux; macOS/Windows depend on descriptor | Supported, untested (unit on hand, test pending) | high (wire) |
-| 4 | Lark M2 EAGLESHERO | as #3 | as #3 | F | F | ✗ | as #3 | Supported, untested | medium (VID inferred) |
-| 5 | LARK M2S | as #3 | as #3 | F | F | ✗ | as #3 | Supported, untested (unit on hand) | high (wire) |
-| 6–9 | Lark C1 / C1 2nd gen / M1 2nd gen / Mini | as #3, +B | as #3, +B | F | F | ✗ | as #3 | Listed, `family: null` → **Phase 1** | high (wire), medium (UI semantics) |
+| 1 | LARK A2 | W ✅, +B ✅ | ? (W expected), +B | W (as the M2), +B | W (as Linux) | ✗ | bridge (macOS, Linux) | **Supported, hardware-tested** (fw 3.0.2.008) | high (live captures, PROTOCOL.md §11) |
+| 2 | LARK A2S | W (as A2), +B | ?, +B | W, +B | W | ✗ | as A2 | Supported, untested variant | high |
+| 3 | Lark M2 | W ✅, +B ✅ | ?, +B | W ✅, +B ✅ | W | ✗ | bridge (macOS, Linux) | **Supported, hardware-tested** (macOS 2026-11-06, Linux 2026-11-13; PROTOCOL.md §11.8, §11.9) | high (wire) |
+| 4 | Lark M2 EAGLESHERO | as #3 | as #3 | as #3 | as #3 | ✗ | as #3 | Supported, untested | medium (VID inferred) |
+| 5 | LARK M2S | as #3 | as #3 | as #3 | as #3 | ✗ | as #3 | Supported, untested (unit on hand) | high (wire) |
+| 6–9 | Lark C1 / C1 2nd gen / M1 2nd gen / Mini | as #3, +B | as #3, +B | as #3 | as #3 | ✗ | as #3 | Listed, `family: null` → **Phase 1** | high (wire), medium (UI semantics) |
 | 10 | Lark MAX | ? | ? | ? | ? | ✗ | unknown | Not listed → add as recognised only | low |
 | 11 | LARK A1 | **F?** (feature reports bypass the input-report filter; Feature 5 must be declared) | F? (needs declared Feature 5) | F | F | ✗ | likely on every desktop OS, no bridge needed | Listed, unsupported → **Phase 2** | high (commands), medium (transport) |
 | 12–13 | LARK M3 (all four PIDs) | **F?** (replies on report ID 8, declared [I]) | F? (send the declared report length) | F | F | ✗ | likely on every desktop OS | Listed, unsupported → **Phase 2** | high (framing), medium (transport, VID) |
-| 14–15 | LARK MAX 2 RX over USB | ? (byte 0 is still `BB`) | ? | F? (report size) | F? | ✗ | unknown | Listed (note wrongly says "BLE product") → **Phase 2b** | medium |
+| 14–15 | LARK MAX 2 RX over USB | ? (byte 0 is still `BB`) | ? | ? (as macOS: the kernel drops undeclared IDs too) | ? | ✗ | unknown | Listed (note wrongly says "BLE product") → **Phase 2b** | medium |
 | 16 | LARK MAX 2 BOX over BLE | **F** | F | ⚑ | F | **F** | yes, also on Android phones | Not listed → **Phase 2** | medium-high |
 | 17 | OWS Monitor Earphone | ✗ (not planned) | ✗ | ✗ | ✗ | ✗ | – | Not listed; skip (state comes through the MAX 2 RX) | low |
-| 18 | MELO P1 receiver | BLE **F**; USB ? | BLE F; USB ? | BLE ⚑; USB F (frames ≤ 1 report) | BLE F; USB F | BLE **F** | yes over BLE | Listed, unsupported → **Phase 2** (BLE first) | codec high, settings medium-high, DSP medium |
+| 18 | MELO P1 receiver | BLE **F**; USB ? | BLE F; USB ? | BLE ⚑; USB ? (as macOS; frames ≤ 1 report) | BLE F; USB ? | BLE **F** | yes over BLE | Listed, unsupported → **Phase 2** (BLE first) | codec high, settings medium-high, DSP medium |
 | 19 | MELO P1 Mic | USB ? | ? | ? | ? | ✗ | – | Listed; skip (firmware-update device) | low |
 | 20 | MELO P1 Charging Case | USB ? | ? | ? | ? | ✗ | – | Listed; skip (firmware, battery health) | low |
 | 21 | MELO P1 TWS Earphones | ✗ | ✗ | ✗ | ✗ | ✗ | – | Listed as a USB PID (wrong: 772 is an app ID) → remove from the USB table | low |
@@ -776,8 +778,8 @@ and `MELO_DRIVER` (the registry still holds stubs for 6201/6303/6701, which pass
 5. The local bridge with the M2 (interface and endpoint numbers).
 
 **LARK A2:** regression of the generalized `WebHidTransport` (bytes must stay `sendReport(0xAA, 63 B)`), the
-`LegacyMicDevice` adapter and the bridge; first real **Linux** run (hidraw, expected full duplex) and **Windows** run
-(expected write-only) to replace the "expected" entries in §1.2.
+`LegacyMicDevice` adapter and the bridge; a **Linux** run (hidraw is write-only on the M2, PROTOCOL.md §11.9; the A2
+should match) and a **Windows** run (expected write-only) to replace the "expected" entries in §1.2.
 
 **Android phone:** Web Bluetooth transport against an emulated peripheral (§5.5); checks that the connect screen offers
 Bluetooth only, and that permission prompts and disconnects behave.

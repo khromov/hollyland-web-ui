@@ -18,7 +18,7 @@
  *    Bluetooth, the local bridge, or the development simulator (`?mock=<preset id>`)
  *  - mirrors the device state into Svelte state (every status poll)
  *  - write pipelines: optimistic overlay while pending, rollback + toast on failure
- *  - "write-only" mode when the OS drops the receiver's replies (macOS / Windows): writes go out
+ *  - "write-only" mode when the OS drops the receiver's replies (macOS / Linux / Windows): writes go out
  *    unconfirmed and the last values sent from this browser are remembered locally
  *  - block rules from the official app (no mic online, all online mics muted)
  *  - disruptive flows: receiver restarts (overlay + automatic reconnect), remove pairing, factory reset

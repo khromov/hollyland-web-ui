@@ -11,12 +11,12 @@ export const REPO_URL = 'https://github.com/khromov/hollyland-web-ui'
 export class UsageError extends Error {}
 
 /**
- * Whether the bridge starts when neither --bridge nor --no-bridge is given: only on macOS, where
- * the OS drops the receiver's replies. Linux and ChromeOS get full read/write over WebHID, and
+ * Whether the bridge starts when neither --bridge nor --no-bridge is given: on macOS and Linux,
+ * where the OS drops the receiver's replies before the browser sees them (docs/PROTOCOL.md §2.4).
  * Windows can't run the bridge.
  */
 export function bridgeByDefault(platform = process.platform) {
-  return platform === 'darwin'
+  return platform === 'darwin' || platform === 'linux'
 }
 
 function parsePort(flag, v) {
@@ -29,7 +29,8 @@ function parsePort(flag, v) {
  * @param {readonly string[]} argv arguments after the script name
  * @param {string} platform process.platform
  * @returns {{ help: boolean, version: boolean, port: number, bridgePort: number,
- *   bridge: boolean, bridgeExplicit: boolean, bridgeOnly: boolean, open: boolean, verbose: boolean }}
+ *   bridge: boolean, bridgeExplicit: boolean, bridgeOnly: boolean, sudo: boolean, open: boolean,
+ *   verbose: boolean }}
  */
 export function parseOptions(argv, platform = process.platform) {
   const o = {
@@ -40,6 +41,7 @@ export function parseOptions(argv, platform = process.platform) {
     bridge: bridgeByDefault(platform),
     bridgeExplicit: false,
     bridgeOnly: false,
+    sudo: false,
     open: true,
     verbose: false,
   }
@@ -82,6 +84,10 @@ export function parseOptions(argv, platform = process.platform) {
         noValue()
         o.bridgeOnly = true
         break
+      case '--sudo':
+        noValue()
+        o.sudo = true
+        break
       case '--open':
         noValue()
         o.open = true
@@ -103,6 +109,7 @@ export function parseOptions(argv, platform = process.platform) {
     o.bridge = true
     o.open = false
   }
+  if (o.sudo && o.bridgeExplicit && !o.bridge) throw new UsageError('--sudo and --no-bridge contradict each other')
   if (!o.bridgeOnly && o.bridge && o.port === o.bridgePort) {
     throw new UsageError(`--port and --bridge-port must differ (both are ${o.port})`)
   }
@@ -116,16 +123,17 @@ Unofficial; not affiliated with Hollyland.
 Usage: npx hollyland-web-ui [options]
 
 Serves the web UI on http://127.0.0.1:${DEFAULT_PORT} (this computer only) and opens it in your
-browser. On macOS it also starts the local USB bridge, which asks for your password: macOS only
-lets the browser send settings, and the bridge adds live battery, mic status and current values.
-The receiver's USB audio is paused while the bridge runs.
+browser. On macOS and Linux it also starts the local USB bridge: the browser can only send
+settings there, and the bridge adds live battery, mic status and current values. On macOS it asks
+for your password and the receiver's USB audio is paused while it runs. On Linux it runs as you
+(it needs the udev rules from docs/BRIDGE.md to open the receiver) and audio keeps working.
 
 Options:
   -p, --port <n>          web UI port (default ${DEFAULT_PORT})
       --bridge-port <n>   USB bridge port (default ${DEFAULT_BRIDGE_PORT})
       --no-bridge         don't start the USB bridge
-      --bridge            start the USB bridge on Linux too (on by default only on macOS;
-                          Linux and ChromeOS already get full read/write in Chrome)
+      --bridge            start the USB bridge (on by default on macOS and Linux)
+      --sudo              Linux: start the bridge under sudo (without the udev rules)
       --bridge-only       start only the USB bridge, for the hosted page at
                           ${HOSTED_URL}
                           (in this mode the bridge also accepts that page)

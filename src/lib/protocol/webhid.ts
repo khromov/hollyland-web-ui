@@ -11,8 +11,10 @@
  * tested (macOS IOHIDFamily forwards undeclared output ids to the interrupt-OUT pipe), but
  * macOS drops undeclared INPUT report ids before any user-space client sees them (verified on
  * the live A2: the HID driver's InputReportCount grows by 2 per request while no report
- * reaches IOHIDDeviceRegisterInputReportCallback, even with the device seized). Linux/ChromeOS
- * (hidraw) deliver raw reports and are expected to work. Windows is unverified.
+ * reaches IOHIDDeviceRegisterInputReportCallback, even with the device seized). Linux drops them
+ * too (verified on a Lark M2, 2026-11-13): the kernel's HID core discards an input report whose id
+ * the descriptor doesn't declare before hidraw sees it, so Chrome gets nothing. ChromeOS runs the
+ * same HID core and is expected to behave the same. Windows is unverified.
  *
  * Generalized for the other families (docs/FAMILIES.md §3.4): `send(frame)` takes one complete
  * frame; the data part is zero padded to the output report size the descriptor declares for that

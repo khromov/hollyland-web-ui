@@ -27,16 +27,22 @@
   /** The tested USB receivers (LARK A2 / A2S, Lark M2, LARK M2S, the 6501 group). */
   const LEGACY_ROWS: PlatformRow[] = [
     {
-      name: 'Chrome or Edge on Linux, ChromeOS',
+      name: 'Chrome or Edge on Linux, with the local bridge',
       lamp: 'on',
       status: 'Full control',
-      tip: 'Linux needs a udev rule for the receiver',
+      tip: 'Tested with a Lark M2. Without the bridge, settings apply but status can’t be read. USB audio keeps working. Needs udev rules for the receiver.',
     },
     {
       name: 'Chrome or Edge on macOS',
       lamp: 'hollow',
       status: 'Status unavailable',
       tip: 'Settings apply; status can’t be read. The local bridge gives full control (pauses USB audio).',
+    },
+    {
+      name: 'Chrome on ChromeOS',
+      lamp: 'hollow',
+      status: 'Untested',
+      tip: 'Expected to be like Linux without the bridge (same kernel HID stack): settings apply, status can’t be read.',
     },
     {
       name: 'Chrome or Edge on Windows',

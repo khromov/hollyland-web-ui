@@ -2,7 +2,7 @@
   "name": "hollyland-web-ui",
   "version": "0.1.0",
   "private": false,
-  "description": "Unofficial control panel for Hollyland LARK A2 / A2S / M2 / M2S wireless mics in your browser, with a local USB bridge for full read/write on macOS. Run: npx hollyland-web-ui",
+  "description": "Unofficial control panel for Hollyland LARK A2 / A2S / M2 / M2S wireless mics in your browser, with a local USB bridge for full read/write on macOS and Linux. Run: npx hollyland-web-ui",
   "keywords": [
     "hollyland",
     "lark",

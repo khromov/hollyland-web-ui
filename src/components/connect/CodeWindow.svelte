@@ -4,7 +4,7 @@
    * scrolling, so nothing is hidden at the right edge. It wraps only at spaces: each word is an
    * atomic inline block, so `--allow-origin` or a URL never splits at a hyphen or dot. A single word
    * wider than the window still breaks inside, rather than overflowing. Under 400 px the Copy key
-   * moves below the text to leave it the full width.
+   * moves below the text to leave it the full width. A newline starts a new line (e.g. two udev rules).
    */
   import { Check, Copy } from '@lucide/svelte'
   import DisplayWindow from '../../lib/ui/DisplayWindow.svelte'
@@ -17,7 +17,7 @@
   }
   let { text, copyLabel = 'Copy' }: Props = $props()
 
-  const words = $derived(text.split(' '))
+  const lines = $derived(text.split('\n').map((line) => line.split(' ')))
 
   let copied = $state(false)
   async function copy() {
@@ -34,7 +34,8 @@
 <div class="code-window">
   <DisplayWindow code pad="sm">
     <code class="text"
-      >{#each words as word, i}{i > 0 ? ' ' : ''}<span class="word">{word}</span>{/each}</code
+      >{#each lines as words, l}{l > 0 ? '\n' : ''}{#each words as word, i}{i > 0 ? ' ' : ''}<span class="word">{word}</span
+          >{/each}{/each}</code
     >
     <Key variant="quiet" size="sm" class="copy" aria-label={copied ? 'Copied' : copyLabel} onclick={copy}>
       {#snippet icon()}{#if copied}<Check />{:else}<Copy />{/if}{/snippet}

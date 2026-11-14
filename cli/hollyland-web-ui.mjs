@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // `npx hollyland-web-ui`: serves the prebuilt Hollyland Web UI on http://127.0.0.1:<port>, starts the
-// local USB bridge (macOS by default, under sudo) and opens the page, which then connects through
-// the bridge by itself (?bridge=auto). See README.md and docs/BRIDGE.md.
+// local USB bridge (macOS and Linux by default; under sudo on macOS, as the current user on Linux
+// unless --sudo) and opens the page, which then connects through the bridge by itself
+// (?bridge=auto). See README.md and docs/BRIDGE.md.
 //
 // Plain ESM with no dependencies of its own; the bridge (cli/dist/bridge.mjs) is bundled from
 // scripts/bridge.ts by `npm run build:cli` and needs the "usb" and "ws" packages at runtime.
@@ -12,12 +13,15 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DEFAULT_BRIDGE_PORT, HOSTED_ORIGIN, HOSTED_URL, UsageError, helpText, parseOptions } from './lib/options.mjs'
 import { createStaticServer } from './lib/static-server.mjs'
+import { LINUX_UDEV_FILE, linuxAccessHint, linuxReceiverNodes } from './lib/linux-usb.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const WEB_ROOT = join(HERE, 'dist', 'web')
 const BRIDGE_SCRIPT = join(HERE, 'dist', 'bridge.mjs')
 const HOST = '127.0.0.1'
 const OS_NAME = { darwin: 'macOS', linux: 'Linux', win32: 'Windows' }[process.platform] ?? process.platform
+/** Only macOS hands the bridge the whole receiver; on Linux it takes interface 0 and audio keeps working. */
+const PAUSES_AUDIO = process.platform !== 'linux'
 /** sudo expands %u to the user name. */
 const SUDO_PROMPT = 'Password for %u (Hollyland Web UI needs it to start the USB bridge): '
 
@@ -110,24 +114,39 @@ async function setUpBridge(opts, pageOrigin) {
   if (opts.verbose) args.push('--verbose')
   const isRoot = typeof process.getuid === 'function' && process.getuid() === 0
   const interactive = !!process.stdin.isTTY
+  // Linux: the bridge runs as this user (the udev rules give it the receiver's HID interface) and
+  // is never elevated unless --sudo asks for it.
+  const linuxAsUser = process.platform === 'linux' && !isRoot && !opts.sudo
   let command = process.execPath
   let commandArgs = args
   if (isRoot) {
     row('USB bridge', 'starting (already running as root)…')
+  } else if (linuxAsUser) {
+    const hint = linuxAccessHint(linuxReceiverNodes(), 'npx hollyland-web-ui --sudo')
+    if (hint.length === 0) {
+      row('USB bridge', 'starting as you (no sudo on Linux)…')
+    } else {
+      row('USB bridge', yellow('starting as you, but it needs the udev rules first:'))
+      for (const line of hint) say(`${' '.repeat(13)}${line}`)
+    }
   } else {
     // The absolute path of this Node keeps nvm, fnm and Volta installs working under sudo.
     command = 'sudo'
     commandArgs = [...(interactive ? [] : ['-n']), '-p', SUDO_PROMPT, '--', process.execPath, ...args]
     row('USB bridge', `starting… It needs administrator rights to take the receiver over from ${OS_NAME},`)
     say(`${' '.repeat(13)}so sudo asks for the password you use to log in to this computer.`)
+    if (process.platform === 'linux') {
+      say(dim(`${' '.repeat(13)}No sudo next time: add the udev rules from docs/BRIDGE.md ("Linux") as ${LINUX_UDEV_FILE}.`))
+    }
   }
+  const usedSudo = command === 'sudo'
   say()
 
   let child
   try {
     child = spawn(command, commandArgs, { stdio: 'inherit' })
   } catch (e) {
-    explainBridgeFailure({ error: e, usedSudo: !isRoot, interactive, bridgeOnly: opts.bridgeOnly })
+    explainBridgeFailure({ error: e, usedSudo, interactive, bridgeOnly: opts.bridgeOnly })
     return false
   }
   bridge.child = child
@@ -168,7 +187,7 @@ async function setUpBridge(opts, pageOrigin) {
   }
   if (!stopping) {
     const [code, signal] = await bridge.exited
-    explainBridgeFailure({ error: spawnError, code, signal, usedSudo: !isRoot, interactive, bridgeOnly: opts.bridgeOnly })
+    explainBridgeFailure({ error: spawnError, code, signal, usedSudo, interactive, bridgeOnly: opts.bridgeOnly })
   }
   return false
 }
@@ -349,12 +368,12 @@ async function main() {
   if (opts.bridge) {
     viaBridge = await setUpBridge(opts, pageOrigin)
     if (stopping) return
-  } else if (process.platform === 'darwin') {
+  } else if (process.platform === 'darwin' || process.platform === 'linux') {
     row('USB bridge', `off (--no-bridge): ${OS_NAME} only lets the page send settings, not read them`)
   } else if (process.platform === 'win32') {
     row('USB bridge', 'off: Windows only lets the page send settings, not read them')
   } else {
-    row('USB bridge', `off: not needed on ${OS_NAME}, where Chrome reads and writes the receiver (--bridge starts it anyway)`)
+    row('USB bridge', `off on ${OS_NAME} (--bridge starts it anyway)`)
   }
 
   if (opts.bridgeOnly) {
@@ -377,7 +396,7 @@ async function main() {
     say(`${bold('Ready.')} Open Hollyland Web UI and press "Connect through local bridge", or open`)
     say(`${cyan(hosted)} to connect right away.`)
     say()
-    say(`The receiver's USB audio is paused while the bridge runs.`)
+    if (PAUSES_AUDIO) say(`The receiver's USB audio is paused while the bridge runs.`)
     say(stopHint())
     say()
     return
@@ -388,12 +407,15 @@ async function main() {
   say(`${bold('Ready.')} ${cyan(url)}${opts.open ? dim('  (opening in your browser)') : ''}`)
   say()
   if (viaBridge) {
-    say('The page connects through the USB bridge by itself. While the bridge holds the receiver,')
-    say('its USB audio is paused: live levels, recording and voice effects come back after you stop.')
+    say('The page connects through the USB bridge by itself.')
+    if (PAUSES_AUDIO) {
+      say('While the bridge holds the receiver, its USB audio is paused: live levels, recording and')
+      say('voice effects come back after you stop.')
+    }
     say(stopHint())
   } else {
     say('Use Chrome, Edge or another Chromium browser and press "Connect receiver".')
-    if (opts.bridge || process.platform === 'darwin' || process.platform === 'win32') {
+    if (opts.bridge || ['darwin', 'linux', 'win32'].includes(process.platform)) {
       say(`Without the bridge, ${OS_NAME} only lets the page send settings: battery, mic status and`)
       say('current values stay unknown (write-only mode).')
     }

@@ -146,7 +146,7 @@ C1-family unit would still be routed purely by PID (1/11/12/13 → `HLDeviceActi
 
 | Platform | Expected result | Why |
 |---|---|---|
-| Chrome / Edge on **Linux, ChromeOS** (WebHID over hidraw) | **full** [?] | hidraw does not filter report IDs. Same reasoning as the A2 (PROTOCOL.md §2.4). |
+| Chrome / Edge on **Linux, ChromeOS** (WebHID over hidraw) | **write-only** [?] | The kernel's HID core drops undeclared input report IDs before hidraw, as verified on the Lark M2 (PROTOCOL.md §11.9). Full read/write through the local bridge on Linux. |
 | Chrome / Edge on **macOS** | **unknown**. Writes should work. Replies arrive only if the descriptor declares the reply ID, uses no report IDs, or the firmware replies on a declared ID. | IOHIDFamily drops undeclared report IDs (A2, PROTOCOL.md §11.2) |
 | Chrome / Edge on **Windows** | unknown, expected ❌ if the descriptor is like the A2's | hidclass routes by declared report ID |
 | **Android Chrome** | ❌ | No WebHID. WebUSB cannot claim the HID interface. These are phone receivers, so the main use case (phone) is out of reach. |
@@ -422,7 +422,7 @@ preconditions, mock profiles and unit tests that mirror the Android rules above.
 
 | Product | Transport | Framing | Browser path | macOS full? | Reuse | Confidence |
 |---|---|---|---|---|---|---|
-| Lark C1, `6501`, PID 1 (iOS `lark c1` → 0/2) | USB HID, 64 B interrupt (iOS: iAP2) | legacy `AA DD`/`BB DD`, no checksum, 3 s heartbeat | WebHID (desktop Chrome/Edge). Linux/ChromeOS expected ✅. No Android Chrome. | unknown (descriptor not captured; ❌ if like A2) | codec/transport/commands as-is; new caps: heartbeat link-only, volume map `5,4,3,0,1,2`, no NC-off gate | high (wire) / medium (semantics) |
+| Lark C1, `6501`, PID 1 (iOS `lark c1` → 0/2) | USB HID, 64 B interrupt (iOS: iAP2) | legacy `AA DD`/`BB DD`, no checksum, 3 s heartbeat | WebHID (desktop Chrome/Edge). Linux/ChromeOS expected write-only like the M2 (PROTOCOL.md §11.9); full through the bridge. No Android Chrome. | unknown (descriptor not captured; ❌ if like A2) | codec/transport/commands as-is; new caps: heartbeat link-only, volume map `5,4,3,0,1,2`, no NC-off gate | high (wire) / medium (semantics) |
 | Lark C1 2nd gen, `6501PRO`, PID 11 (iOS `lark c1 pro` → 4) | same | same | same | unknown | as M2-mobile minus toggle/lock; + TX1/TX2 **label swap**; NC-on precondition | high / medium |
 | Lark M1 2nd gen, `6502PRO`, PID 12 (iOS `lark m1 pro` → 5) | same | same | same | unknown | as PID 11 without swap | high / medium |
 | Lark Mini, `6502JF`, PID 13 ("PRODUCT_LARK_C1_PRO"; iOS `lark m1 pro` + `0x16`=3 → 6) | same | same | same | unknown | identical to PID 12 | high / medium |

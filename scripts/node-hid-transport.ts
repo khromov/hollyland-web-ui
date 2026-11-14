@@ -6,7 +6,8 @@
  *   macOS : IOHIDDeviceSetReport(output, id=0xAA, buf=packet[0..63]) -> interrupt OUT (64 B)
  *   Linux : write(hidraw, packet)                                      -> interrupt OUT (64 B)
  * Input: macOS IOHIDFamily drops input reports with undeclared ids (0xBB), so replies never
- * arrive there (docs/PROTOCOL.md §2.4); Linux hidraw delivers them unfiltered.
+ * arrive there (docs/PROTOCOL.md §2.4). Linux drops them too: the kernel's HID core discards
+ * undeclared input report ids before hidraw (verified on a Lark M2, 2026-11-13).
  */
 import { execFileSync } from 'node:child_process'
 import { createRequire } from 'node:module'

@@ -32,7 +32,7 @@ Citation conventions:
 | Handshake / authentication | None. The first command can be the heartbeat. |
 | Heartbeat | `0x10` to the RX. It carries link, battery, all settings and, on the 6118 only, TX mute/charging. The Android app polls every 1 s (A2, M2S) or 3 s (M2); iOS polls every 3 s. |
 | Notifications | None. Everything is polled. The only device-initiated frames are OTA acks. A 3 s passive listen produced 0 IN reports (L), and a TX button press produced none either; it shows up only in the next heartbeat (L §11.7). |
-| **Platform caveat (L)** | On **macOS** the device's replies never reach user space through HID. IOHIDFamily drops input reports whose report ID (0xBB) is not declared. Writes do reach the device. WebHID on macOS can therefore only send blind, unconfirmed writes; Chrome's `sendReport(0xAA, …)` resolves and the writes take effect (verified, §11.7). Linux/ChromeOS (hidraw) should work in both directions. Windows is expected to fail (§2.4). A root libusb session that detaches the HID driver does receive the replies (§11.6), and the local bridge (`docs/BRIDGE.md`) gives the page full live state that way, at the cost of the receiver's USB audio while it runs (§11.7). |
+| **Platform caveat (L)** | On **macOS** the device's replies never reach user space through HID. IOHIDFamily drops input reports whose report ID (0xBB) is not declared. Writes do reach the device. WebHID on macOS can therefore only send blind, unconfirmed writes; Chrome's `sendReport(0xAA, …)` resolves and the writes take effect (verified, §11.7). **Linux drops them too** (verified on a Lark M2, §11.9): the kernel's HID core discards input reports with an undeclared ID before hidraw. ChromeOS is expected to behave like Linux, and Windows is expected to fail (§2.4). A libusb session that detaches the HID driver does receive the replies (§11.6, §11.9), and the local bridge (`docs/BRIDGE.md`) gives the page full live state that way: on macOS as root and at the cost of the receiver's USB audio while it runs (§11.7), on Linux without root (udev rule) and with audio working (§11.9). |
 | Runtime features | The PID gives a capability superset; some features also need RX firmware above a threshold. `HollylandDevice.state.features` applies those gates (§4.1). The apps' UI preconditions (TX online, NC on, not locked, …) are enforced as `PreconditionError` (§5.4). |
 
 ---
@@ -100,7 +100,7 @@ A HID stack reads byte 0 as a report ID, so the host "sends report 0xAA" and "re
 | Android (reference) | `bulkTransfer(OUT, AA DD …[64])` | `bulkTransfer(IN, buf[64], 500 ms)` → `BB DD …` |
 | **WebHID** | `device.sendReport(0xAA, packet.subarray(1, 64))` (63 data bytes) | `inputreport`: `reportId = 0xBB`, `data` = 63 bytes `DD cmd src len…`. Rebuild with `[0xBB, ...data]`. |
 | hidapi / node-hid | `write(packet)`. hidapi treats byte 0 = 0xAA as the report ID and passes all 64 bytes through. | `'data'` Buffer, starting with the report ID byte |
-| Linux hidraw | `write(fd, packet, 64)` | `read(fd, buf, 64)` → raw `BB DD …` |
+| Linux hidraw | `write(fd, packet, 64)` | nothing: the kernel drops `BB DD …` (undeclared ID 0xBB, §2.4, §11.9) |
 
 Rules:
 - **Always send the full 64 bytes.** A 6- or 7-byte write produces 1 IN report instead of the usual 2 (L §11.3),
@@ -121,8 +121,9 @@ Rules:
 | macOS: root libusb (local bridge, `scripts/bridge.ts`) | ✅ interrupt OUT `0x03` | ✅ interrupt IN `0x82`, one reply per request. Capturing the device takes the **whole** receiver from macOS, so its USB audio is unavailable until the bridge hands it back. | L §11.6, §11.7 |
 | macOS: WebUSB | ❌ HID is a protected class, and interface #7 is claimed by `accessoryd`. | ❌ | L (ioreg) |
 | macOS: ExternalAccessory (the iOS path) | ❌ `IAPAppRegisterClient: registerWasSuccessful 0`, 0 accessories. No iapd/iap2d on macOS. | ❌ | L §11.5 |
-| Linux: hidraw (Chrome WebHID, node-hid) | expected ✅ (raw write to the interrupt OUT) | expected ✅. hidraw does not filter report IDs. Needs a udev rule for access: `SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3547", MODE="0660", TAG+="uaccess"` | not tested (no Linux host) |
-| ChromeOS: WebHID | expected ✅ (hidraw underneath) | expected ✅ | not tested |
+| Linux: hidraw (Chrome WebHID, node-hid) | ✅ (raw write to the interrupt OUT). Needs a udev rule for access: `SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3547|4417", MODE="0660", TAG+="uaccess"` | ❌ **dropped by the kernel's HID core**: `__hid_input_report()` returns when `hid_get_report()` finds no declared report for the ID, before `hidraw_report_event()`. hidraw only sees report IDs the descriptor declares. | Lark M2, Ubuntu 26.04, kernel 7.0, Brave 1.99, 2026-11-13 (§11.9) |
+| Linux: libusb (local bridge, `scripts/bridge.ts`) | ✅ interrupt OUT `0x03` | ✅ interrupt IN `0x82`. Detaches `usbhid` from interface 0 only; the audio interfaces stay with `snd-usb-audio`, so **USB audio keeps working**. No root needed with a udev rule on the USB device node: `SUBSYSTEM=="usb", ATTR{idVendor}=="3547", MODE="0660", TAG+="uaccess"` | Lark M2, 2026-11-13 (§11.9) |
+| ChromeOS: WebHID | expected ✅ (hidraw underneath) | expected ❌ (same kernel HID core as Linux) | not tested |
 | Windows: WebHID / hidapi | expected ❌. hidclass routes reports by declared report ID, and Chromium picks a collection handle by report ID. | expected ❌ | not tested |
 | Android Chrome | ❌ no WebHID | ❌ | – |
 
@@ -132,7 +133,7 @@ Consequences for the UI:
 - With `blindWrites: true`, idempotent setters still go out and resolve `{ ok: true, confirmed: false }`. These
   are noise level, volume, channel mode, preset, LED, mic recognition, smart battery and auto-off.
 - The noise on/off **toggle** (0x19) is never sent blind, because a toggle with unknown state can invert it.
-- The UI should warn that state cannot be read on macOS (and Windows), and on macOS offer the local bridge (`docs/BRIDGE.md`).
+- The UI should warn that state cannot be read on macOS, Linux (and Windows), and on macOS and Linux offer the local bridge (`docs/BRIDGE.md`).
 - M2 and M2S descriptors are unknown. If those devices do not use report IDs, the transport switches to
   `framing: 'no-report-id'` and replies may arrive on every OS. The same applies if their replies use a declared ID.
 
@@ -727,13 +728,13 @@ refused: a packet that is not an AA DD request is not marked read-only. …
 ### 11.4 What could not be captured over HID
 
 Through the macOS HID stack no reply payload bytes can be seen. §11.6 has replies captured with root libusb; for
-everything else (set acks, M2/M2S, TX-addressed heartbeats, OTA) byte-level captures need a Linux or ChromeOS host
-or a root libusb session:
+everything else (set acks, M2/M2S, TX-addressed heartbeats, OTA) byte-level captures need a libusb session (the
+bridge with `--verbose`, as root on macOS, or on Linux with the udev rule); Linux hidraw drops them too (§11.9):
 ```
-npx tsx scripts/probe.ts sweep        # every read-only command, prints RX hex + decode
-npx tsx scripts/probe.ts device       # library end-to-end
+npm run bridge -- --verbose           # prints every packet in hex while the page sends requests
 ```
-Then paste the output here.
+Then paste the output here. `scripts/probe.ts` reads through node-hid, i.e. the same OS HID stack, so it
+sees no replies on macOS or Linux.
 
 ### 11.5 ExternalAccessory on macOS
 
@@ -785,7 +786,7 @@ Not verified yet:
 - set-ack bytes for commands other than 0x06 and 0x19;
 - TX-addressed heartbeats;
 - the LARK M2S and LARK A2S;
-- Chrome on Linux, ChromeOS and Windows.
+- Chrome on ChromeOS and Windows (Linux: §11.9).
 
 ### 11.8 Verified on hardware (Lark M2 mobile RX, PID 7, macOS, 2026-11-06)
 
@@ -802,6 +803,20 @@ are not recorded here. Regression vectors with fake serials: `src/lib/protocol/_
 | A2-only commands | bridge | `0x41`, `0x38`, `0x3C`, `0x3E` get **no reply**. | The M2 ignores 6118/6302-only reads; the library never sends them to a 6301. |
 | TX button press | bridge, heartbeat | Pressing a transmitter's button **toggles noise cancellation**, as on the A2. | NC on the M2 follows the same toggle model. |
 | 6501 profiles on the M2 | bridge, `forceProfile` (read-only) | Lark C1 (PID 1), C1 2nd gen (11), M1 2nd gen (12) and Lark Mini (13) profiles all connect and decode the M2's replies with their own rules (C1 volume wire map, PID 11 label swap). No errors or timeouts. | The 6501 group's read path ran on real hardware of the same generation; its writes and the PID-specific semantics remain untested. |
+
+### 11.9 Verified on hardware (Lark M2 mobile RX, PID 7, Linux, 2026-11-13)
+
+Ubuntu 26.04.1, kernel 7.0.0, Brave 1.99.55 (Chromium 157), PipeWire 1.6.2. Receiver firmware 2.0.0.36, TX1
+2.1.0.36 (`0x03`).
+
+| What | Path | Observed | Consequence |
+|---|---|---|---|
+| HID descriptor | `/sys/class/hidraw/hidraw*/device/report_descriptor` | Reports `0x06` (Consumer), `0x07` (Telephony), `0x55` (vendor 0xFF90), `0x41` (vendor 0xFF82) and `0x05` (vendor 0x7478), as on macOS (§11.8). No `0xAA` or `0xBB`. | Same as macOS. |
+| WebHID connect | Brave, hosted page | Connects, the heartbeat probe gets no reply: "Status unavailable on Linux". | Write-only, like macOS. |
+| Replies on hidraw | `write(/dev/hidraw12, AA DD 10 40 + 58 × 00)`, then `read` for 3 s | Nothing. | The kernel's HID core drops the undeclared `0xBB` input report in `__hid_input_report()` (`hid_get_report()` returns NULL) before `hidraw_report_event()`. The "hidraw does not filter report IDs" assumption in §2.4 was wrong. |
+| Bridge as a normal user | `npm run bridge`, udev rule `SUBSYSTEM=="usb", ATTR{idVendor}=="3547", MODE="0660", TAG+="uaccess"` | libusb opens the device, detaches `usbhid` from interface 0 and claims it without root; `captured Lark M2 (3547:0007 …): interface 0, IN 0x82 / OUT 0x3`. | No root on Linux; the launchers run the bridge as you (under sudo only with `--sudo`). |
+| USB audio while bridged | `/sys/bus/usb/devices/*:1.*/driver`, `pw-record` | Interface 0 → `usbfs`; interfaces 1 and 3 stay on `snd-usb-audio`; the PipeWire source stays RUNNING and a 2 s recording peaked at −24 dBFS. | Audio keeps working on Linux. |
+| Live state through the bridge | Brave, hosted page `?bridge=auto` and local page | TX1 online, battery 87 → 85 %, TX2 offline (in the case), NC on, volume 6/6, RX/TX1 version and serial, "Paired" for TX1. | Full control on Linux through the bridge. |
 
 ---
 
@@ -880,10 +895,10 @@ are not recorded here. Regression vectors with fake serials: `src/lib/protocol/_
 
 ## 13. Open questions and next live tests
 
-1. **Replies that are still unseen.** §11.6 covers the A2's read-only replies. Still needed (Linux/ChromeOS or root
-   libusb): set acks, TX-addressed heartbeats, the second IN report the macOS driver counts, and everything on
-   M2/M2S. `probe.ts sweep` / `probe.ts device` print them. On macOS the local bridge can capture them too
-   (`npm run bridge -- --verbose` prints every packet).
+1. **Replies that are still unseen.** §11.6 covers the A2's read-only replies. Still needed (libusb: the bridge,
+   as root on macOS or with the udev rule on Linux; hidraw drops them, §11.9): set acks, TX-addressed heartbeats, the second IN report the macOS driver counts, and everything on
+   M2/M2S. The local bridge captures them: `npm run bridge -- --verbose` prints every packet. (`probe.ts`
+   reads through node-hid, which sees no replies on macOS or Linux.)
 2. **Chrome WebHID:** answered for macOS (§11.7). `sendReport(0xAA, 63 B)` resolves and the writes take effect.
    Still open: Windows. Do writes work there too, and are the replies dropped as expected?
 3. M2 / M2S HID descriptors: do they use report IDs at all? If not, receiving may work on macOS too.
